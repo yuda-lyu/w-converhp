@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-tw">
+
+    <head>
+        <meta http-equiv="content-type" content="text/html charset=UTF-8" />
+        <title>w-converhp</title>
+
+        <script nomodule src="https://cdn.jsdelivr.net/npm/@babel/polyfill/dist/polyfill.min.js"></script>
+
+        <script src="https://cdn.jsdelivr.net/npm/wsemi/dist/wsemi.umd.js"></script>
+        
+        <script src="dist/w-converhp-client.umd.js"></script>
+
+        <script src="https://cdn.jsdelivr.net/npm/w-consolelog/dist/w-consolelog.umd.js"></script>
+        <script>
+            let logData=window['w-consolelog']
+        </script>
+        
+        <script>
+
+            let opt = {
+                url: 'http://localhost:8080',
+                token: '*',
+            }
+
+            //new
+            let WConverhpClient=window['w-converhp-client']
+            let wo = new WConverhpClient(opt)
+
+            wo.on('open', function() {
+                logData('client web: open')
+            })
+            wo.on('openOnce', function() {
+                logData('client web: openOnce')
+
+                //execute
+                wo.execute('add', { p1: 1, p2: 2 },
+                    function (prog) {
+                        logData('client web: execute prog=', prog)
+                    })
+                    .then(function(r) {
+                        logData('client web: execute: add=', r)
+                    })
+
+                //broadcast
+                wo.broadcast('client web: broadcast hi', function (prog) {
+                    logData('client web: broadcast prog=', prog)
+                })
+
+                //deliver
+                wo.deliver('client web: deliver: hi', function (prog) {
+                    logData('client web: deliver prog=', prog)
+                })
+
+            })
+            wo.on('close', function() {
+                logData('client web: close')
+            })
+            wo.on('error', function(err) {
+                logData('client web: error', err)
+            })
+            wo.on('reconn', function() {
+                logData('client web: reconn')
+            })
+            wo.on('broadcast', function(data) {
+                logData('client web: broadcast', data)
+            })
+            // wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver
+            //     logData('client web: deliver=', data)
+            // })
+
+        </script>
+
+    </head>
+
+    <body>
+    </body>
+
+</html>

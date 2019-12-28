@@ -1,0 +1,435 @@
+import axios from 'axios'
+import EventEmitter from 'wolfy87-eventemitter'
+import get from 'lodash/get'
+import genPm from 'wsemi/src/genPm.mjs'
+import genID from 'wsemi/src/genID.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import ispint from 'wsemi/src/ispint.mjs'
+import clearXSS from 'wsemi/src/clearXSS.mjs'
+import strright from 'wsemi/src/strright.mjs'
+
+
+/**
+ * 建立Hapi使用者(Node.js與Browser)端物件
+ *
+ * @class
+ * @param {Object} opt 輸入設定參數物件
+ * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
+ * @param {String} [opt.apiName='api'] 輸入api名稱，預設為'api'
+ * @param {String} [opt.token='*'] 輸入使用者認證用token，預設為'*'
+ * @param {Integer} [opt.strSplitLength=1000000] 輸入傳輸封包長度整數，預設為1000000
+ * @param {Object} [opt.ioSettings={}] 輸入Hapi初始化設定物件，預設為{}
+ * @returns {Object} 回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver
+ * @example
+ *
+ * import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'
+ *
+ * let opt = {
+ *     url: 'http://localhost:8080',
+ *     token: '*',
+ * }
+ *
+ * //new
+ * let wo = new WConverhpClient(opt)
+ *
+ * wo.on('open', function() {
+ *     console.log('client nodejs: open')
+ * })
+ * wo.on('openOnce', function() {
+ *     console.log('client nodejs: openOnce')
+ *
+ *     //execute
+ *     wo.execute('add', { p1: 1, p2: 2 },
+ *         function (prog) {
+ *             console.log('client nodejs: execute prog=', prog)
+ *         })
+ *         .then(function(r) {
+ *             console.log('client nodejs: execute: add=', r)
+ *         })
+ *
+ *     //broadcast
+ *     wo.broadcast('client nodejs broadcast hi', function (prog) {
+ *         console.log('client nodejs: broadcast prog=', prog)
+ *     })
+ *
+ *     //deliver
+ *     wo.deliver('client deliver hi', function (prog) {
+ *         console.log('client nodejs: deliver prog=', prog)
+ *     })
+ *
+ * })
+ * wo.on('close', function() {
+ *     console.log('client nodejs: close')
+ * })
+ * wo.on('error', function(err) {
+ *     console.log('client nodejs: error', err)
+ * })
+ * wo.on('reconn', function() {
+ *     console.log('client nodejs: reconn')
+ * })
+ * wo.on('broadcast', function(data) {
+ *     console.log('client nodejs: broadcast', data)
+ * })
+ * // wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver
+ * //     console.log('client nodejs: deliver=', data)
+ * // })
+ *
+ */
+function WConverhpClient(opt) {
+    let clientId = genID() //供伺服器識別真實連線使用者
+
+
+    //ee, ev
+    let ee = new EventEmitter()
+    //let ev = new EventEmitter()
+
+
+    //eeEmit
+    function eeEmit(name, ...args) {
+        setTimeout(() => {
+            ee.emit(name, ...args)
+        }, 1)
+    }
+
+
+    function core() {
+
+
+        //default
+        if (!opt.url) {
+            opt.url = 'http://localhost:8080'
+        }
+        if (!opt.apiName) {
+            opt.apiName = 'api'
+        }
+        if (!opt.token) {
+            opt.token = '*'
+        }
+
+
+        //url
+        let url = ''
+        if (strright(opt.url, 1) === '/') {
+            url = opt.url + opt.apiName
+        }
+        else {
+            url = opt.url + '/' + opt.apiName
+        }
+
+
+        //open, openOnce
+        open()
+        openOnce()
+
+
+        //sendData
+        function sendData(data, modeFile, cbProgress) {
+            //console.log('sendData', data, modeFile, cbProgress)
+
+            //pm
+            let pm = genPm()
+
+            //data to json string
+            // if (modeFile !== 'upload file') {
+            //     data = JSON.stringify(data)
+            // }
+
+            //clearXSS
+            data = clearXSS(data)
+
+            //s
+            let s = {
+                method: 'POST',
+                url,
+                data,
+                onUploadProgress: function(ev) {
+                    let p = ev.loaded
+                    let r = 0
+                    if (ev.lengthComputable) {
+                        r = (ev.loaded * 100) / ev.total
+                    }
+                    if (isfun(cbProgress)) {
+                        cbProgress(Math.floor(r), r, p, 'upload')
+                    }
+                },
+                onDownloadProgress: function (ev) {
+                    let p = ev.loaded
+                    let r = 0
+                    if (ispint(opt.downloadFileSize)) {
+                        r = (ev.loaded * 100) / (opt.downloadFileSize * 1024)
+                    }
+                    if (isfun(cbProgress)) {
+                        cbProgress(Math.floor(r), r, p, 'donwload')
+                    }
+                },
+            }
+
+            //add Content-Type
+            if (modeFile === 'upload file') {
+                s['headers'] = {
+                    'Content-Type': 'multipart/form-data'
+                }
+            }
+
+            //add responseType
+            if (modeFile === 'download file') {
+                s['responseType'] = 'blob'
+            }
+
+            //axios
+            axios(s)
+                .then(function(res) {
+                    //console.log('sendData then', res)
+                    pm.resolve(res.data.output)
+                })
+                .catch(function(res) {
+                    //console.log('sendData catch', res)
+                    let err = get(res, 'response.data')
+                    if (err) {
+                        res = err
+                    }
+                    else {
+                        res = 'can not connection'
+                    }
+                    pm.reject(res)
+                })
+
+            return pm
+        }
+
+
+        // //connect
+        // ioc.on('connect', function() {
+        //     open()
+        //     openOnce()
+        // })
+
+
+        // //message
+        // ioc.on('message', function(data) {
+        //     message(data)
+        // })
+
+
+        // //error
+        // ioc.on('error', function(err) {
+        //     error('ioc error', err)
+        // })
+
+
+        /**
+         * Hapi監聽開啟事件
+         *
+         * @memberof WConverhpClient
+         * @example
+         * wo.on('open', function() {
+         *     ...
+         * })
+         */
+        function onOpen() {} onOpen()
+        function open() {
+            eeEmit('open')
+        }
+
+
+        /**
+         * Hapi監聽第一次開啟事件
+         *
+         * @memberof WConverhpClient
+         * @example
+         * wo.on('openOnce', function() {
+         *     ...
+         * })
+         */
+        function onOpenOnce() {} onOpenOnce()
+        function openOnce() {
+            eeEmit('openOnce')
+        }
+
+
+        function triggerExecute(func, input, cbResult, cbProgress) {
+            //console.log('triggerExecute', func, input, cbResult, cbProgress)
+
+            //modeFile
+            let modeFile = '' //暫時不使用, 用一般傳輸數據替代上下傳檔案
+
+            //msg
+            let msg = {
+                _mode: 'execute',
+                clientId,
+                token: opt.token,
+                func,
+                input,
+            }
+
+            //sendData
+            sendData(msg, modeFile, cbProgress)
+                .then((output) => {
+
+                    //cbResult
+                    let success = get(output, 'success', null)
+                    let error = get(output, 'error', null)
+                    if (success !== null) {
+                        cbResult({
+                            success,
+                        })
+                    }
+                    else if (error !== null) {
+                        cbResult({
+                            error,
+                        })
+                    }
+                    else {
+                        cbResult({
+                            success: output,
+                        })
+                    }
+
+                })
+                .catch((err) => {
+
+                    //cbResult
+                    cbResult({
+                        error: err,
+                    })
+
+                })
+
+        }
+
+
+        function triggerDeliver(input, cbResult, cbProgress) {
+
+            //modeFile
+            let modeFile = '' //暫時不使用, 用一般傳輸數據替代上下傳檔案
+
+            //msg
+            let msg = {
+                _mode: 'deliver',
+                clientId,
+                token: opt.token,
+                input,
+            }
+
+            //sendData
+            sendData(msg, modeFile, cbProgress)
+                .then((output) => {
+
+                    //cbResult
+                    cbResult({
+                        success: output, //伺服器端於交付, 成功時只會回傳'ok'
+                    })
+
+                })
+                .catch((err) => {
+
+                    //cbResult
+                    cbResult({
+                        error: err,
+                    })
+
+                })
+
+        }
+
+
+        //triggerExecute, 若斷線重連則需自動清除過去監聽事件
+        ee.removeAllListeners('triggerExecute')
+        ee.on('triggerExecute', triggerExecute)
+
+
+        //triggerDeliver, 若斷線重連則需自動清除過去監聽事件
+        ee.removeAllListeners('triggerDeliver')
+        ee.on('triggerDeliver', triggerDeliver)
+
+
+    }
+
+
+    /**
+     * Hapi通訊物件對伺服器端執行函數，表示傳送資料給伺服器，並請伺服器執行函數
+     *
+     * @memberof WConverhpClient
+     * @function execute
+     * @param {String} func 輸入執行函數之名稱字串
+     * @param {*} [input=null] 輸入執行函數之輸入資訊
+     * @example
+     * let func = 'NameOfFunction'
+     * let input = {...}
+     * wo.execute(func, input)
+     */
+    ee.execute = function (func, input, cbProgress = function () {}) {
+        let pm = genPm()
+        eeEmit('triggerExecute', func, input,
+            function(output) { //結果用promise回傳
+                let success = get(output, 'success', null)
+                let error = get(output, 'error', null)
+                if (success !== null) {
+                    pm.resolve(success)
+                }
+                else {
+                    pm.reject(error)
+                }
+            },
+            cbProgress //傳輸進度用cb回傳
+        )
+        return pm
+    }
+
+
+    /**
+     * Hapi通訊物件對伺服器端交付函數，表示僅傳送資料給伺服器
+     *
+     * @memberof WConverhpClient
+     * @function deliver
+     * @param {*} data 輸入廣播函數之輸入資訊
+     * @example
+     * let data = {...}
+     * wo.deliver(data)
+     */
+    ee.deliver = function (data, cbProgress = function () {}) {
+        let pm = genPm()
+        eeEmit('triggerDeliver', data,
+            function(output) { //結果用promise回傳
+                let success = get(output, 'success', null)
+                let error = get(output, 'error', null)
+                if (success !== null) {
+                    pm.resolve(success)
+                }
+                else {
+                    pm.reject(error)
+                }
+            },
+            cbProgress //傳輸進度用cb回傳
+        )
+        return pm
+    }
+
+
+    // /**
+    //  * Hapi監聽重連事件
+    //  *
+    //  * @memberof WConversiClient
+    //  * @example
+    //  * wo.on('reconn', function() {
+    //  *     ...
+    //  * })
+    //  */
+    // function onReconn() {} onReconn()
+    // function reconn() {
+    //     eeEmit('reconn')
+    //     setTimeout(function() {
+    //         core()
+    //     }, 1000)
+    // }
+
+
+    //core
+    core()
+
+
+    return ee
+}
+
+
+export default WConverhpClient
