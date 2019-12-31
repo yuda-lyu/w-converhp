@@ -1,10 +1,15 @@
 {
   "name": "w-converhp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "An operator for hapi in nodejs and browser.",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
-    "remove": "^0.1.5"
+    "@hapi/hapi": "^18.4.0",
+    "@hapi/inert": "^5.2.2",
+    "axios": "^0.19.0",
+    "lodash": "^4.17.15",
+    "wolfy87-eventemitter": "^5.2.8",
+    "wsemi": "^1.3.9"
   },
   "devDependencies": {
     "@babel/cli": "^7.7.7",
@@ -16,9 +21,6 @@
     "@babel/preset-env": "^7.7.7",
     "@babel/register": "^7.7.7",
     "@babel/runtime": "^7.7.7",
-    "@hapi/hapi": "^18.4.0",
-    "@hapi/inert": "^5.2.2",
-    "axios": "^0.19.0",
     "core-js": "^3.6.1",
     "docdash": "^1.1.1",
     "eslint": "^6.8.0",
@@ -32,7 +34,6 @@
     "gh-pages": "^2.1.1",
     "jsdoc": "^3.6.3",
     "jsdoc-vuejs": "^3.0.7",
-    "lodash": "^4.17.15",
     "mocha": "^6.2.2",
     "nodemon": "^2.0.2",
     "rollup": "^1.27.14",
@@ -45,10 +46,7 @@
     "rollup-plugin-vue": "^5.1.4",
     "rollup-plugin-vue-template-compiler": "^1.0.3",
     "vue-template-compiler": "^2.6.11",
-    "w-package-tools": "^1.0.13",
-    "wolfy87-eventemitter": "^5.2.8",
-    "wsemi": "^1.3.8",
-    "xss": "^1.0.6"
+    "w-package-tools": "^1.0.13"
   },
   "scripts": {
     "test": "./node_modules/.bin/mocha --require @babel/register",
