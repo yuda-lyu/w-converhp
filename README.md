@@ -21,7 +21,7 @@ To view documentation or get support, visit [docs](https://yuda-lyu.github.io/w-
 ### Using npm(ES6 module):
 > **Note:** `w-converhp-server` depends on `@hapi/hapi` and `@hapi/inert`.
 
-> **Note:** `w-converhp-client` depends on `wolfy87-eventemitter`.
+> **Note:** `w-converhp-client` does not depend on any package.
 
 ```alias
 npm i w-converhp
@@ -162,7 +162,7 @@ wo.on('broadcast', function(data) {
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.3/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.4/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]

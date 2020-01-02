@@ -1,8 +1,8 @@
 import axios from 'axios'
-import EventEmitter from 'wolfy87-eventemitter'
 import get from 'lodash/get'
 import genPm from 'wsemi/src/genPm.mjs'
 import genID from 'wsemi/src/genID.mjs'
+import Evem from 'wsemi/src/evem.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import clearXSS from 'wsemi/src/clearXSS.mjs'
@@ -80,8 +80,8 @@ function WConverhpClient(opt) {
 
 
     //ee, ev
-    let ee = new EventEmitter()
-    //let ev = new EventEmitter()
+    let ee = new Evem()
+    //let ev = new Evem()
 
 
     //eeEmit
