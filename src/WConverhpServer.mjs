@@ -20,7 +20,7 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * @class
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port，預設8080
- * @param {Integer} [opt.strSplitLength=1000000] 輸入傳輸封包長度整數，預設為1000000
+ * @param {String} [opt.apiName='api'] 輸入http API伺服器網址的api名稱，預設'api'
  * @returns {Object} 回傳通訊物件，可監聽事件open、error、clientChange、execute、broadcast、deliver，可使用函數broadcast
  * @example
  *

@@ -24,8 +24,6 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * @param {String} [opt.apiName='api'] 輸入api名稱，預設為'api'
  * @param {String} [opt.token='*'] 輸入使用者認證用token，預設為'*'
  * @param {Integer} [opt.timePolling=2000] 輸入輪詢間隔時間整數，單位為毫秒，預設為2000
- * @param {Integer} [opt.strSplitLength=1000000] 輸入傳輸封包長度整數，預設為1000000
- * @param {Object} [opt.ioSettings={}] 輸入Hapi初始化設定物件，預設為{}
  * @returns {Object} 回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver
  * @example
  *
