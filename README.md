@@ -21,7 +21,7 @@ To view documentation or get support, visit [docs](https://yuda-lyu.github.io/w-
 ### Using npm(ES6 module):
 > **Note:** `w-converhp-server` depends on `@hapi/hapi` and `@hapi/inert`.
 
-> **Note:** `w-converhp-client` does not depend on any package.
+> **Note:** `w-converhp-client` depends on `form-data`.
 
 ```alias
 npm i w-converhp
@@ -33,13 +33,7 @@ import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'
 
 let opt = {
     port: 8080,
-    authenticate: function(token) {
-        return new Promise(function(resolve, reject) {
-            setTimeout(function() {
-                resolve(true)
-            }, 1000)
-        })
-    },
+    apiName: 'api',
 }
 
 //new
@@ -49,17 +43,17 @@ wo.on('open', function() {
     console.log(`Server[port:${opt.port}]: open`)
 
     //broadcast
-    // let n = 0
-    // setInterval(() => {
-    //     n += 1
-    //     let o = {
-    //         text: `server broadcast hi(${n})`,
-    //         data: new Uint8Array([66, 97, 115]), //support Uint8Array data
-    //     }
-    //     wo.broadcast(o, function (prog) {
-    //         console.log('broadcast prog', prog)
-    //     })
-    // }, 1000)
+    let n = 0
+    setInterval(() => {
+        n += 1
+        let o = {
+            text: `server broadcast hi(${n})`,
+            data: new Uint8Array([66, 97, 115]), //support Uint8Array data
+        }
+        wo.broadcast(o, function (prog) {
+            console.log('broadcast prog', prog)
+        })
+    }, 1000)
 
 })
 wo.on('error', function(err) {
@@ -69,11 +63,39 @@ wo.on('clientChange', function(clients) {
     console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
 })
 wo.on('execute', function(func, input, callback) {
-    console.log(`Server[port:${opt.port}]: execute`, func, input)
+    //console.log(`Server[port:${opt.port}]: execute`, func, input)
+    console.log(`Server[port:${opt.port}]: execute`, func)
 
-    if (func === 'add') {
-        let r = input.p1 + input.p2
-        callback(r)
+    try {
+
+        if (func === 'add') {
+
+            //save
+            if (_.get(input, 'p.d.u8a', null)) {
+                // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))
+                // console.log('writeFileSync input.p.d.name', input.p.d.name)
+            }
+
+            let r = {
+                ab: input.p.a + input.p.b,
+                v: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
+                file: {
+                    name: 'zdata.b2',
+                    u8a: new Uint8Array([66, 97, 115]),
+                    //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),
+                },
+            }
+            callback(r)
+        }
+        else {
+            console.log('invalid func')
+            callback('invalid func')
+        }
+
+    }
+    catch (err) {
+        console.log('execute error', err)
+        callback('execute error')
     }
 
 })
@@ -85,14 +107,17 @@ wo.on('deliver', function(data) {
 })
 
 // Server running at: http://localhost:8080
-// Server[port:8080]: now clients: 1
-// Server[port:8080]: execute add { p1: 1, p2: 2 }
+// Server[port:8080]: open
+// Server[port:8080]: execute add
 // Server[port:8080]: broadcast client nodejs[port:8080] broadcast hi
-// Server[port:8080]: deliver client deliver hi
+// Server[port:8080]: deliver client nodejs[port:8080] deliver hi
+// Server[port:8080]: now clients: 1
+// broadcast prog 100
+// Server[port:8080]: execute add
+// Server[port:8080]: broadcast client web broadcast hi
+// Server[port:8080]: deliver client web deliver hi
 // Server[port:8080]: now clients: 2
-// Server[port:8080]: execute add { p1: 1, p2: 2 }
-// Server[port:8080]: broadcast client web: broadcast hi
-// Server[port:8080]: deliver client web: deliver: hi
+// broadcast prog 100
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/scla.mjs)]
@@ -101,6 +126,7 @@ import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'
 
 let opt = {
     url: 'http://localhost:8080',
+    apiName: 'api',
     token: '*',
 }
 
@@ -113,24 +139,46 @@ wo.on('open', function() {
 wo.on('openOnce', function() {
     console.log('client nodejs[port:8080]: openOnce')
 
+    //p
+    let name = 'zdata.b1'
+    let p = {
+        a: 12,
+        b: 34.56,
+        c: 'test中文',
+        d: {
+            name: name,
+            u8a: new Uint8Array([66, 97, 115]),
+            //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
+        }
+    }
+
     //execute
-    wo.execute('add', { p1: 1, p2: 2 },
-        function (prog) {
-            console.log('client nodejs[port:8080]: execute prog=', prog)
+    wo.execute('add', { p },
+        function (prog, p, m) {
+            console.log('client nodejs[port:8080]: execute: prog', prog, p, m)
         })
         .then(function(r) {
-            console.log('client nodejs[port:8080]: execute: add=', r)
+            console.log('client nodejs[port:8080]: execute: add', r)
+        })
+        .catch(function(err) {
+            console.log('client nodejs[port:8080]: execute: catch', err)
         })
 
     //broadcast
     wo.broadcast('client nodejs[port:8080] broadcast hi', function (prog) {
-        console.log('client nodejs[port:8080]: broadcast prog=', prog)
+        console.log('client nodejs[port:8080]: broadcast: prog', prog)
     })
+        .catch(function(err) {
+            console.log('client nodejs[port:8080]: broadcast: catch', err)
+        })
 
     //deliver
-    wo.deliver('client deliver hi', function (prog) {
-        console.log('client nodejs[port:8080]: deliver prog=', prog)
+    wo.deliver('client nodejs[port:8080] deliver hi', function (prog) {
+        console.log('client nodejs[port:8080]: deliver: prog', prog)
     })
+        .catch(function(err) {
+            console.log('client nodejs[port:8080]: deliver: catch', err)
+        })
 
 })
 wo.on('close', function() {
@@ -151,10 +199,13 @@ wo.on('broadcast', function(data) {
 
 // client nodejs[port:8080]: open
 // client nodejs[port:8080]: openOnce
-// client nodejs[port:8080]: execute prog= 100
-// client nodejs[port:8080]: broadcast prog= 100
-// client nodejs[port:8080]: deliver prog= 100
-// client nodejs[port:8080]: execute: add= 3
+// client nodejs[port:8080]: execute: add {
+//   ab: 46.56,
+//   v: [ 11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' } ],
+//   file: { name: 'zdata.b2', u8a: Uint8Array [ 66, 97, 115 ] }
+// }
+// client nodejs[port:8080]: broadcast { text: 'server broadcast hi(1)', data: Uint8Array [ 66, 97, 115 ] }
+// client nodejs[port:8080]: broadcast { text: 'server broadcast hi(2)', data: Uint8Array [ 66, 97, 115 ] }
 ```
 
 ### In a browser(UMD module):
@@ -162,7 +213,7 @@ wo.on('broadcast', function(data) {
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.4/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.5/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]
@@ -171,57 +222,75 @@ let opt = {
     url: 'http://localhost:8080',
     token: '*',
 }
-
 //new
 let WConverhpClient=window['w-converhp-client']
 let wo = new WConverhpClient(opt)
-
 wo.on('open', function() {
-    logData('client web: open')
+    console.log('client web: open')
 })
 wo.on('openOnce', function() {
-    logData('client web: openOnce')
-
+    console.log('client web: openOnce')
+    //p
+    let name = 'zdata.b1'
+    let p = {
+        a: 12,
+        b: 34.56,
+        c: 'test中文',
+        d: {
+            name: name,
+            u8a: new Uint8Array([66, 97, 115]),
+            //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
+        }
+    }
     //execute
-    wo.execute('add', { p1: 1, p2: 2 },
-        function (prog) {
-            logData('client web: execute prog=', prog)
+    wo.execute('add', { p },
+        function (prog, p, m) {
+            console.log('client web: execute: prog', prog, p, m)
         })
         .then(function(r) {
-            logData('client web: execute: add=', r)
+            console.log('client web: execute: add', r)
         })
-
+        .catch(function (err) {
+            console.log('client web: execute: catch', err)
+        })
     //broadcast
-    wo.broadcast('client web: broadcast hi', function (prog) {
-        logData('client web: broadcast prog=', prog)
+    wo.broadcast('client web broadcast hi', function (prog) {
+        console.log('client web: broadcast: prog', prog)
     })
-
+        .catch(function (err) {
+            console.log('client web: broadcast: catch', err)
+        })
     //deliver
-    wo.deliver('client web: deliver: hi', function (prog) {
-        logData('client web: deliver prog=', prog)
+    wo.deliver('client web deliver hi', function (prog) {
+        console.log('client web: deliver: prog', prog)
     })
-
+        .catch(function (err) {
+            console.log('client web: deliver: catch', err)
+        })
 })
 wo.on('close', function() {
-    logData('client web: close')
+    console.log('client web: close')
 })
 wo.on('error', function(err) {
-    logData('client web: error', err)
+    console.log('client web: error', err)
 })
 wo.on('reconn', function() {
-    logData('client web: reconn')
+    console.log('client web: reconn')
 })
 wo.on('broadcast', function(data) {
-    logData('client web: broadcast', data)
+    console.log('client web: broadcast', data)
 })
 // wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver
-//     logData('client web: deliver=', data)
+//     console.log('client web: deliver=', data)
 // })
 
 // client web: open
 // client web: openOnce
-// client web: execute prog=100
-// client web: broadcast prog=100
-// client web: deliver prog=100
-// client web: execute: add=3
+// client web: execute: add {
+//   ab: 46.56,
+//   v: [ 11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' } ],
+//   file: { name: 'zdata.b2', u8a: Uint8Array [ 66, 97, 115 ] }
+// }
+// client web: broadcast { text: 'server broadcast hi(1)', data: Uint8Array [ 66, 97, 115 ] }
+// client web: broadcast { text: 'server broadcast hi(2)', data: Uint8Array [ 66, 97, 115 ] }
 ```

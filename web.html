@@ -13,7 +13,7 @@
 
         <script src="https://cdn.jsdelivr.net/npm/w-consolelog/dist/w-consolelog.umd.js"></script>
         <script>
-            let logData=window['w-consolelog']
+            console.log = window['w-consolelog']
         </script>
         
         <script>
@@ -28,45 +28,67 @@
             let wo = new WConverhpClient(opt)
 
             wo.on('open', function() {
-                logData('client web: open')
+                console.log('client web: open')
             })
             wo.on('openOnce', function() {
-                logData('client web: openOnce')
+                console.log('client web: openOnce')
+
+                //p
+                let name = 'zdata.b1'
+                let p = {
+                    a: 12,
+                    b: 34.56,
+                    c: 'test中文',
+                    d: {
+                        name: name,
+                        u8a: new Uint8Array([66, 97, 115]),
+                        //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
+                    }
+                }
 
                 //execute
-                wo.execute('add', { p1: 1, p2: 2 },
-                    function (prog) {
-                        logData('client web: execute prog=', prog)
+                wo.execute('add', { p },
+                    function (prog, p, m) {
+                        console.log('client web: execute: prog', prog, p, m)
                     })
                     .then(function(r) {
-                        logData('client web: execute: add=', r)
+                        console.log('client web: execute: add', r)
+                    })
+                    .catch(function (err) {
+                        console.log('client web: execute: catch', err)
                     })
 
                 //broadcast
-                wo.broadcast('client web: broadcast hi', function (prog) {
-                    logData('client web: broadcast prog=', prog)
+                wo.broadcast('client web broadcast hi', function (prog) {
+                    console.log('client web: broadcast: prog', prog)
                 })
+                    .catch(function (err) {
+                        console.log('client web: broadcast: catch', err)
+                    })
 
                 //deliver
-                wo.deliver('client web: deliver: hi', function (prog) {
-                    logData('client web: deliver prog=', prog)
+                wo.deliver('client web deliver hi', function (prog) {
+                    console.log('client web: deliver: prog', prog)
                 })
+                    .catch(function (err) {
+                        console.log('client web: deliver: catch', err)
+                    })
 
             })
             wo.on('close', function() {
-                logData('client web: close')
+                console.log('client web: close')
             })
             wo.on('error', function(err) {
-                logData('client web: error', err)
+                console.log('client web: error', err)
             })
             wo.on('reconn', function() {
-                logData('client web: reconn')
+                console.log('client web: reconn')
             })
             wo.on('broadcast', function(data) {
-                logData('client web: broadcast', data)
+                console.log('client web: broadcast', data)
             })
             // wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver
-            //     logData('client web: deliver=', data)
+            //     console.log('client web: deliver=', data)
             // })
 
         </script>
@@ -74,6 +96,53 @@
     </head>
 
     <body>
+ 
+        <div style="display:none;">
+    
+            <button onclick="uploadData()">upload file</button>
+            <script>
+
+                function uploadData() {
+                    wsemi
+                        .domShowInputAndGetFilesU8Arrs()
+                        .then( function(r) {
+                            //console.log('r',r)
+
+                            //file
+                            let file= r[0]
+                            console.log('file', file)
+
+                            //p
+                            let name = 'zdata.b1'
+                            let p = {
+                                a: 12,
+                                b: 34.56,
+                                c: 'test中文',
+                                d: file,
+                            }
+
+                            //execute
+                            wo.execute('add', { p },
+                                function (prog, p, m) {
+                                    console.log('client web: execute: prog', prog, p, m)
+                                })
+                                .then(function(r) {
+                                    console.log('client web: execute: add', r)
+                                })
+                                .catch(function(err)  {
+                                    console.log('client web: execute: catch', err)
+                                })
+
+                        })
+                        .catch(function(err) {
+                            console.log(err)
+                        })
+                }
+
+            </script>
+
+        </div>
+        
     </body>
 
 </html>

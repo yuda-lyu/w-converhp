@@ -27,7 +27,7 @@
 
 <nav >
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
 </nav>
 
 <div id="main">
@@ -42,14 +42,20 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import Hapi from '@hapi/hapi'
+            <pre class="prettyprint source linenums"><code>// import fs from 'fs'
+import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import events from 'events'
+import stream from 'stream'
 import get from 'lodash/get'
-import uniqBy from 'lodash/uniqBy'
-import isEqual from 'lodash/isEqual'
+import map from 'lodash/map'
+import each from 'lodash/each'
+import cloneDeep from 'lodash/cloneDeep'
 import genPm from 'wsemi/src/genPm.mjs'
-import genID from 'wsemi/src/genID.mjs'
+import alive from 'wsemi/src/alive.mjs'
+import isstr from 'wsemi/src/isstr.mjs'
+import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
+import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 
 
 /**
@@ -66,14 +72,7 @@ import genID from 'wsemi/src/genID.mjs'
  *
  * let opt = {
  *     port: 8080,
- *     authenticate: function(token) {
- *         //使用token驗證使用者身份
- *         return new Promise(function(resolve, reject) {
- *             setTimeout(function() {
- *                 resolve(true)
- *             }, 1000)
- *         })
- *     },
+ *     apiName: 'api',
  * }
  *
  * //new
@@ -81,6 +80,20 @@ import genID from 'wsemi/src/genID.mjs'
  *
  * wo.on('open', function() {
  *     console.log(`Server[port:${opt.port}]: open`)
+ *
+ *     //broadcast
+ *     let n = 0
+ *     setInterval(() => {
+ *         n += 1
+ *         let o = {
+ *             text: `server broadcast hi(${n})`,
+ *             data: new Uint8Array([66, 97, 115]), //support Uint8Array data
+ *         }
+ *         wo.broadcast(o, function (prog) {
+ *             console.log('broadcast prog', prog)
+ *         })
+ *     }, 1000)
+ *
  * })
  * wo.on('error', function(err) {
  *     console.log(`Server[port:${opt.port}]: error`, err)
@@ -89,11 +102,39 @@ import genID from 'wsemi/src/genID.mjs'
  *     console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
  * })
  * wo.on('execute', function(func, input, callback) {
- *     console.log(`Server[port:${opt.port}]: execute`, func, input)
+ *     //console.log(`Server[port:${opt.port}]: execute`, func, input)
+ *     console.log(`Server[port:${opt.port}]: execute`, func)
  *
- *     if (func === 'add') {
- *         let r = input.p1 + input.p2
- *         callback(r)
+ *     try {
+ *
+ *         if (func === 'add') {
+ *
+ *             //save
+ *             if (_.get(input, 'p.d.u8a', null)) {
+ *                 // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))
+ *                 // console.log('writeFileSync input.p.d.name', input.p.d.name)
+ *             }
+ *
+ *             let r = {
+ *                 ab: input.p.a + input.p.b,
+ *                 v: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
+ *                 file: {
+ *                     name: 'zdata.b2',
+ *                     u8a: new Uint8Array([66, 97, 115]),
+ *                     //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),
+ *                 },
+ *             }
+ *             callback(r)
+ *         }
+ *         else {
+ *             console.log('invalid func')
+ *             callback('invalid func')
+ *         }
+ *
+ *     }
+ *     catch (err) {
+ *         console.log('execute error', err)
+ *         callback('execute error')
  *     }
  *
  * })
@@ -106,8 +147,7 @@ import genID from 'wsemi/src/genID.mjs'
  *
  */
 function WConverhpServer(opt = {}) {
-    let conns = []
-    let clients = []
+    let broadcastMessages = {}
 
 
     //default
@@ -121,6 +161,32 @@ function WConverhpServer(opt = {}) {
 
     //ee
     let ee = new events.EventEmitter()
+
+
+    //ea
+    let ea = alive()
+
+
+    //ea broadcastMessages
+    setInterval(() => {
+
+        //now alive
+        let nowAlive = ea.get()
+        //console.log('nowAlive', nowAlive)
+
+        //clientIds
+        let clientIds = map(nowAlive, 'key')
+        //console.log('clientIds', clientIds)
+
+        //pick
+        let t = {}
+        each(clientIds, (clientId) => {
+            t[clientId] = get(broadcastMessages, clientId, [])
+        })
+        broadcastMessages = t
+        //console.log('broadcastMessages', broadcastMessages)
+
+    }, 1000)
 
 
     //eeEmit
@@ -195,24 +261,15 @@ function WConverhpServer(opt = {}) {
      * })
      */
     function onClientChange() {} onClientChange()
-    function clientChange() {
-        eeEmit('clientChange', clients, opt)
-    }
+    ea.on('message', function({ eventName, key, data, now }) {
+        //console.log({ eventName, key, data, now })
+        eeEmit('clientChange', ea.get(), opt)
+    })
 
 
-    //changeConns
-    function changeConns(conns) {
-        let clients_new = uniqBy(conns, 'clientId')
-        if (!isEqual(clients, clients_new)) {
-            clients = clients_new
-            clientChange()
-        }
-    }
-
-
-    //parserData
-    async function parserData(data) {
-        //console.log('parserData', data)
+    //dealData
+    async function dealData(data) {
+        //console.log('dealData', data)
 
         //pm
         let pm = genPm()
@@ -220,7 +277,7 @@ function WConverhpServer(opt = {}) {
         //_mode
         let _mode = get(data, '_mode', '')
 
-        //cbResult for execute
+        //cbResult
         function cbResult(output) {
 
             //add output
@@ -230,7 +287,7 @@ function WConverhpServer(opt = {}) {
             delete data['input']
 
             //resolve
-            pm.resolve(JSON.stringify(data))
+            pm.resolve(data)
 
         }
 
@@ -247,6 +304,18 @@ function WConverhpServer(opt = {}) {
             eeEmit('execute', func, input, cbResult)
 
         }
+        else if (_mode === 'broadcast') {
+
+            //input
+            let input = get(data, 'input', null)
+
+            //broadcast 廣播
+            eeEmit('broadcast', input)
+
+            //cbResult, 直接調用
+            cbResult('ok')
+
+        }
         else if (_mode === 'deliver') {
 
             //input
@@ -259,6 +328,22 @@ function WConverhpServer(opt = {}) {
             cbResult('ok')
 
         }
+        else if (_mode === 'polling') {
+
+            //clientId
+            let clientId = get(data, 'clientId', '')
+
+            //polling messages
+            let pms = get(broadcastMessages, clientId, [])
+            pms = cloneDeep(pms)
+
+            //clear
+            broadcastMessages[clientId] = []
+
+            //cbResult
+            cbResult(pms)
+
+        }
         else {
             let msg = 'can not find _mode in data'
             error(msg, data)
@@ -269,21 +354,49 @@ function WConverhpServer(opt = {}) {
     }
 
 
-    //apiHP
-    let apiHP = {
+    //apiMain
+    let apiMain = {
         path: '/' + opt.apiName,
         method: 'POST',
-        handler: function (req, res) {
+        // config: {
+        //     payload: {
+        //         output: 'stream',
+        //         maxBytes: 1000 * 1024 * 1024, //1g
+        //     },
+        // },
+        options: {
+            payload: {
+                maxBytes: 1000 * 1024 * 1024, //1g
+                timeout: 3 * 60 * 1000, //3分鐘, 注意payload timeout必須小於socket timeout
+            },
+            timeout: {
+                socket: 5 * 60 * 1000, //5分鐘
+            },
+        },
+        handler: async function (req, res) {
             //console.log(req, res)
+            //console.log('payload', req.payload)
 
-            //pm
-            let pm = genPm()
+            //bbInp
+            let bbInp = get(req, 'payload.bb', null)
+            //console.log('bbInp', bbInp)
 
-            //connId
-            let connId = genID()
+            //check
+            //console.log('isstr(bbInp)', isstr(bbInp))
+            if (isstr(bbInp)) {
+                bbInp = Buffer.from(bbInp, 'utf8') //收nodejs client的buffer會自動解析變成字串
+            }
+
+            //u8aInp
+            let u8aInp = new Uint8Array(bbInp)
+            //console.log('u8aInp', u8aInp)
+
+            //u8arr2obj
+            let inp = u8arr2obj(u8aInp)
+            //console.log('inp', inp)
 
             //clientId
-            let clientId = get(req.payload, 'clientId')
+            let clientId = get(inp, 'clientId')
 
             //client
             let client = {
@@ -291,36 +404,32 @@ function WConverhpServer(opt = {}) {
                 info: req.info,
             }
 
-            //push
-            conns.push({
-                clientId,
-                connId,
-                data: client,
-            })
-            changeConns(conns)
+            //trigger
+            ea.trigger(clientId, client)
 
-            //data
-            let data = req.payload
-
-            //parserData
-            parserData(data)
-                .then(function(r) {
-                    pm.resolve(r)
+            //dealData
+            let out = {}
+            await dealData(inp)
+                .then(function(msg) {
+                    out.success = msg
                 })
-                .catch(function(r) {
-                    pm.reject(r)
+                .catch(function(msg) {
+                    out.error = msg
                 })
-                .finally(function() {
+            //console.log('out', out)
 
-                    //remove
-                    conns = conns.filter(function(c) {
-                        return c.connId !== connId
-                    })
-                    changeConns(conns)
+            //u8aOut
+            let u8aOut = obj2u8arr(out)
 
-                })
+            //stream
+            let sm = new stream.Readable()
+            sm._read = () => {}
+            sm.push(u8aOut)
+            sm.push(null)
 
-            return pm
+            return res.response(sm)
+                .header('Content-type', 'application/octet-stream')
+                .header('Content-length', sm.readableLength)
         },
     }
 
@@ -342,6 +451,19 @@ function WConverhpServer(opt = {}) {
 
 
     /**
+     *  Hapi監聽客戶端廣播事件
+     *
+     * @memberof WConverhpServer
+     * @param {*} data 傳入廣播訊息
+     * @example
+     * wo.on('broadcast', function(data) {
+     *     ...
+     * })
+     */
+    function onBroadcast() {} onBroadcast()
+
+
+    /**
      * Hapi監聽客戶端交付事件
      *
      * @memberof WConverhpServer
@@ -352,6 +474,38 @@ function WConverhpServer(opt = {}) {
      * })
      */
     function onDeliver() {} onDeliver()
+
+
+    /**
+     * Hapi通訊物件對客戶端廣播函數
+     *
+     * @memberof WConverhpServer
+     * @function broadcast
+     * @param {*} data 輸入廣播函數之輸入資訊
+     * @example
+     * let data = {...}
+     * wo.broadcast(data)
+     */
+    ee.broadcast = function (data, cbProgress = function () {}) {
+        //eeEmit('triggerBroadcast', data, cbProgress)
+
+        //modify broadcast data
+        let t = {}
+        each(broadcastMessages, (v, k) => {
+
+            //push, 數據為陣列, 加入新廣播數據
+            v.push(data)
+
+            //save
+            t[k] = v
+
+        })
+        broadcastMessages = t
+
+        //cbProgress, 無法馬上傳需等待客戶端輪詢接收, 故進度回調只能先回傳100%
+        cbProgress(100)
+
+    }
 
 
     async function startServer() {
@@ -371,7 +525,7 @@ function WConverhpServer(opt = {}) {
         }
 
         //route
-        server.route([api, apiHP])
+        server.route([api, apiMain])
 
         //start
         await server.start()
@@ -381,7 +535,7 @@ function WConverhpServer(opt = {}) {
     }
 
     if (opt.serverHapi) {
-        opt.serverHapi.route(apiHP)
+        opt.serverHapi.route(apiMain)
     }
     else {
         startServer()
@@ -406,7 +560,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Thu Jan 02 2020 11:44:02 GMT+0800 (GMT+08:00) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Wed Jan 08 2020 17:41:30 GMT+0800 (GMT+08:00) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

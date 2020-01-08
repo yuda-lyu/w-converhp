@@ -1,12 +1,18 @@
 import axios from 'axios'
+import FormData from 'form-data'
 import get from 'lodash/get'
+import each from 'lodash/each'
+import getGlobal from 'wsemi/src/getGlobal.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import genID from 'wsemi/src/genID.mjs'
 import Evem from 'wsemi/src/evem.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
-import clearXSS from 'wsemi/src/clearXSS.mjs'
+import isearr from 'wsemi/src/isearr.mjs'
 import strright from 'wsemi/src/strright.mjs'
+import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
+import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
+import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 
 
 /**
@@ -17,6 +23,7 @@ import strright from 'wsemi/src/strright.mjs'
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
  * @param {String} [opt.apiName='api'] 輸入api名稱，預設為'api'
  * @param {String} [opt.token='*'] 輸入使用者認證用token，預設為'*'
+ * @param {Integer} [opt.timePolling=2000] 輸入輪詢間隔時間整數，單位為毫秒，預設為2000
  * @param {Integer} [opt.strSplitLength=1000000] 輸入傳輸封包長度整數，預設為1000000
  * @param {Object} [opt.ioSettings={}] 輸入Hapi初始化設定物件，預設為{}
  * @returns {Object} 回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver
@@ -26,6 +33,7 @@ import strright from 'wsemi/src/strright.mjs'
  *
  * let opt = {
  *     url: 'http://localhost:8080',
+ *     apiName: 'api',
  *     token: '*',
  * }
  *
@@ -38,24 +46,46 @@ import strright from 'wsemi/src/strright.mjs'
  * wo.on('openOnce', function() {
  *     console.log('client nodejs: openOnce')
  *
+ *     //p
+ *     let name = 'zdata.b1'
+ *     let p = {
+ *         a: 12,
+ *         b: 34.56,
+ *         c: 'test中文',
+ *         d: {
+ *             name: name,
+ *             u8a: new Uint8Array([66, 97, 115]),
+ *             //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
+ *         }
+ *     }
+ *
  *     //execute
- *     wo.execute('add', { p1: 1, p2: 2 },
- *         function (prog) {
- *             console.log('client nodejs: execute prog=', prog)
+ *     wo.execute('add', { p },
+ *         function (prog, p, m) {
+ *             console.log('client nodejs: execute: prog', prog, p, m)
  *         })
  *         .then(function(r) {
- *             console.log('client nodejs: execute: add=', r)
+ *             console.log('client nodejs: execute: add', r)
+ *         })
+ *         .catch(function(err) {
+ *             console.log('client nodejs: execute: catch', err)
  *         })
  *
  *     //broadcast
  *     wo.broadcast('client nodejs broadcast hi', function (prog) {
- *         console.log('client nodejs: broadcast prog=', prog)
+ *         console.log('client nodejs: broadcast: prog', prog)
  *     })
+ *         .catch(function(err) {
+ *             console.log('client nodejs: broadcast: catch', err)
+ *         })
  *
  *     //deliver
- *     wo.deliver('client deliver hi', function (prog) {
- *         console.log('client nodejs: deliver prog=', prog)
+ *     wo.deliver('client nodejs deliver hi', function (prog) {
+ *         console.log('client nodejs: deliver: prog', prog)
  *     })
+ *         .catch(function(err) {
+ *             console.log('client nodejs: deliver: catch', err)
+ *         })
  *
  * })
  * wo.on('close', function() {
@@ -105,6 +135,9 @@ function WConverhpClient(opt) {
         if (!opt.token) {
             opt.token = '*'
         }
+        if (!opt.timePolling) {
+            opt.timePolling = 2000
+        }
 
 
         //url
@@ -115,106 +148,6 @@ function WConverhpClient(opt) {
         else {
             url = opt.url + '/' + opt.apiName
         }
-
-
-        //open, openOnce
-        open()
-        openOnce()
-
-
-        //sendData
-        function sendData(data, modeFile, cbProgress) {
-            //console.log('sendData', data, modeFile, cbProgress)
-
-            //pm
-            let pm = genPm()
-
-            //data to json string
-            // if (modeFile !== 'upload file') {
-            //     data = JSON.stringify(data)
-            // }
-
-            //clearXSS
-            data = clearXSS(data)
-
-            //s
-            let s = {
-                method: 'POST',
-                url,
-                data,
-                onUploadProgress: function(ev) {
-                    let p = ev.loaded
-                    let r = 0
-                    if (ev.lengthComputable) {
-                        r = (ev.loaded * 100) / ev.total
-                    }
-                    if (isfun(cbProgress)) {
-                        cbProgress(Math.floor(r), r, p, 'upload')
-                    }
-                },
-                onDownloadProgress: function (ev) {
-                    let p = ev.loaded
-                    let r = 0
-                    if (ispint(opt.downloadFileSize)) {
-                        r = (ev.loaded * 100) / (opt.downloadFileSize * 1024)
-                    }
-                    if (isfun(cbProgress)) {
-                        cbProgress(Math.floor(r), r, p, 'donwload')
-                    }
-                },
-            }
-
-            //add Content-Type
-            if (modeFile === 'upload file') {
-                s['headers'] = {
-                    'Content-Type': 'multipart/form-data'
-                }
-            }
-
-            //add responseType
-            if (modeFile === 'download file') {
-                s['responseType'] = 'blob'
-            }
-
-            //axios
-            axios(s)
-                .then(function(res) {
-                    //console.log('sendData then', res)
-                    pm.resolve(res.data.output)
-                })
-                .catch(function(res) {
-                    //console.log('sendData catch', res)
-                    let err = get(res, 'response.data')
-                    if (err) {
-                        res = err
-                    }
-                    else {
-                        res = 'can not connection'
-                    }
-                    pm.reject(res)
-                })
-
-            return pm
-        }
-
-
-        // //connect
-        // ioc.on('connect', function() {
-        //     open()
-        //     openOnce()
-        // })
-
-
-        // //message
-        // ioc.on('message', function(data) {
-        //     message(data)
-        // })
-
-
-        // //error
-        // ioc.on('error', function(err) {
-        //     error('ioc error', err)
-        // })
 
 
         /**
@@ -247,46 +180,199 @@ function WConverhpClient(opt) {
         }
 
 
-        function triggerExecute(func, input, cbResult, cbProgress) {
-            //console.log('triggerExecute', func, input, cbResult, cbProgress)
+        /**
+         * Hapi監聽錯誤事件
+         *
+         * @memberof WConverhpClient
+         * @param {*} err 接收錯誤訊息
+         * @example
+         * wo.on('error', function(err) {
+         *     ...
+         * })
+         */
+        function onError() {} onError()
+        function error(msg, err) {
+            eeEmit('error', { msg, err })
+        }
 
-            //modeFile
-            let modeFile = '' //暫時不使用, 用一般傳輸數據替代上下傳檔案
 
-            //msg
-            let msg = {
-                _mode: 'execute',
-                clientId,
-                token: opt.token,
-                func,
-                input,
+        //res2u8arr
+        async function res2u8arr(env, bb) {
+            let u8a
+            if (env === 'browser') {
+                u8a = await blob2u8arr(bb)
+            }
+            else {
+                u8a = new Uint8Array(bb)
+            }
+            return u8a
+        }
+
+
+        //sendData
+        function sendData(data, cbProgress) {
+            //console.log('sendData', data, cbProgress)
+
+            //pm
+            let pm = genPm()
+
+            //env
+            let env
+            let g = getGlobal()
+            if (get(g, 'Blob', null)) {
+                env = 'browser'
+            }
+            else {
+                env = 'nodejs'
+            }
+            //console.log('env', env)
+
+            //obj2u8arr
+            let u8a = obj2u8arr(data)
+            // console.log('u8a', u8a)
+
+            //u8a to blob(in browser) or buffer(in nodejs)
+            let bb
+            if (env === 'browser') {
+                bb = new Blob([u8a.buffer])
+            }
+            else { //nodejs
+                bb = Buffer.from(u8a)
+            }
+            // console.log('bb', bb)
+
+            //new
+            let fmd
+            if (env === 'browser') {
+                fmd = new FormData()
+            }
+            else {
+                fmd = new FormData({ maxDataSize: 1000 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1g
             }
 
-            //sendData
-            sendData(msg, modeFile, cbProgress)
-                .then((output) => {
+            //append
+            fmd.append('bb', bb)
 
-                    //cbResult
-                    let success = get(output, 'success', null)
-                    let error = get(output, 'error', null)
-                    if (success !== null) {
-                        cbResult({
-                            success,
-                        })
+            //ct
+            let ct = 'multipart/form-data'
+            if (env === 'nodejs') {
+                ct += `; boundary=${fmd.getBoundary()}` //nodejs, 使用套件form-data需設定boundary
+            }
+            // console.log('ct', ct)
+
+            //rt
+            let rt = 'blob'
+            if (env === 'nodejs') {
+                rt = 'arraybuffer' //nodejs下沒有blob, 只能設定'json', 'arraybuffer', 'document', 'json', 'text', 'stream'
+            }
+            // console.log('rt', rt)
+
+            //s
+            let s = {
+                method: 'POST',
+                url,
+                data: fmd,
+                headers: { 'Content-Type': ct }, //數據視為file上傳
+                maxContentLength: Infinity, //axios於nodejs中會限制內容大小故需改為無限
+                maxBodyLength: Infinity, //axios於nodejs中會限制內容大小故需改為無限
+                responseType: rt,
+                onUploadProgress: function(ev) {
+                    //console.log('onUploadProgress', ev)
+
+                    //r
+                    let r = 0
+                    let loaded = ev.loaded
+                    let total = ev.total
+                    if (ispint(total)) {
+                        r = (loaded * 100) / total
                     }
-                    else if (error !== null) {
-                        cbResult({
-                            error,
-                        })
+
+                    //cbProgress
+                    if (isfun(cbProgress)) {
+                        cbProgress(Math.floor(r), loaded, 'upload')
+                    }
+
+                },
+                onDownloadProgress: function (ev) {
+                    //console.log('onDownloadProgress', ev)
+
+                    //r
+                    let r = 0
+                    let loaded = ev.loaded
+                    let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
+                    if (ispint(total)) {
+                        r = (loaded * 100) / total
+                    }
+
+                    //cbProgress
+                    if (isfun(cbProgress)) {
+                        cbProgress(Math.floor(r), loaded, 'donwload')
+                    }
+
+                },
+            }
+
+            //axios
+            axios(s)
+                .then(async (res) => {
+                    //console.log('axios then', res)
+
+                    //bb
+                    let bb = get(res, 'data')
+                    // console.log('bb', bb)
+
+                    //res2u8arr
+                    let u8a = await res2u8arr(env, bb)
+                    // console.log('u8a', u8a)
+
+                    //u8arr2obj
+                    let data = u8arr2obj(u8a)
+                    // console.log('data', data)
+
+                    pm.resolve(data)
+                })
+                .catch(async (res) => {
+                    //console.log('axios catch', res)
+
+                    //statusText, err
+                    let statusText = get(res, 'response.statusText')
+                    let err = get(res, 'response.data')
+
+                    if (statusText) {
+                        //console.log('statusText', statusText)
+                        data = statusText
+                    }
+                    else if (err) {
+                        //console.log('err', err)
+                        data = err
                     }
                     else {
-                        cbResult({
-                            success: output,
-                        })
+                        //console.log('err', res)
+                        data = 'can not connect to server'
                     }
+
+                    pm.reject(data)
+                })
+
+            return pm
+        }
+
+
+        //sendMsg
+        function sendMsg(msg, cbResult, cbProgress) {
+            //console.log(msg, cbResult, cbProgress)
+
+            //sendData
+            sendData(msg, cbProgress)
+                .then((res) => {
+                    //console.log('sendData then', res)
+
+                    //cbResult
+                    cbResult(res)
 
                 })
                 .catch((err) => {
+                    //console.log('sendData catch', err)
 
                     //cbResult
                     cbResult({
@@ -298,37 +384,116 @@ function WConverhpClient(opt) {
         }
 
 
-        function triggerDeliver(input, cbResult, cbProgress) {
+        function polling() {
 
-            //modeFile
-            let modeFile = '' //暫時不使用, 用一般傳輸數據替代上下傳檔案
+            //setInterval
+            setInterval(() => {
+
+                //triggerPolling
+                triggerPolling()
+                    .then((res) => {
+                        //console.log('polling res', res)
+
+                        //output
+                        let output = get(res, 'success.output', null)
+                        // console.log('output', output)
+
+                        //check
+                        if (output === null) {
+                            return
+                        }
+                        if (!isearr(output)) {
+                            return
+                        }
+
+                        //each
+                        each(output, (v, k) => {
+                            setTimeout(() => {
+
+                                //broadcast 廣播
+                                eeEmit('broadcast', v)
+
+                            }, 10 * (k + 1))
+                        })
+
+                    })
+                    .catch((err) => {
+                        error('can not polling', err)
+                        eeEmit('reconn')
+                    })
+
+            }, opt.timePolling)
+
+        }
+
+
+        function triggerPolling() {
+
+            //pm
+            let pm = genPm()
 
             //msg
             let msg = {
-                _mode: 'deliver',
+                _mode: 'polling',
+                clientId,
+                token: opt.token,
+            }
+
+            //cb
+            function cb(res) {
+                pm.resolve(res)
+            }
+
+            //sendMsg
+            sendMsg(msg, cb, () => {})
+
+            return pm
+        }
+
+
+        function triggerExecute(func, input, cbResult, cbProgress) {
+            //console.log('triggerExecute', func, input, cbResult, cbProgress)
+
+            //mode
+            let mode = 'execute'
+
+            //msg
+            let msg = {
+                _mode: mode,
+                clientId,
+                token: opt.token,
+                func,
+                input,
+            }
+
+            //sendMsg
+            sendMsg(msg, cbResult, cbProgress)
+
+        }
+
+
+        function triggerBroadcast(input, cbResult, cbProgress) {
+            triggerCommon(input, cbResult, cbProgress, 'broadcast')
+        }
+
+
+        function triggerDeliver(input, cbResult, cbProgress) {
+            triggerCommon(input, cbResult, cbProgress, 'deliver')
+        }
+
+
+        function triggerCommon(input, cbResult, cbProgress, mode) {
+
+            //msg
+            let msg = {
+                _mode: mode,
                 clientId,
                 token: opt.token,
                 input,
             }
 
-            //sendData
-            sendData(msg, modeFile, cbProgress)
-                .then((output) => {
-
-                    //cbResult
-                    cbResult({
-                        success: output, //伺服器端於交付, 成功時只會回傳'ok'
-                    })
-
-                })
-                .catch((err) => {
-
-                    //cbResult
-                    cbResult({
-                        error: err,
-                    })
-
-                })
+            //sendMsg
+            sendMsg(msg, cbResult, cbProgress)
 
         }
 
@@ -338,11 +503,36 @@ function WConverhpClient(opt) {
         ee.on('triggerExecute', triggerExecute)
 
 
+        //triggerBroadcast, 若斷線重連則需自動清除過去監聽事件
+        ee.removeAllListeners('triggerBroadcast')
+        ee.on('triggerBroadcast', triggerBroadcast)
+
+
         //triggerDeliver, 若斷線重連則需自動清除過去監聽事件
         ee.removeAllListeners('triggerDeliver')
         ee.on('triggerDeliver', triggerDeliver)
 
 
+        //open, openOnce, polling
+        open()
+        openOnce()
+        polling()
+
+
+    }
+
+
+    //parseOutput
+    function parseOutput(pm, data) {
+        let resSuccess = get(data, 'success', null)
+        let resError = get(data, 'error', null)
+        if (resSuccess !== null) {
+            let output = get(resSuccess, 'output')
+            pm.resolve(output)
+        }
+        else {
+            pm.reject(resError)
+        }
     }
 
 
@@ -361,15 +551,30 @@ function WConverhpClient(opt) {
     ee.execute = function (func, input, cbProgress = function () {}) {
         let pm = genPm()
         eeEmit('triggerExecute', func, input,
-            function(output) { //結果用promise回傳
-                let success = get(output, 'success', null)
-                let error = get(output, 'error', null)
-                if (success !== null) {
-                    pm.resolve(success)
-                }
-                else {
-                    pm.reject(error)
-                }
+            function(data) { //結果用promise回傳
+                parseOutput(pm, data)
+            },
+            cbProgress //傳輸進度用cb回傳
+        )
+        return pm
+    }
+
+
+    /**
+     * Hapi通訊物件對伺服器端廣播函數，表示傳送資料給伺服器，還需轉送其他客戶端
+     *
+     * @memberof WConverhpClient
+     * @function broadcast
+     * @param {*} data 輸入廣播函數之輸入資訊
+     * @example
+     * let data = {...}
+     * wo.broadcast(data)
+     */
+    ee.broadcast = function (data, cbProgress = function () {}) {
+        let pm = genPm()
+        eeEmit('triggerBroadcast', data,
+            function(data) { //結果用promise回傳
+                parseOutput(pm, data)
             },
             cbProgress //傳輸進度用cb回傳
         )
@@ -390,15 +595,8 @@ function WConverhpClient(opt) {
     ee.deliver = function (data, cbProgress = function () {}) {
         let pm = genPm()
         eeEmit('triggerDeliver', data,
-            function(output) { //結果用promise回傳
-                let success = get(output, 'success', null)
-                let error = get(output, 'error', null)
-                if (success !== null) {
-                    pm.resolve(success)
-                }
-                else {
-                    pm.reject(error)
-                }
+            function(data) { //結果用promise回傳
+                parseOutput(pm, data)
             },
             cbProgress //傳輸進度用cb回傳
         )
@@ -409,7 +607,7 @@ function WConverhpClient(opt) {
     // /**
     //  * Hapi監聽重連事件
     //  *
-    //  * @memberof WConversiClient
+    //  * @memberof WConverhpClient
     //  * @example
     //  * wo.on('reconn', function() {
     //  *     ...

@@ -18,14 +18,15 @@ rollupFiles({
     globals: {
         '@hapi/hapi': '@hapi/hapi',
         '@hapi/inert': '@hapi/inert',
-        'socket.io': 'socket.io',
         'events': 'events',
+        'stream': 'stream',
+        'form-data': 'FormData',
     },
     external: [
         '@hapi/hapi',
         '@hapi/inert',
-        'socket.io',
         'events',
+        'stream',
     ],
 })
 

@@ -27,7 +27,7 @@
 
 <nav >
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
 </nav>
 
 <div id="main">
@@ -71,7 +71,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line64">line 64</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line105">line 105</a>
     </li></ul></dd>
     
 
@@ -124,7 +124,7 @@
 
     <h5>Example</h5>
     
-    <pre class="prettyprint"><code>import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'let opt = {    port: 8080,    authenticate: function(token) {        //使用token驗證使用者身份        return new Promise(function(resolve, reject) {            setTimeout(function() {                resolve(true)            }, 1000)        })    },}//newlet wo = new WConverhpServer(opt)wo.on('open', function() {    console.log(`Server[port:${opt.port}]: open`)})wo.on('error', function(err) {    console.log(`Server[port:${opt.port}]: error`, err)})wo.on('clientChange', function(clients) {    console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)})wo.on('execute', function(func, input, callback) {    console.log(`Server[port:${opt.port}]: execute`, func, input)    if (func === 'add') {        let r = input.p1 + input.p2        callback(r)    }})wo.on('broadcast', function(data) {    console.log(`Server[port:${opt.port}]: broadcast`, data)})wo.on('deliver', function(data) {    console.log(`Server[port:${opt.port}]: deliver`, data)})</code></pre>
+    <pre class="prettyprint"><code>import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'let opt = {    port: 8080,    apiName: 'api',}//newlet wo = new WConverhpServer(opt)wo.on('open', function() {    console.log(`Server[port:${opt.port}]: open`)    //broadcast    let n = 0    setInterval(() => {        n += 1        let o = {            text: `server broadcast hi(${n})`,            data: new Uint8Array([66, 97, 115]), //support Uint8Array data        }        wo.broadcast(o, function (prog) {            console.log('broadcast prog', prog)        })    }, 1000)})wo.on('error', function(err) {    console.log(`Server[port:${opt.port}]: error`, err)})wo.on('clientChange', function(clients) {    console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)})wo.on('execute', function(func, input, callback) {    //console.log(`Server[port:${opt.port}]: execute`, func, input)    console.log(`Server[port:${opt.port}]: execute`, func)    try {        if (func === 'add') {            //save            if (_.get(input, 'p.d.u8a', null)) {                // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))                // console.log('writeFileSync input.p.d.name', input.p.d.name)            }            let r = {                ab: input.p.a + input.p.b,                v: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],                file: {                    name: 'zdata.b2',                    u8a: new Uint8Array([66, 97, 115]),                    //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),                },            }            callback(r)        }        else {            console.log('invalid func')            callback('invalid func')        }    }    catch (err) {        console.log('execute error', err)        callback('execute error')    }})wo.on('broadcast', function(data) {    console.log(`Server[port:${opt.port}]: broadcast`, data)})wo.on('deliver', function(data) {    console.log(`Server[port:${opt.port}]: deliver`, data)})</code></pre>
 
 
 
@@ -371,6 +371,288 @@
 
     
 
+    <h4 class="name" id=".broadcast"><span class="type-signature">(static) </span>broadcast<span class="signature">(data)</span><span class="type-signature"></span></h4>
+
+    
+
+
+
+
+<dl class="details">
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line435">line 435</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+<div class="description">
+    <p>Hapi通訊物件對客戶端廣播函數</p>
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Example</h5>
+    
+    <pre class="prettyprint"><code>let data = {...}wo.broadcast(data)</code></pre>
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>data</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入廣播函數之輸入資訊</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id=".onBroadcast"><span class="type-signature">(static) </span>onBroadcast<span class="signature">(data)</span><span class="type-signature"></span></h4>
+
+    
+
+
+
+
+<dl class="details">
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line419">line 419</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+<div class="description">
+    <p>Hapi監聽客戶端廣播事件</p>
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Example</h5>
+    
+    <pre class="prettyprint"><code>wo.on('broadcast', function(data) {    ...})</code></pre>
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>data</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>傳入廣播訊息</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id=".onClientChange"><span class="type-signature">(static) </span>onClientChange<span class="signature">()</span><span class="type-signature"></span></h4>
 
     
@@ -383,7 +665,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line153">line 153</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line219">line 219</a>
     </li></ul></dd>
     
 
@@ -475,7 +757,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line310">line 310</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line432">line 432</a>
     </li></ul></dd>
     
 
@@ -616,7 +898,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line138">line 138</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line204">line 204</a>
     </li></ul></dd>
     
 
@@ -757,7 +1039,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line297">line 297</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line406">line 406</a>
     </li></ul></dd>
     
 
@@ -967,7 +1249,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line121">line 121</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line187">line 187</a>
     </li></ul></dd>
     
 
@@ -1062,7 +1344,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Thu Jan 02 2020 11:44:02 GMT+0800 (GMT+08:00) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Wed Jan 08 2020 17:41:30 GMT+0800 (GMT+08:00) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
