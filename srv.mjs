@@ -33,7 +33,7 @@ wo.on('error', function(err) {
 wo.on('clientChange', function(clients) {
     console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
 })
-wo.on('execute', function(func, input, callback) {
+wo.on('execute', function(func, input, pm) {
     //console.log(`Server[port:${opt.port}]: execute`, func, input)
     console.log(`Server[port:${opt.port}]: execute`, func)
 
@@ -56,17 +56,17 @@ wo.on('execute', function(func, input, callback) {
                     //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),
                 },
             }
-            callback(r)
+            pm.resolve(r)
         }
         else {
             console.log('invalid func')
-            callback('invalid func')
+            pm.reject('invalid func')
         }
 
     }
     catch (err) {
         console.log('execute error', err)
-        callback('execute error')
+        pm.reject('execute error')
     }
 
 })

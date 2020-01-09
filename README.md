@@ -62,7 +62,7 @@ wo.on('error', function(err) {
 wo.on('clientChange', function(clients) {
     console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
 })
-wo.on('execute', function(func, input, callback) {
+wo.on('execute', function(func, input, pm) {
     //console.log(`Server[port:${opt.port}]: execute`, func, input)
     console.log(`Server[port:${opt.port}]: execute`, func)
 
@@ -85,17 +85,17 @@ wo.on('execute', function(func, input, callback) {
                     //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),
                 },
             }
-            callback(r)
+            pm.resolve(r)
         }
         else {
             console.log('invalid func')
-            callback('invalid func')
+            pm.reject('invalid func')
         }
 
     }
     catch (err) {
         console.log('execute error', err)
-        callback('execute error')
+        pm.reject('execute error')
     }
 
 })
@@ -213,7 +213,7 @@ wo.on('broadcast', function(data) {
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.5/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.6/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]
