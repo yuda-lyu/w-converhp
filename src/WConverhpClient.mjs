@@ -223,7 +223,7 @@ function WConverhpClient(opt) {
             else {
                 env = 'nodejs'
             }
-            //console.log('env', env)
+            // console.log('env', env)
 
             //obj2u8arr
             let u8a = obj2u8arr(data)
@@ -249,7 +249,9 @@ function WConverhpClient(opt) {
             }
 
             //append
+            //fmd.append('aa', 'test')
             fmd.append('bb', bb)
+            // console.log('fmd', fmd)
 
             //ct
             let ct = 'multipart/form-data'
@@ -270,7 +272,12 @@ function WConverhpClient(opt) {
                 method: 'POST',
                 url,
                 data: fmd,
-                headers: { 'Content-Type': ct }, //數據視為file上傳
+                headers: {
+                    // 'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
+                    //'Accept': 'application/json',
+                    //'Access-Control-Allow-Origin': '*',
+                    'Content-Type': ct, //數據視為file上傳
+                },
                 maxContentLength: Infinity, //axios於nodejs中會限制內容大小故需改為無限
                 maxBodyLength: Infinity, //axios於nodejs中會限制內容大小故需改為無限
                 responseType: rt,
@@ -309,11 +316,12 @@ function WConverhpClient(opt) {
 
                 },
             }
+            // console.log('s', s)
 
             //axios
             axios(s)
                 .then(async (res) => {
-                    //console.log('axios then', res)
+                    // console.log('axios then', res)
 
                     //bb
                     let bb = get(res, 'data')
@@ -330,7 +338,7 @@ function WConverhpClient(opt) {
                     pm.resolve(data)
                 })
                 .catch(async (res) => {
-                    //console.log('axios catch', res)
+                    // console.log('axios catch', res)
 
                     //statusText, err
                     let statusText = get(res, 'response.statusText')
