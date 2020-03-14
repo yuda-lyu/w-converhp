@@ -6,6 +6,7 @@ import getGlobal from 'wsemi/src/getGlobal.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import genID from 'wsemi/src/genID.mjs'
 import Evem from 'wsemi/src/evem.mjs'
+import pm2resolve from 'wsemi/src/pm2resolve.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
@@ -24,6 +25,7 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * @param {String} [opt.apiName='api'] 輸入api名稱，預設為'api'
  * @param {String} [opt.token='*'] 輸入使用者認證用token，預設為'*'
  * @param {Integer} [opt.timePolling=2000] 輸入輪詢間隔時間整數，單位為毫秒，預設為2000
+ * @param {Integer} [opt.retry=3] 輸入傳輸失敗重試次數整數，預設為3
  * @returns {Object} 回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver
  * @example
  *
@@ -136,6 +138,9 @@ function WConverhpClient(opt) {
         if (!opt.timePolling) {
             opt.timePolling = 2000
         }
+        if (!opt.retry) {
+            opt.retry = 3
+        }
 
 
         //url
@@ -207,8 +212,8 @@ function WConverhpClient(opt) {
         }
 
 
-        //sendData
-        function sendData(data, cbProgress) {
+        //sendDataCore
+        function sendDataCore(data, cbProgress) {
             //console.log('sendData', data, cbProgress)
 
             //pm
@@ -345,15 +350,15 @@ function WConverhpClient(opt) {
                     let err = get(res, 'response.data')
 
                     if (statusText) {
-                        //console.log('statusText', statusText)
+                        console.log('statusText', statusText)
                         data = statusText
                     }
                     else if (err) {
-                        //console.log('err', err)
+                        console.log('err', err)
                         data = err
                     }
                     else {
-                        //console.log('err', res)
+                        console.log('err', res)
                         data = 'can not connect to server'
                     }
 
@@ -361,6 +366,33 @@ function WConverhpClient(opt) {
                 })
 
             return pm
+        }
+
+
+        //sendData
+        async function sendData(data, cbProgress) {
+
+            //sendDataCore
+            let r = await pm2resolve(sendDataCore)(data, cbProgress)
+
+            let n = 0
+            while (r.state === 'error') {
+                n += 1
+                if (n > opt.retry) {
+                    break
+                }
+                console.log(`retry n=${n}`)
+                r = await pm2resolve(sendDataCore)(data, cbProgress)
+            }
+
+            //return
+            if (r.state === 'success') {
+                return r.msg
+            }
+            else {
+                return Promise.reject(r.msg)
+            }
+
         }
 
 

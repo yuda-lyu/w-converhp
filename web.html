@@ -47,7 +47,7 @@
                 }
 
                 //execute
-                wo.execute('add', { p },
+                wo.execute('add', { p:p },
                     function (prog, p, m) {
                         console.log('client web: execute: prog', prog, p, m)
                     })
@@ -122,7 +122,7 @@
                             }
 
                             //execute
-                            wo.execute('add', { p },
+                            wo.execute('add', { p:p },
                                 function (prog, p, m) {
                                     console.log('client web: execute: prog', prog, p, m)
                                 })

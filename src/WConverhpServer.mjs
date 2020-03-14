@@ -352,6 +352,11 @@ function WConverhpServer(opt = {}) {
             //console.log(req, res)
             //console.log('payload', req.payload)
 
+            // if (Math.random() < 0.5) {
+            //     console.log('return code 500: Internal Server Error')
+            //     return res.response('Internal Server Error').code(500)
+            // }
+
             //bbInp
             let bbInp = get(req, 'payload.bb', null)
             //console.log('bbInp', bbInp)
