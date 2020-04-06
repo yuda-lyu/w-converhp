@@ -59,8 +59,14 @@ wo.on('open', function() {
 wo.on('error', function(err) {
     console.log(`Server[port:${opt.port}]: error`, err)
 })
-wo.on('clientChange', function(clients) {
-    console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
+wo.on('clientChange', function(num) {
+    console.log(`Server[port:${opt.port}]: now clients: ${num}`)
+})
+wo.on('clientEnter', function(key, data) {
+    console.log(`Server[port:${opt.port}]: client enter: ${key}`)
+})
+wo.on('clientLeave', function(key, data) {
+    console.log(`Server[port:${opt.port}]: client leave: ${key}`)
 })
 wo.on('execute', function(func, input, pm) {
     //console.log(`Server[port:${opt.port}]: execute`, func, input)
@@ -213,7 +219,7 @@ wo.on('broadcast', function(data) {
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.10/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.11/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]

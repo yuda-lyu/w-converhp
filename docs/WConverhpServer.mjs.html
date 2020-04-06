@@ -27,7 +27,7 @@
 
 <nav >
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientEnter">onClientEnter</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientLeave">onClientLeave</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
 </nav>
 
 <div id="main">
@@ -98,8 +98,14 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * wo.on('error', function(err) {
  *     console.log(`Server[port:${opt.port}]: error`, err)
  * })
- * wo.on('clientChange', function(clients) {
- *     console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
+ * wo.on('clientChange', function(num) {
+ *     console.log(`Server[port:${opt.port}]: now clients: ${num}`)
+ * })
+ * wo.on('clientEnter', function(key, data) {
+ *     console.log(`Server[port:${opt.port}]: client enter: ${key}`)
+ * })
+ * wo.on('clientLeave', function(key, data) {
+ *     console.log(`Server[port:${opt.port}]: client leave: ${key}`)
  * })
  * wo.on('execute', function(func, input, pm) {
  *     //console.log(`Server[port:${opt.port}]: execute`, func, input)
@@ -252,18 +258,44 @@ function WConverhpServer(opt = {}) {
 
 
     /**
+     * Hapi監聽客戶端上線事件
+     *
+     * @memberof WConverhpServer
+     * @example
+     * wo.on('clientEnter', function(key, data) {
+     *     ...
+     * })
+     */
+    function onClientEnter() {} onClientEnter()
+    /**
+     * Hapi監聽客戶端下線事件
+     *
+     * @memberof WConverhpServer
+     * @example
+     * wo.on('clientLeave', function(key, data) {
+     *     ...
+     * })
+     */
+    function onClientLeave() {} onClientLeave()
+    /**
      * Hapi監聽客戶端變更(上下線)事件
      *
      * @memberof WConverhpServer
      * @example
-     * wo.on('clientChange', function(clients) {
+     * wo.on('clientChange', function(num) {
      *     ...
      * })
      */
     function onClientChange() {} onClientChange()
     ea.on('message', function({ eventName, key, data, now }) {
         //console.log({ eventName, key, data, now })
-        eeEmit('clientChange', ea.get(), opt)
+        if (eventName === 'enter') {
+            eeEmit('clientEnter', key, data)
+        }
+        else if (eventName === 'leave') {
+            eeEmit('clientLeave', key, data)
+        }
+        eeEmit('clientChange', now)
     })
 
 
@@ -295,19 +327,6 @@ function WConverhpServer(opt = {}) {
             .catch((err) => {
                 pm.reject(err)
             })
-        // //cbResult
-        // function cbResult(output) {
-
-        //     //add output
-        //     data['output'] = output
-
-        //     //delete input, 因input可能很大故回傳數據不包含原input
-        //     delete data['input']
-
-        //     //resolve
-        //     pm.resolve(data)
-
-        // }
 
         //emit
         if (_mode === 'execute') {
@@ -584,7 +603,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Wed Mar 18 2020 12:19:14 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Mon Apr 06 2020 10:34:18 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

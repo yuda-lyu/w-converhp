@@ -54,8 +54,14 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * wo.on('error', function(err) {
  *     console.log(`Server[port:${opt.port}]: error`, err)
  * })
- * wo.on('clientChange', function(clients) {
- *     console.log(`Server[port:${opt.port}]: now clients: ${clients.length}`)
+ * wo.on('clientChange', function(num) {
+ *     console.log(`Server[port:${opt.port}]: now clients: ${num}`)
+ * })
+ * wo.on('clientEnter', function(key, data) {
+ *     console.log(`Server[port:${opt.port}]: client enter: ${key}`)
+ * })
+ * wo.on('clientLeave', function(key, data) {
+ *     console.log(`Server[port:${opt.port}]: client leave: ${key}`)
  * })
  * wo.on('execute', function(func, input, pm) {
  *     //console.log(`Server[port:${opt.port}]: execute`, func, input)
@@ -208,18 +214,44 @@ function WConverhpServer(opt = {}) {
 
 
     /**
+     * Hapi監聽客戶端上線事件
+     *
+     * @memberof WConverhpServer
+     * @example
+     * wo.on('clientEnter', function(key, data) {
+     *     ...
+     * })
+     */
+    function onClientEnter() {} onClientEnter()
+    /**
+     * Hapi監聽客戶端下線事件
+     *
+     * @memberof WConverhpServer
+     * @example
+     * wo.on('clientLeave', function(key, data) {
+     *     ...
+     * })
+     */
+    function onClientLeave() {} onClientLeave()
+    /**
      * Hapi監聽客戶端變更(上下線)事件
      *
      * @memberof WConverhpServer
      * @example
-     * wo.on('clientChange', function(clients) {
+     * wo.on('clientChange', function(num) {
      *     ...
      * })
      */
     function onClientChange() {} onClientChange()
     ea.on('message', function({ eventName, key, data, now }) {
         //console.log({ eventName, key, data, now })
-        eeEmit('clientChange', ea.get(), opt)
+        if (eventName === 'enter') {
+            eeEmit('clientEnter', key, data)
+        }
+        else if (eventName === 'leave') {
+            eeEmit('clientLeave', key, data)
+        }
+        eeEmit('clientChange', now)
     })
 
 
@@ -251,19 +283,6 @@ function WConverhpServer(opt = {}) {
             .catch((err) => {
                 pm.reject(err)
             })
-        // //cbResult
-        // function cbResult(output) {
-
-        //     //add output
-        //     data['output'] = output
-
-        //     //delete input, 因input可能很大故回傳數據不包含原input
-        //     delete data['input']
-
-        //     //resolve
-        //     pm.resolve(data)
-
-        // }
 
         //emit
         if (_mode === 'execute') {
