@@ -27,7 +27,7 @@
 
 <nav >
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientEnter">onClientEnter</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientLeave">onClientLeave</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientEnter">onClientEnter</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientLeave">onClientLeave</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
 </nav>
 
 <div id="main">
@@ -124,7 +124,7 @@
 
     <h5>Example</h5>
     
-    <pre class="prettyprint"><code>import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'let opt = {    url: 'http://localhost:8080',    apiName: 'api',    token: '*',}//newlet wo = new WConverhpClient(opt)wo.on('open', function() {    console.log('client nodejs: open')})wo.on('openOnce', function() {    console.log('client nodejs: openOnce')    //p    let name = 'zdata.b1'    let p = {        a: 12,        b: 34.56,        c: 'test中文',        d: {            name: name,            u8a: new Uint8Array([66, 97, 115]),            //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),        }    }    //execute    wo.execute('add', { p },        function (prog, p, m) {            console.log('client nodejs: execute: prog', prog, p, m)        })        .then(function(r) {            console.log('client nodejs: execute: add', r)        })        .catch(function(err) {            console.log('client nodejs: execute: catch', err)        })    //broadcast    wo.broadcast('client nodejs broadcast hi', function (prog) {        console.log('client nodejs: broadcast: prog', prog)    })        .catch(function(err) {            console.log('client nodejs: broadcast: catch', err)        })    //deliver    wo.deliver('client nodejs deliver hi', function (prog) {        console.log('client nodejs: deliver: prog', prog)    })        .catch(function(err) {            console.log('client nodejs: deliver: catch', err)        })})wo.on('close', function() {    console.log('client nodejs: close')})wo.on('error', function(err) {    console.log('client nodejs: error', err)})wo.on('reconn', function() {    console.log('client nodejs: reconn')})wo.on('broadcast', function(data) {    console.log('client nodejs: broadcast', data)})// wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver//     console.log('client nodejs: deliver=', data)// })</code></pre>
+    <pre class="prettyprint"><code>import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'let opt = {    url: 'http://localhost:8080',    apiName: 'api',    token: '*',}//newlet wo = new WConverhpClient(opt)wo.on('open', function() {    console.log('client nodejs: open')})wo.on('openOnce', function() {    console.log('client nodejs: openOnce')    //p    let name = 'zdata.b1'    let p = {        a: 12,        b: 34.56,        c: 'test中文',        d: {            name: name,            u8a: new Uint8Array([66, 97, 115]),            //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),        }    }    //execute    wo.execute('add', { p },        function (prog, p, m) {            console.log('client nodejs: execute: prog', prog, p, m)        })        .then(function(r) {            console.log('client nodejs: execute: add', r)        })        .catch(function(err) {            console.log('client nodejs: execute: catch', err)        })    //broadcast    wo.broadcast('client nodejs broadcast hi', function (prog) {        console.log('client nodejs: broadcast: prog', prog)    })        .catch(function(err) {            console.log('client nodejs: broadcast: catch', err)        })    //deliver    wo.deliver('client nodejs deliver hi', function (prog) {        console.log('client nodejs: deliver: prog', prog)    })        .catch(function(err) {            console.log('client nodejs: deliver: catch', err)        })})wo.on('close', function() {    console.log('client nodejs: close')})wo.on('error', function(err) {    console.log('client nodejs: error', err)})wo.on('reconn', function() {    console.log('client nodejs: reconn')})wo.on('broadcast', function(data) {    console.log('client nodejs: broadcast', data)})wo.on('deliver', function(data) {    console.log('client nodejs: deliver', data)})</code></pre>
 
 
 
@@ -480,7 +480,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line601">line 601</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line610">line 610</a>
     </li></ul></dd>
     
 
@@ -621,7 +621,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line623">line 623</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line632">line 632</a>
     </li></ul></dd>
     
 
@@ -720,7 +720,7 @@
 
             
 
-            <td class="description last"><p>輸入廣播函數之輸入資訊</p></td>
+            <td class="description last"><p>輸入發送函數之輸入資訊</p></td>
         </tr>
 
     
@@ -762,7 +762,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line577">line 577</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line586">line 586</a>
     </li></ul></dd>
     
 
@@ -1286,7 +1286,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Mon Apr 06 2020 10:34:18 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Mon Apr 06 2020 16:28:02 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
