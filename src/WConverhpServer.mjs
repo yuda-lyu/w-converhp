@@ -12,6 +12,7 @@ import alive from 'wsemi/src/alive.mjs'
 import isstr from 'wsemi/src/isstr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
+import iser from 'wsemi/src/iser.mjs'
 
 
 /**
@@ -57,11 +58,15 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * wo.on('clientChange', function(num) {
  *     console.log(`Server[port:${opt.port}]: now clients: ${num}`)
  * })
- * wo.on('clientEnter', function(key, data) {
- *     console.log(`Server[port:${opt.port}]: client enter: ${key}`)
+ * wo.on('clientEnter', function(clientId, data) {
+ *     console.log(`Server[port:${opt.port}]: client enter: ${clientId}`)
+ *
+ *     //deliver
+ *     wo.deliver(clientId, `server deliver hi(${clientId})`)
+ *
  * })
- * wo.on('clientLeave', function(key, data) {
- *     console.log(`Server[port:${opt.port}]: client leave: ${key}`)
+ * wo.on('clientLeave', function(clientId, data) {
+ *     console.log(`Server[port:${opt.port}]: client leave: ${clientId}`)
  * })
  * wo.on('execute', function(func, input, pm) {
  *     //console.log(`Server[port:${opt.port}]: execute`, func, input)
@@ -218,7 +223,7 @@ function WConverhpServer(opt = {}) {
      *
      * @memberof WConverhpServer
      * @example
-     * wo.on('clientEnter', function(key, data) {
+     * wo.on('clientEnter', function(clientId, data) {
      *     ...
      * })
      */
@@ -228,7 +233,7 @@ function WConverhpServer(opt = {}) {
      *
      * @memberof WConverhpServer
      * @example
-     * wo.on('clientLeave', function(key, data) {
+     * wo.on('clientLeave', function(clientId, data) {
      *     ...
      * })
      */
@@ -314,7 +319,7 @@ function WConverhpServer(opt = {}) {
             //input
             let input = get(data, 'input', null)
 
-            //deliver 交付
+            //deliver 發送
             eeEmit('deliver', input)
 
             //resolve
@@ -476,7 +481,7 @@ function WConverhpServer(opt = {}) {
 
 
     /**
-     * Hapi通訊物件對客戶端廣播函數
+     * Hapi通訊物件對全客戶端廣播函數
      *
      * @memberof WConverhpServer
      * @function broadcast
@@ -486,20 +491,59 @@ function WConverhpServer(opt = {}) {
      * wo.broadcast(data)
      */
     ee.broadcast = function (data, cbProgress = function () {}) {
-        //eeEmit('triggerBroadcast', data, cbProgress)
+
+        //check, broadcastMessages受ea偵測頻率1s影響, 伺服器初始化後至少需1s才會有有效對象
+        if (iser(broadcastMessages)) {
+            //console.log('no client for broadcast')
+            return
+        }
 
         //modify broadcast data
         let t = {}
         each(broadcastMessages, (v, k) => {
 
             //push, 數據為陣列, 加入新廣播數據
-            v.push(data)
+            v.push({
+                mode: 'broadcast',
+                data,
+            })
 
             //save
             t[k] = v
 
         })
         broadcastMessages = t
+
+        //cbProgress, 無法馬上傳需等待客戶端輪詢接收, 故進度回調只能先回傳100%
+        cbProgress(100)
+
+    }
+
+
+    /**
+     * Hapi通訊物件對客戶端發送訊息函數
+     *
+     * @memberof WConverhpServer
+     * @function deliver
+     * @param {*} data 輸入發送函數之輸入資訊
+     * @example
+     * let clientId = '...'
+     * let data = {...}
+     * wo.deliver(clientId, data)
+     */
+    ee.deliver = function (clientId, data, cbProgress = function () {}) {
+
+        //bms, 此時有可能ea trigger為非同步, 尚未把
+        let bms = get(broadcastMessages, clientId, [])
+
+        //push
+        bms.push({
+            mode: 'deliver',
+            data,
+        })
+
+        //modify broadcast data
+        broadcastMessages[clientId] = bms
 
         //cbProgress, 無法馬上傳需等待客戶端輪詢接收, 故進度回調只能先回傳100%
         cbProgress(100)

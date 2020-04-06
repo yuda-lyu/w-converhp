@@ -100,9 +100,9 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * wo.on('broadcast', function(data) {
  *     console.log('client nodejs: broadcast', data)
  * })
- * // wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver
- * //     console.log('client nodejs: deliver=', data)
- * // })
+ * wo.on('deliver', function(data) {
+ *     console.log('client nodejs: deliver', data)
+ * })
  *
  */
 function WConverhpClient(opt) {
@@ -434,7 +434,7 @@ function WConverhpClient(opt) {
 
                         //output
                         let output = get(res, 'success.output', null)
-                        // console.log('output', output)
+                        //console.log('output', output)
 
                         //check
                         if (output === null) {
@@ -448,8 +448,17 @@ function WConverhpClient(opt) {
                         each(output, (v, k) => {
                             setTimeout(() => {
 
-                                //broadcast 廣播
-                                eeEmit('broadcast', v)
+                                if (get(v, 'mode') === 'broadcast') {
+                                    //broadcast 廣播
+                                    eeEmit('broadcast', v)
+                                }
+                                else if (get(v, 'mode') === 'deliver') {
+                                    //deliver 發送
+                                    eeEmit('deliver', v)
+                                }
+                                else {
+                                    error('invalid data.mode in polling', v)
+                                }
 
                             }, 10 * (k + 1))
                         })
@@ -625,7 +634,7 @@ function WConverhpClient(opt) {
      *
      * @memberof WConverhpClient
      * @function deliver
-     * @param {*} data 輸入廣播函數之輸入資訊
+     * @param {*} data 輸入發送函數之輸入資訊
      * @example
      * let data = {...}
      * wo.deliver(data)

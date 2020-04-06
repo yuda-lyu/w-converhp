@@ -87,9 +87,9 @@
             wo.on('broadcast', function(data) {
                 console.log('client web: broadcast', data)
             })
-            // wo.on('deliver', function(data) { //伺服器目前無法針對client直接deliver
-            //     console.log('client web: deliver=', data)
-            // })
+            wo.on('deliver', function(data) { 
+                console.log('client web: deliver', data)
+            })
 
         </script>
 

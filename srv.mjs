@@ -33,11 +33,15 @@ wo.on('error', function(err) {
 wo.on('clientChange', function(num) {
     console.log(`Server[port:${opt.port}]: now clients: ${num}`)
 })
-wo.on('clientEnter', function(key, data) {
-    console.log(`Server[port:${opt.port}]: client enter: ${key}`)
+wo.on('clientEnter', function(clientId, data) {
+    console.log(`Server[port:${opt.port}]: client enter: ${clientId}`)
+
+    //deliver
+    wo.deliver(clientId, `server deliver hi(${clientId})`)
+
 })
-wo.on('clientLeave', function(key, data) {
-    console.log(`Server[port:${opt.port}]: client leave: ${key}`)
+wo.on('clientLeave', function(clientId, data) {
+    console.log(`Server[port:${opt.port}]: client leave: ${clientId}`)
 })
 wo.on('execute', function(func, input, pm) {
     //console.log(`Server[port:${opt.port}]: execute`, func, input)
