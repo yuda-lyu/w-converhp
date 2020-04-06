@@ -630,7 +630,7 @@ function WConverhpClient(opt) {
 
 
     /**
-     * Hapi通訊物件對伺服器端交付函數，表示僅傳送資料給伺服器
+     * Hapi通訊物件對伺服器端發送函數，表示僅傳送資料給伺服器
      *
      * @memberof WConverhpClient
      * @function deliver

@@ -222,6 +222,8 @@ function WConverhpServer(opt = {}) {
      * Hapi監聽客戶端上線事件
      *
      * @memberof WConverhpServer
+     * @param {String} clientId 識別用使用者主鍵
+     * @param {*} data 使用者request訊息
      * @example
      * wo.on('clientEnter', function(clientId, data) {
      *     ...
@@ -468,10 +470,10 @@ function WConverhpServer(opt = {}) {
 
 
     /**
-     * Hapi監聽客戶端交付事件
+     * Hapi監聽客戶端發送事件
      *
      * @memberof WConverhpServer
-     * @param {*} data 傳入交付訊息
+     * @param {*} data 傳入發送訊息
      * @example
      * wo.on('deliver', function(data) {
      *     ...
@@ -486,9 +488,10 @@ function WConverhpServer(opt = {}) {
      * @memberof WConverhpServer
      * @function broadcast
      * @param {*} data 輸入廣播函數之輸入資訊
+     * @param {Function} cb 輸入進度函數
      * @example
      * let data = {...}
-     * wo.broadcast(data)
+     * wo.broadcast(data, cb)
      */
     ee.broadcast = function (data, cbProgress = function () {}) {
 
@@ -525,11 +528,13 @@ function WConverhpServer(opt = {}) {
      *
      * @memberof WConverhpServer
      * @function deliver
+     * @param {String} clientId 輸入識別用使用者主鍵字串
      * @param {*} data 輸入發送函數之輸入資訊
+     * @param {Function} cb 輸入進度函數
      * @example
      * let clientId = '...'
      * let data = {...}
-     * wo.deliver(clientId, data)
+     * wo.deliver(clientId, data, cb)
      */
     ee.deliver = function (clientId, data, cbProgress = function () {}) {
 
