@@ -450,11 +450,11 @@ function WConverhpClient(opt) {
 
                                 if (get(v, 'mode') === 'broadcast') {
                                     //broadcast 廣播
-                                    eeEmit('broadcast', v)
+                                    eeEmit('broadcast', get(v, 'data'))
                                 }
                                 else if (get(v, 'mode') === 'deliver') {
                                     //deliver 發送
-                                    eeEmit('deliver', v)
+                                    eeEmit('deliver', get(v, 'data'))
                                 }
                                 else {
                                     error('invalid data.mode in polling', v)
