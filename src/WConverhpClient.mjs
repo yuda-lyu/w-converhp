@@ -350,7 +350,7 @@ function WConverhpClient(opt) {
                     let err = get(res, 'response.data')
 
                     if (statusText) {
-                        console.log('statusText', statusText)
+                        // console.log('statusText', statusText)
                         data = statusText
                     }
                     else if (err) {
