@@ -250,7 +250,7 @@ function WConverhpClient(opt) {
                 fmd = new FormData()
             }
             else {
-                fmd = new FormData({ maxDataSize: 1000 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1g
+                fmd = new FormData({ maxDataSize: 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1g
             }
 
             //append
@@ -278,13 +278,11 @@ function WConverhpClient(opt) {
                 url,
                 data: fmd,
                 headers: {
-                    // 'Accept': 'application/json, application/xml, text/plain, text/html, *.*',
-                    //'Accept': 'application/json',
-                    //'Access-Control-Allow-Origin': '*',
                     'Content-Type': ct, //數據視為file上傳
                 },
-                maxContentLength: Infinity, //axios於nodejs中會限制內容大小故需改為無限
-                maxBodyLength: Infinity, //axios於nodejs中會限制內容大小故需改為無限
+                timeout: 5 * 60 * 1000, //5分鐘
+                maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
+                maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
                 responseType: rt,
                 onUploadProgress: function(ev) {
                     //console.log('onUploadProgress', ev)
@@ -343,23 +341,24 @@ function WConverhpClient(opt) {
                     pm.resolve(data)
                 })
                 .catch(async (res) => {
-                    // console.log('axios catch', res)
+                    //console.log('axios catch', res.toJSON())
 
                     //statusText, err
-                    let statusText = get(res, 'response.statusText')
-                    let err = get(res, 'response.data')
+                    let statusText = get(res, 'response.statusText') || get(res, 'message')
+                    let err = get(res, 'response.data') || get(res, 'stack')
 
                     if (statusText) {
                         // console.log('statusText', statusText)
                         data = statusText
                     }
                     else if (err) {
-                        console.log('err', err)
+                        // console.log('err', err)
                         data = err
                     }
                     else {
-                        console.log('err', res)
-                        data = 'can not connect to server'
+                        console.log('err', res.toJSON())
+                        //可能因硬碟空間不足(<4g)無法下載500mb檔案, 或是被瀏覽器外掛封鎖阻擋
+                        data = 'Can not connect to server. Make sure your hard drive is large enough, or that browser plug-ins are blocking file downloads.'
                     }
 
                     pm.reject(data)

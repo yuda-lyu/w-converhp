@@ -42,7 +42,7 @@
                     d: {
                         name: name,
                         u8a: new Uint8Array([66, 97, 115]),
-                        //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
+                        //u8a: new Uint8Array('read blob from input'),
                     }
                 }
 
@@ -52,7 +52,8 @@
                         console.log('client web: execute: prog', prog, p, m)
                     })
                     .then(function(r) {
-                        console.log('client web: execute: add', r)
+                        console.log('client web: execute: add', r) //若大檔不能使用w-consolelog, 得註解掉console.log = window['w-consolelog']
+                        //wsemi.downloadFileFromU8Arr(r.file.name,r.file.u8a)
                     })
                     .catch(function (err) {
                         console.log('client web: execute: catch', err)

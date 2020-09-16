@@ -1,4 +1,4 @@
-//import fs from 'fs'
+// import fs from 'fs'
 import _ from 'lodash'
 import WConverhpServer from './src/WConverhpServer.mjs'
 
@@ -63,7 +63,12 @@ wo.on('execute', function(func, input, pm) {
                 file: {
                     name: 'zdata.b2',
                     u8a: new Uint8Array([66, 97, 115]),
-                    //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),
+                    // name: '100mb.7z',
+                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\100mb.7z')),
+                    // name: '500mb.7z',
+                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\500mb.7z')),
+                    // name: '1000mb.7z',
+                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\1000mb.7z')),
                 },
             }
             pm.resolve(r)

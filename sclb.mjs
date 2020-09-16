@@ -25,7 +25,7 @@ wo.on('openOnce', function() {
         d: {
             name: name,
             u8a: new Uint8Array([66, 97, 115]),
-            //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
+            //u8a: new Uint8Array(fs.readFileSync('/path/filename.txt')),
         }
     }
 

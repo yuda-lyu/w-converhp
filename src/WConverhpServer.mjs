@@ -179,7 +179,11 @@ function WConverhpServer(opt = {}) {
             port: opt.port,
             //host: 'localhost',
             routes: {
-                cors: true
+                // cors: true,
+                cors: {
+                    origin: ['*'], //Access-Control-Allow-Origin
+                    //credentials: true //Access-Control-Allow-Credentials
+                }
             },
         })
 
@@ -362,12 +366,12 @@ function WConverhpServer(opt = {}) {
         // config: {
         //     payload: {
         //         output: 'stream',
-        //         maxBytes: 1000 * 1024 * 1024, //1g
+        //         maxBytes: 1024 * 1024 * 1024, //1g
         //     },
         // },
         options: {
             payload: {
-                maxBytes: 1000 * 1024 * 1024, //1g
+                maxBytes: 1024 * 1024 * 1024, //1g
                 timeout: 3 * 60 * 1000, //3分鐘, 注意payload timeout必須小於socket timeout
                 multipart: true, //hapi 19之後修改multipart預設值為false
             },
@@ -386,7 +390,7 @@ function WConverhpServer(opt = {}) {
 
             //bbInp
             let bbInp = get(req, 'payload.bb', null)
-            //console.log('bbInp', bbInp)
+            // console.log('bbInp', bbInp)
 
             //check
             //console.log('isstr(bbInp)', isstr(bbInp))
@@ -423,7 +427,6 @@ function WConverhpServer(opt = {}) {
                 .catch(function(msg) {
                     out.error = msg
                 })
-            //console.log('out', out)
 
             //u8aOut
             let u8aOut = obj2u8arr(out)
@@ -433,10 +436,15 @@ function WConverhpServer(opt = {}) {
             sm._read = () => {}
             sm.push(u8aOut)
             sm.push(null)
+            // if (out.success._mode !== 'polling') {
+            //     console.log('out', out)
+            //     console.log('u8aOut', u8aOut)
+            // }
 
             return res.response(sm)
-                .header('Content-type', 'application/octet-stream')
-                .header('Content-length', sm.readableLength)
+                .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                .header('Content-Type', 'application/octet-stream')
+                .header('Content-Length', sm.readableLength)
         },
     }
 
