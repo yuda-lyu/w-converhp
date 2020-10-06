@@ -13,7 +13,13 @@
 
         <script src="https://cdn.jsdelivr.net/npm/w-consolelog/dist/w-consolelog.umd.js"></script>
         <script>
-            console.log = window['w-consolelog']
+            //console.log = window['w-consolelog']
+            //可能上傳大檔案w-consolelog會處理太久
+            // let log = console.log
+            // console.log = function(){
+            //     log.apply(null, arguments)
+            //     window['w-consolelog'].apply(null, arguments)
+            // }
         </script>
         
         <script>
@@ -33,18 +39,39 @@
             wo.on('openOnce', function() {
                 console.log('client web: openOnce')
 
+                //uploadU8a
+                uploadU8a()
+                   
+            })
+            wo.on('close', function() {
+                console.log('client web: close')
+            })
+            wo.on('error', function(err) {
+                console.log('client web: error', err)
+            })
+            wo.on('reconn', function() {
+                console.log('client web: reconn')
+            })
+            wo.on('broadcast', function(data) {
+                console.log('client web: broadcast', data)
+            })
+            wo.on('deliver', function(data) { 
+                console.log('client web: deliver', data)
+            })
+            
+            function core(name, ab){
+
                 //p
-                let name = 'zdata.b1'
                 let p = {
                     a: 12,
                     b: 34.56,
                     c: 'test中文',
                     d: {
                         name: name,
-                        u8a: new Uint8Array([66, 97, 115]),
-                        //u8a: new Uint8Array('read blob from input'),
+                        u8a: ab,
                     }
                 }
+                console.log('p',p)
 
                 //execute
                 wo.execute('add', { p:p },
@@ -52,8 +79,8 @@
                         console.log('client web: execute: prog', prog, p, m)
                     })
                     .then(function(r) {
-                        console.log('client web: execute: add', r) //若大檔不能使用w-consolelog, 得註解掉console.log = window['w-consolelog']
-                        //wsemi.downloadFileFromU8Arr(r.file.name,r.file.u8a)
+                        console.log('client web: execute: add', r)
+                        wsemi.downloadFileFromU8Arr(r.file.name,r.file.u8a)
                     })
                     .catch(function (err) {
                         console.log('client web: execute: catch', err)
@@ -75,22 +102,44 @@
                         console.log('client web: deliver: catch', err)
                     })
 
-            })
-            wo.on('close', function() {
-                console.log('client web: close')
-            })
-            wo.on('error', function(err) {
-                console.log('client web: error', err)
-            })
-            wo.on('reconn', function() {
-                console.log('client web: reconn')
-            })
-            wo.on('broadcast', function(data) {
-                console.log('client web: broadcast', data)
-            })
-            wo.on('deliver', function(data) { 
-                console.log('client web: deliver', data)
-            })
+            }
+
+            function uploadU8a() {
+                let u8a = new Uint8Array([66, 97, 115])
+                let bb = new Blob([u8a])
+                wsemi.blob2ab(bb)
+                    .then(function(ab){
+                        console.log('uploadU8a ab',ab)
+                        core('zdata.b1', ab)
+                    })
+            }
+
+            function uploadFile() {
+
+                wsemi.domShowInputAndGetFiles()
+                    .then(function(msg){
+                        console.log('domShowInputAndGetFiles msg',msg)
+
+                        //check
+                        if(Object.keys(msg.errs).length > 0){
+                            console.log('errs',msg.errs)
+                            return
+                        }
+
+                        //file
+                        let file = msg.files[0]
+                        console.log('file',file)
+
+                        //blob2ab
+                        wsemi.blob2ab(file)
+                            .then(function(ab){
+                                console.log('uploadFile ab',ab)
+                                core(file.name,ab)
+                            })
+
+                    })
+
+            }
 
         </script>
 
@@ -98,50 +147,10 @@
 
     <body>
  
-        <div style="display:none;">
+        <div style="_display:none;">
     
-            <button onclick="uploadData()">upload file</button>
-            <script>
-
-                function uploadData() {
-                    wsemi
-                        .domShowInputAndGetFilesU8Arrs()
-                        .then( function(r) {
-                            //console.log('r',r)
-
-                            //file
-                            let file= r[0]
-                            console.log('file', file)
-
-                            //p
-                            let name = 'zdata.b1'
-                            let p = {
-                                a: 12,
-                                b: 34.56,
-                                c: 'test中文',
-                                d: file,
-                            }
-
-                            //execute
-                            wo.execute('add', { p:p },
-                                function (prog, p, m) {
-                                    console.log('client web: execute: prog', prog, p, m)
-                                })
-                                .then(function(r) {
-                                    console.log('client web: execute: add', r)
-                                })
-                                .catch(function(err)  {
-                                    console.log('client web: execute: catch', err)
-                                })
-
-                        })
-                        .catch(function(err) {
-                            console.log(err)
-                        })
-                }
-
-            </script>
-
+            <button onclick="uploadFile()">upload file</button>
+        
         </div>
         
     </body>

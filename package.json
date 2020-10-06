@@ -1,22 +1,22 @@
 {
   "name": "w-converhp",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "An operator for hapi in nodejs and browser.",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
-    "@hapi/hapi": "^20.0.0",
-    "@hapi/inert": "^6.0.2",
+    "@hapi/hapi": "^20.0.1",
+    "@hapi/inert": "^6.0.3",
     "axios": "^0.20.0",
     "form-data": "^3.0.0",
     "lodash": "^4.17.20",
-    "wsemi": "^1.5.18"
+    "wsemi": "^1.5.28"
   },
   "devDependencies": {
-    "w-package-tools": "^1.0.29"
+    "w-package-tools": "^1.0.30"
   },
   "scripts": {
-    "@hapi/hapi": "^20.0.0",
-    "@hapi/inert": "^6.0.2",
+    "@hapi/hapi": "^20.0.1",
+    "@hapi/inert": "^6.0.3",
     "test": "./node_modules/.bin/mocha --require @babel/register",
     "deploy": "gh-pages -d docs"
   },

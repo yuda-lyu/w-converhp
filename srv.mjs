@@ -1,4 +1,4 @@
-// import fs from 'fs'
+import fs from 'fs'
 import _ from 'lodash'
 import WConverhpServer from './src/WConverhpServer.mjs'
 
@@ -53,8 +53,8 @@ wo.on('execute', function(func, input, pm) {
 
             //save
             if (_.get(input, 'p.d.u8a', null)) {
-                // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))
-                // console.log('writeFileSync input.p.d.name', input.p.d.name)
+                fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))
+                console.log('writeFileSync input.p.d.name', input.p.d.name)
             }
 
             let r = {

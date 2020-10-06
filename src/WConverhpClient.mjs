@@ -342,6 +342,7 @@ function WConverhpClient(opt) {
                 })
                 .catch(async (res) => {
                     //console.log('axios catch', res.toJSON())
+                    //Network Error除可能是網路斷線之外, 亦可能因硬碟空間不足(<4g)無法下載, 或是被瀏覽器外掛封鎖阻擋
 
                     //statusText, err
                     let statusText = get(res, 'response.statusText') || get(res, 'message')
@@ -356,9 +357,15 @@ function WConverhpClient(opt) {
                         data = err
                     }
                     else {
-                        console.log('err', res.toJSON())
-                        //可能因硬碟空間不足(<4g)無法下載500mb檔案, 或是被瀏覽器外掛封鎖阻擋
-                        data = 'Can not connect to server. Make sure your hard drive is large enough, or that browser plug-ins are blocking file downloads.'
+                        try {
+                            res = res.toJSON()
+                        }
+                        catch (err) {}
+                        console.log('err', res)
+                        data = 'Can not connect to server.'
+                    }
+                    if (data === 'Network Error') {
+                        data = `${data}. Make sure your space of hard drive is large enough or blocking by browser plugins.`
                     }
 
                     pm.reject(data)
