@@ -91,3 +91,5 @@ wo.on('broadcast', function(data) {
 wo.on('deliver', function(data) {
     console.log(`Server[port:${opt.port}]: deliver`, data)
 })
+
+//node --experimental-modules --es-module-specifier-resolution=node srv.mjs
