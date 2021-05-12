@@ -19,9 +19,9 @@ To view documentation or get support, visit [docs](https://yuda-lyu.github.io/w-
 
 ## Installation
 ### Using npm(ES6 module):
-> **Note:** `w-converhp-server` depends on `@hapi/hapi` and `@hapi/inert`.
+> **Note:** `w-converhp-server` is mainly dependent on `@hapi/hapi` and `@hapi/inert`.
 
-> **Note:** `w-converhp-client` depends on `form-data`.
+> **Note:** `w-converhp-client` is mainly dependent on `form-data`.
 
 ```alias
 npm i w-converhp
