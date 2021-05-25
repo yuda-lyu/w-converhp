@@ -1,6 +1,6 @@
 {
   "name": "w-converhp",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "An operator for hapi in nodejs and browser.",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
@@ -9,10 +9,10 @@
     "axios": "^0.21.1",
     "form-data": "^4.0.0",
     "lodash": "^4.17.21",
-    "wsemi": "^1.5.77"
+    "wsemi": "^1.5.80"
   },
   "devDependencies": {
-    "w-package-tools": "^1.0.54"
+    "w-package-tools": "^1.0.56"
   },
   "scripts": {
     "@hapi/hapi": "^20.1.3",

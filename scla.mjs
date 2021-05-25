@@ -1,5 +1,7 @@
 //import fs from 'fs'
 import WConverhpClient from './src/WConverhpClient.mjs'
+// import WConverhpClient from './dist/w-converhp-client.umd.js' //編譯後axios與form-data都不適合執行於nodejs, 故需引用程式碼執行
+
 
 let opt = {
     url: 'http://localhost:8080',

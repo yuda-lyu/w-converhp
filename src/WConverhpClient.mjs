@@ -1,8 +1,12 @@
+// import axiosNode from 'axios/lib/axios.js'
+// import axiosBrowser from 'axios/dist/axios.min.js'
 import axios from 'axios'
+// import FormDataNode from 'form-data/lib/form_data.js'
 import FormData from 'form-data'
 import get from 'lodash/get'
 import each from 'lodash/each'
-import getGlobal from 'wsemi/src/getGlobal.mjs'
+// import getGlobal from 'wsemi/src/getGlobal.mjs'
+import isWindow from 'wsemi/src/isWindow.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import genID from 'wsemi/src/genID.mjs'
 import Evem from 'wsemi/src/evem.mjs'
@@ -220,15 +224,11 @@ function WConverhpClient(opt) {
             let pm = genPm()
 
             //env
-            let env
-            let g = getGlobal()
-            if (get(g, 'Blob', null)) {
-                env = 'browser'
-            }
-            else {
-                env = 'nodejs'
-            }
+            let env = isWindow() ? 'browser' : 'nodejs'
             // console.log('env', env)
+
+            // //g
+            // let g = getGlobal()
 
             //obj2u8arr
             let u8a = obj2u8arr(data)
