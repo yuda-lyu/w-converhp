@@ -27,7 +27,6 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * @param {Object} opt 輸入設定參數物件
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
  * @param {String} [opt.apiName='api'] 輸入api名稱，預設為'api'
- * @param {String} [opt.token='*'] 輸入使用者認證用token，預設為'*'
  * @param {Integer} [opt.timePolling=2000] 輸入輪詢間隔時間整數，單位為毫秒，預設為2000
  * @param {Integer} [opt.retry=3] 輸入傳輸失敗重試次數整數，預設為3
  * @returns {Object} 回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver
@@ -38,7 +37,6 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * let opt = {
  *     url: 'http://localhost:8080',
  *     apiName: 'api',
- *     token: '*',
  * }
  *
  * //new
@@ -135,9 +133,6 @@ function WConverhpClient(opt) {
         }
         if (!opt.apiName) {
             opt.apiName = 'api'
-        }
-        if (!opt.token) {
-            opt.token = '*'
         }
         if (!opt.timePolling) {
             opt.timePolling = 2000
@@ -489,7 +484,6 @@ function WConverhpClient(opt) {
             let msg = {
                 _mode: 'polling',
                 clientId,
-                token: opt.token,
             }
 
             //cb
@@ -514,7 +508,6 @@ function WConverhpClient(opt) {
             let msg = {
                 _mode: mode,
                 clientId,
-                token: opt.token,
                 func,
                 input,
             }
@@ -541,7 +534,6 @@ function WConverhpClient(opt) {
             let msg = {
                 _mode: mode,
                 clientId,
-                token: opt.token,
                 input,
             }
 

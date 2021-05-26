@@ -6,7 +6,6 @@ import WConverhpClient from './src/WConverhpClient.mjs'
 let opt = {
     url: 'http://localhost:8080',
     apiName: 'api',
-    token: '*',
 }
 
 //new
