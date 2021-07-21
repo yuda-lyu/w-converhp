@@ -10,6 +10,7 @@ import cloneDeep from 'lodash/cloneDeep'
 import genPm from 'wsemi/src/genPm.mjs'
 import alive from 'wsemi/src/alive.mjs'
 import isstr from 'wsemi/src/isstr.mjs'
+import iseobj from 'wsemi/src/iseobj.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import iser from 'wsemi/src/iser.mjs'
@@ -111,6 +112,10 @@ import iser from 'wsemi/src/iser.mjs'
  * wo.on('deliver', function(data) {
  *     console.log(`Server[port:${opt.port}]: deliver`, data)
  * })
+ * wo.on('handler', function(data) {
+ *     console.log(`Server[port:${opt.port}]: handler`, data)
+ * })
+ *
  *
  */
 function WConverhpServer(opt = {}) {
@@ -382,6 +387,16 @@ function WConverhpServer(opt = {}) {
         handler: async function (req, res) {
             //console.log(req, res)
             //console.log('payload', req.payload)
+
+            //發送原始接收訊息
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            eeEmit('handler', {
+                headers,
+                query,
+            })
 
             // if (Math.random() < 0.5) {
             //     console.log('return code 500: Internal Server Error')

@@ -225,7 +225,7 @@ wo.on('deliver', function(data) {
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.26/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.27/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]
@@ -301,6 +301,9 @@ wo.on('broadcast', function(data) {
 })
 wo.on('deliver', function(data) { 
     console.log('client web: deliver', data)
+})
+wo.on('handler', function(data) {
+    console.log(`Server[port:${opt.port}]: handler`, data)
 })
 
 // client web: open

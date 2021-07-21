@@ -1,5 +1,5 @@
 /*!
- * w-converhp-server v1.0.26
+ * w-converhp-server v1.0.27
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
@@ -8594,6 +8594,10 @@
    * wo.on('deliver', function(data) {
    *     console.log(`Server[port:${opt.port}]: deliver`, data)
    * })
+   * wo.on('handler', function(data) {
+   *     console.log(`Server[port:${opt.port}]: handler`, data)
+   * })
+   *
    *
    */
 
@@ -8795,18 +8799,27 @@
       },
       handler: function () {
         var _handler = _asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee(req, res) {
-          var bbInp, u8aInp, inp, clientId, client, out, u8aOut, sm;
+          var headers, query, bbInp, u8aInp, inp, clientId, client, out, u8aOut, sm;
           return regenerator.wrap(function _callee$(_context) {
             while (1) {
               switch (_context.prev = _context.next) {
                 case 0:
                   //console.log(req, res)
                   //console.log('payload', req.payload)
-                  // if (Math.random() < 0.5) {
+                  //發送原始接收訊息
+                  headers = get_1(req, 'headers');
+                  headers = iseobj(headers) ? headers : '';
+                  query = get_1(req, 'query');
+                  query = iseobj(query) ? query : '';
+                  eeEmit('handler', {
+                    headers: headers,
+                    query: query
+                  }); // if (Math.random() < 0.5) {
                   //     console.log('return code 500: Internal Server Error')
                   //     return res.response('Internal Server Error').code(500)
                   // }
                   //bbInp
+
                   bbInp = get_1(req, 'payload.bb', null); // console.log('bbInp', bbInp)
                   //check
                   //console.log('isstr(bbInp)', isstr(bbInp))
@@ -8832,14 +8845,14 @@
                   ea.trigger(clientId, client); //dealData
 
                   out = {};
-                  _context.next = 10;
+                  _context.next = 15;
                   return dealData(inp).then(function (msg) {
                     out.success = msg;
                   }).catch(function (msg) {
                     out.error = msg;
                   });
 
-                case 10:
+                case 15:
                   //u8aOut
                   u8aOut = obj2u8arr(out); //stream
 
@@ -8855,7 +8868,7 @@
 
                   return _context.abrupt("return", res.response(sm).header('Cache-Control', 'no-cache, no-store, must-revalidate').header('Content-Type', 'application/octet-stream').header('Content-Length', sm.readableLength));
 
-                case 16:
+                case 21:
                 case "end":
                   return _context.stop();
               }

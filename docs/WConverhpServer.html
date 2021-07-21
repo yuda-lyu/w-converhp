@@ -71,7 +71,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line116">line 116</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line121">line 121</a>
     </li></ul></dd>
     
 
@@ -124,7 +124,7 @@
 
     <h5>Example</h5>
     
-    <pre class="prettyprint"><code>import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'let opt = {    port: 8080,    apiName: 'api',}//newlet wo = new WConverhpServer(opt)wo.on('open', function() {    console.log(`Server[port:${opt.port}]: open`)    //broadcast    let n = 0    setInterval(() => {        n += 1        let o = {            text: `server broadcast hi(${n})`,            data: new Uint8Array([66, 97, 115]), //support Uint8Array data        }        wo.broadcast(o, function (prog) {            console.log('broadcast prog', prog)        })    }, 1000)})wo.on('error', function(err) {    console.log(`Server[port:${opt.port}]: error`, err)})wo.on('clientChange', function(num) {    console.log(`Server[port:${opt.port}]: now clients: ${num}`)})wo.on('clientEnter', function(clientId, data) {    console.log(`Server[port:${opt.port}]: client enter: ${clientId}`)    //deliver    wo.deliver(clientId, `server deliver hi(${clientId})`)})wo.on('clientLeave', function(clientId, data) {    console.log(`Server[port:${opt.port}]: client leave: ${clientId}`)})wo.on('execute', function(func, input, pm) {    //console.log(`Server[port:${opt.port}]: execute`, func, input)    console.log(`Server[port:${opt.port}]: execute`, func)    try {        if (func === 'add') {            //save            if (_.get(input, 'p.d.u8a', null)) {                // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))                // console.log('writeFileSync input.p.d.name', input.p.d.name)            }            let r = {                ab: input.p.a + input.p.b,                v: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],                file: {                    name: 'zdata.b2',                    u8a: new Uint8Array([66, 97, 115]),                    //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),                },            }            pm.resolve(r)        }        else {            console.log('invalid func')            pm.reject('invalid func')        }    }    catch (err) {        console.log('execute error', err)        pm.reject('execute error')    }})wo.on('broadcast', function(data) {    console.log(`Server[port:${opt.port}]: broadcast`, data)})wo.on('deliver', function(data) {    console.log(`Server[port:${opt.port}]: deliver`, data)})</code></pre>
+    <pre class="prettyprint"><code>import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'let opt = {    port: 8080,    apiName: 'api',}//newlet wo = new WConverhpServer(opt)wo.on('open', function() {    console.log(`Server[port:${opt.port}]: open`)    //broadcast    let n = 0    setInterval(() => {        n += 1        let o = {            text: `server broadcast hi(${n})`,            data: new Uint8Array([66, 97, 115]), //support Uint8Array data        }        wo.broadcast(o, function (prog) {            console.log('broadcast prog', prog)        })    }, 1000)})wo.on('error', function(err) {    console.log(`Server[port:${opt.port}]: error`, err)})wo.on('clientChange', function(num) {    console.log(`Server[port:${opt.port}]: now clients: ${num}`)})wo.on('clientEnter', function(clientId, data) {    console.log(`Server[port:${opt.port}]: client enter: ${clientId}`)    //deliver    wo.deliver(clientId, `server deliver hi(${clientId})`)})wo.on('clientLeave', function(clientId, data) {    console.log(`Server[port:${opt.port}]: client leave: ${clientId}`)})wo.on('execute', function(func, input, pm) {    //console.log(`Server[port:${opt.port}]: execute`, func, input)    console.log(`Server[port:${opt.port}]: execute`, func)    try {        if (func === 'add') {            //save            if (_.get(input, 'p.d.u8a', null)) {                // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))                // console.log('writeFileSync input.p.d.name', input.p.d.name)            }            let r = {                ab: input.p.a + input.p.b,                v: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],                file: {                    name: 'zdata.b2',                    u8a: new Uint8Array([66, 97, 115]),                    //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),                },            }            pm.resolve(r)        }        else {            console.log('invalid func')            pm.reject('invalid func')        }    }    catch (err) {        console.log('execute error', err)        pm.reject('execute error')    }})wo.on('broadcast', function(data) {    console.log(`Server[port:${opt.port}]: broadcast`, data)})wo.on('deliver', function(data) {    console.log(`Server[port:${opt.port}]: deliver`, data)})wo.on('handler', function(data) {    console.log(`Server[port:${opt.port}]: handler`, data)})</code></pre>
 
 
 
@@ -383,7 +383,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line494">line 494</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line509">line 509</a>
     </li></ul></dd>
     
 
@@ -547,7 +547,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line535">line 535</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line550">line 550</a>
     </li></ul></dd>
     
 
@@ -734,7 +734,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line478">line 478</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line493">line 493</a>
     </li></ul></dd>
     
 
@@ -875,7 +875,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line256">line 256</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line261">line 261</a>
     </li></ul></dd>
     
 
@@ -967,7 +967,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line236">line 236</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line241">line 241</a>
     </li></ul></dd>
     
 
@@ -1131,7 +1131,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line246">line 246</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line251">line 251</a>
     </li></ul></dd>
     
 
@@ -1223,7 +1223,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line491">line 491</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line506">line 506</a>
     </li></ul></dd>
     
 
@@ -1364,7 +1364,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line219">line 219</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line224">line 224</a>
     </li></ul></dd>
     
 
@@ -1505,7 +1505,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line465">line 465</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line480">line 480</a>
     </li></ul></dd>
     
 
@@ -1715,7 +1715,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line202">line 202</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line207">line 207</a>
     </li></ul></dd>
     
 
@@ -1810,7 +1810,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.7</a> on Wed May 26 2021 08:29:02 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.7</a> on Wed Jul 21 2021 22:44:18 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
