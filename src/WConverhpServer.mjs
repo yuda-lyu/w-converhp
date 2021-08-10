@@ -113,7 +113,7 @@ import iser from 'wsemi/src/iser.mjs'
  *     console.log(`Server[port:${opt.port}]: deliver`, data)
  * })
  * wo.on('handler', function(data) {
- *     console.log(`Server[port:${opt.port}]: handler`, data)
+ *     // console.log(`Server[port:${opt.port}]: handler`, data)
  * })
  *
  *

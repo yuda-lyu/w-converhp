@@ -1,4 +1,4 @@
-//import fs from 'fs'
+import fs from 'fs'
 import WConverhpClient from './src/WConverhpClient.mjs'
 // import WConverhpClient from './dist/w-converhp-client.umd.js' //編譯後axios與form-data都不適合執行於nodejs, 故需引用程式碼執行
 
@@ -26,7 +26,7 @@ wo.on('openOnce', function() {
         d: {
             name: name,
             u8a: new Uint8Array([66, 97, 115]),
-            //u8a: new Uint8Array(fs.readFileSync('/path/filename.txt')),
+            // u8a: new Uint8Array(fs.readFileSync('../_data/500mb.7z')), //最多500mb, 因新版@hapi/pez無法處理1g檔案, 會出現: Invalid string length
         }
     }
 
