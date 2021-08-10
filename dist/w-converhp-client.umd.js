@@ -1,5 +1,5 @@
 /*!
- * w-converhp-client v1.0.27
+ * w-converhp-client v1.0.29
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
@@ -4124,7 +4124,7 @@
   /**
    * 判斷是否為瀏覽器環境
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isWindow.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isWindow.test.mjs Github}
    * @memberOf wsemi
    * @returns {Boolean} 回傳判斷布林值
    * @example
@@ -4142,7 +4142,7 @@
    * 產生Promise物件，具備鏈式resolve與reject
    * 主要受jQuery Deferred概念啟發
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/genPm.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/genPm.test.mjs Github}
    * @memberOf wsemi
    * @returns {Object} 回傳Promise物件
    * @example
@@ -4453,7 +4453,7 @@
   /**
    * 判斷是否為字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isstr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isstr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -4477,7 +4477,7 @@
   /**
    * 判斷是否為有效字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isestr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isestr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -4508,7 +4508,7 @@
   /**
    * 判斷是否為數字
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnbr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnbr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -4529,7 +4529,7 @@
   /**
    * 判斷是否為數字
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnum.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnum.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -4562,7 +4562,7 @@
    * 數字或字串轉浮點數
    * 若輸入非數字則回傳0
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/cdbl.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/cdbl.test.mjs Github}
    * @memberOf wsemi
    * @param {Number|String} v 輸入數字或字串
    * @returns {Number} 回傳數字
@@ -4586,7 +4586,7 @@
   /**
    * 判斷是否為整數
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isint.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isint.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -4677,7 +4677,7 @@
    * 數字或字串四捨五入轉整數
    * 若輸入非數字則回傳0
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/cint.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/cint.test.mjs Github}
    * @memberOf wsemi
    * @param {Number|String} v 輸入數字或字串
    * @returns {Integer} 回傳四捨五入後整數
@@ -4711,7 +4711,7 @@
    * 判斷是否為正整數
    * 正整數不包含0，為大於0的整數
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/ispint.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/ispint.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -4748,7 +4748,7 @@
    *
    * Depend on: {@link https://gist.github.com/Wind4/3baa40b26b89b686e4f2 Math.uuid.js}
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/genID.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/genID.test.mjs Github}
    * @memberOf wsemi
    * @param {Integer} [len=32] 輸入uuid長度，為正整數，預設32
    * @returns {String} 回傳uuid字串
@@ -5144,7 +5144,7 @@
    *
    * See: {@link https://github.com/primus/eventemitter3 eventemitter3}
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/evem.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/evem.test.mjs Github}
    * @memberOf wsemi
    * @example
    *
@@ -5165,7 +5165,7 @@
   /**
    * 將Promise函式的resolve與reject皆轉為resolve
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/pm2resolve.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/pm2resolve.test.mjs Github}
    * @memberOf wsemi
    * @returns {Promise} 回傳Promise，皆使用resolve回傳物件資料，物件欄位有state與msg，state可有success、error與cancelled。cancelled代表reject回傳{ reason: 'cancelled' }
    * @example
@@ -5316,7 +5316,7 @@
   /**
    * 判斷是否為函數
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isfun.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isfun.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5337,7 +5337,7 @@
   /**
    * 判斷是否為陣列
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isarr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isarr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5358,7 +5358,7 @@
   /**
    * 判斷是否為undefined
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isundefined.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isundefined.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5376,7 +5376,7 @@
   /**
    * 判斷是否為null
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnull.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnull.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5394,7 +5394,7 @@
   /**
    * 判斷是否為物件
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isobj.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isobj.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5415,7 +5415,7 @@
   /**
    * 判斷是否為空物件
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isobj0.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isobj0.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5444,7 +5444,7 @@
   /**
    * 判斷是否為空字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isstr0.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isstr0.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5474,7 +5474,7 @@
   /**
    * 判斷是否為無內容陣列
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isarr0.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isarr0.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5503,7 +5503,7 @@
   /**
    * 判斷是否為廣義無效
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/iser.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/iser.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5562,7 +5562,7 @@
   /**
    * 判斷是否為有效陣列，長度至少大於等於1，各元素至少皆為有效
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isearr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isearr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5600,7 +5600,7 @@
   /**
    * 取字串右邊n個字元
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/strright.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/strright.test.mjs Github}
    * @memberOf wsemi
    * @param {String} c 輸入要被取的字串
    * @param {Integer} n 輸入取右邊n個字元
@@ -5661,7 +5661,7 @@
   /**
    * 前端Blob或input檔案物件轉ArrayBuffer資料陣列
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/blob2ab.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/blob2ab.test.mjs Github}
    * @memberOf wsemi
    * @param {Blob|File} bb 輸入Blob或File
    * @returns {Promise} 回傳Promise，resolve回傳Blob或File的ArrayBuffer資料陣列，reject回傳錯誤訊息
@@ -5698,7 +5698,7 @@
   /**
    * 前端Blob或input檔案物件轉Uint8Array資料陣列
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/blob2u8arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/blob2u8arr.test.mjs Github}
    * @memberOf wsemi
    * @param {Blob|File} bb 輸入Blob或File
    * @returns {Promise} 回傳Promise，resolve回傳Blob或File的Uint8Array資料陣列，reject回傳錯誤訊息
@@ -5734,7 +5734,7 @@
   /**
    * 判斷是否為有效物件
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isobj.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isobj.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5763,7 +5763,7 @@
   /**
    * 判斷是否為ArrayBuffer
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isab.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isab.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5781,7 +5781,7 @@
   /**
    * 前端判斷是否為Blob，NodeJS沒有Blob
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isblob.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isblob.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5801,7 +5801,7 @@
   /**
    * 判斷是否為Uint8Array
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isu8arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isu8arr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5819,7 +5819,7 @@
   /**
    * 判斷是否為Uint16Array
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isu16arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isu16arr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -5837,7 +5837,7 @@
   /**
    * 計算Uint8Array(Nodejs,Browser)或Buffer(Nodejs)的大小
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/getBufferSize.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/getBufferSize.test.mjs Github}
    * @memberOf wsemi
    * @param {Unit8Array|Buffer} buf 傳入Uint8Array(Nodejs,Browser)或Buffer(Nodejs)
    * @returns {Integer} 回傳Uint8Array(Nodejs,Browser)或Buffer(Nodejs)的大小
@@ -5989,7 +5989,7 @@
    *
    * 通過JSON序列化物件內非Unit8Array數據成為字串，另分拆Unit8Array數據出來回傳，兩者間通過指標關聯，主要為避免序列化大型Unit8Array數據造成效能或記憶體不足問題
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/obj2stru8arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/obj2stru8arr.test.mjs Github}
    * @memberOf wsemi
    * @param {*} data 輸入任意資料
    * @returns {Object} 回傳物件，results欄位儲存物件內非序列化文字，binarys欄位儲存各Unit8Array數據
@@ -6112,6 +6112,16 @@
 
         if (typeof window !== 'undefined' && window.crypto) {
           crypto = window.crypto;
+        } // Native crypto in web worker (Browser)
+
+
+        if (typeof self !== 'undefined' && self.crypto) {
+          crypto = self.crypto;
+        } // Native crypto from worker
+
+
+        if (typeof globalThis !== 'undefined' && globalThis.crypto) {
+          crypto = globalThis.crypto;
         } // Native (experimental IE 11) crypto from window (Browser)
 
 
@@ -6375,8 +6385,8 @@
               }
             } else {
               // Copy one word at a time
-              for (var i = 0; i < thatSigBytes; i += 4) {
-                thisWords[thisSigBytes + i >>> 2] = thatWords[i >>> 2];
+              for (var j = 0; j < thatSigBytes; j += 4) {
+                thisWords[thisSigBytes + j >>> 2] = thatWords[j >>> 2];
               }
             }
 
@@ -7008,7 +7018,7 @@
   /**
    * 一般字串轉base64字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/str2b64.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/str2b64.test.mjs Github}
    * @memberOf wsemi
    * @param {String} str 輸入一般字串
    * @returns {String} 回傳base64字串
@@ -7033,7 +7043,7 @@
   /**
    * base64字串轉Uint8Array
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/b642u8arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/b642u8arr.test.mjs Github}
    * @memberOf wsemi
    * @param {String} b64 輸入base64字串
    * @returns {Uint8Array} 回傳Uint8Array
@@ -7068,7 +7078,7 @@
   /**
    * 字串轉Uint8Array
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/str2u8arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/str2u8arr.test.mjs Github}
    * @memberOf wsemi
    * @param {String} str 輸入一般字串
    * @returns {Uint8Array} 回傳Uint8Array
@@ -7127,7 +7137,7 @@
   /**
    * 判斷是否為boolean
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isbol.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isbol.test.mjs Github}
    * @memberOf wsemi
    * @param {*} v 輸入任意資料
    * @returns {Boolean} 回傳判斷布林值
@@ -7147,7 +7157,7 @@
    *
    * Fork: {@link https://github.com/toots/buffer-browserify/blob/master/buffer_ieee754.js buffer_ieee754}
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufWrite.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufWrite.test.mjs Github}
    * @memberOf wsemi
    * @param {Number} value 輸入數字
    * @param {Uint8Array|Buffer} buffer 輸入被寫入的Uint8Array(Nodejs,Browser)或Buffer(Nodejs)資料
@@ -7262,7 +7272,7 @@
   /**
    * 寫入Uint8Array(Nodejs,Browser)或Buffer(Nodejs)內的浮點數資料，需先依照nBytes宣告Uint8Array或Buffer空間
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufWriteDbl.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufWriteDbl.test.mjs Github}
    * @memberOf wsemi
    * @param {Number} value 輸入數字
    * @param {Uint8Array|Buffer} buffer 輸入Uint8Array(Nodejs,Browser)或Buffer(Nodejs)資料
@@ -7305,7 +7315,7 @@
   /**
    * 物件或陣列資料轉Uint8Array
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/obj2u8arr.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/obj2u8arr.test.mjs Github}
    * @memberOf wsemi
    * @param {Object|Array} data 輸入物件或陣列資料，物件內可支援Uint8Array、Uint16Array、ArrayBuffer，注意因ArrayBuffer無法直接操作(非View，只有TypedArray與DataView可操作)故預設會轉Uint8Array進行處理
    * @returns {Uint8Array} 回傳Uint8Array
@@ -7400,7 +7410,7 @@
    *
    * Fork: {@link https://github.com/toots/buffer-browserify/blob/master/buffer_ieee754.js buffer_ieee754}
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufRead.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufRead.test.mjs Github}
    * @memberOf wsemi
    * @param {Uint8Array|Buffer} buffer 輸入Uint8Array(Nodejs,Browser)或Buffer(Nodejs)資料
    * @param {Integer} offset 輸入平移整數
@@ -7482,7 +7492,7 @@
   /**
    * 讀取Uint8Array(Nodejs,Browser)或Buffer(Nodejs)內的浮點數資料
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufReadDbl.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/bufReadDbl.test.mjs Github}
    * @memberOf wsemi
    * @param {Uint8Array|Buffer} buffer 輸入Uint8Array(Nodejs,Browser)或Buffer(Nodejs)資料
    * @param {Integer} [offset=0] 輸入平移整數，預設0
@@ -7568,7 +7578,7 @@
   /**
    * Uint8Array轉base64字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/u8arr2b64.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/u8arr2b64.test.mjs Github}
    * @memberOf wsemi
    * @param {Uint8Array} u8a 輸入Uint8Array
    * @returns {String} 回傳base64字串
@@ -7593,7 +7603,7 @@
   /**
    * base64字串轉一般字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/b642str.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/b642str.test.mjs Github}
    * @memberOf wsemi
    * @param {String} b64 輸入base64字串
    * @returns {String} 回傳一般字串
@@ -7618,7 +7628,7 @@
   /**
    * Uint8Array轉字串
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/u8arr2str.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/u8arr2str.test.mjs Github}
    * @memberOf wsemi
    * @param {Uint8Array} u8a 輸入Uint8Array
    * @returns {String} 回傳一般字串
@@ -7650,7 +7660,7 @@
   /**
    * 由字串與Unit8Array陣列轉物件，為對obj2stru8arr序列化之數據進行反序列化
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/stru8arr2obj.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/stru8arr2obj.test.mjs Github}
    * @memberOf wsemi
    * @param {String} data.results 輸入待反序列化字串
    * @param {Array} data.binarys 輸入Unit8Array陣列
@@ -7737,7 +7747,7 @@
   /**
    * Uint8Array轉物件或陣列資料
    *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/u8arr2obj.test.js Github}
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/u8arr2obj.test.mjs Github}
    * @memberOf wsemi
    * @param {Uint8Array} u8a 輸入Uint8Array
    * @returns {Object|Array} 回傳物件或陣列資料，物件內可支援Uint8Array、Uint16Array、ArrayBuffer，因obj2u8arr預設會把ArrayBuffer轉Uint8Array進行操作，故物件內原為ArrayBuffer者會以Uint8Array返回
