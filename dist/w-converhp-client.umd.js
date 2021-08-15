@@ -1,5 +1,5 @@
 /*!
- * w-converhp-client v1.0.29
+ * w-converhp-client v1.0.30
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
@@ -5163,10 +5163,47 @@
   }
 
   /**
+   * 判斷是否為Promise
+   *
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/ispm.test.mjs Github}
+   * @memberOf wsemi
+   * @param {*} v 輸入任意資料
+   * @returns {Boolean} 回傳判斷布林值
+   * @example
+   *
+   * console.log(ispm('1.25'))
+   * // => false
+   *
+   * console.log(ispm(new Promise(function() {})))
+   * // => true
+   *
+   */
+  function ispm(v) {
+    var b;
+    var c = Object.prototype.toString.call(v);
+    b = c === '[object Promise]';
+
+    if (b) {
+      return true; //若為[object Promise]則直接回傳true
+    }
+
+    if (c !== '[object Function]') {
+      return false; //若不是[object Promise]也不是[object Function]則直接回傳false
+    }
+
+    try {
+      b = typeof v.subscribe !== 'function' && typeof v.then === 'function'; //可偵測async function
+    } catch (err) {}
+
+    return b;
+  }
+
+  /**
    * 將Promise函式的resolve與reject皆轉為resolve
    *
    * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/pm2resolve.test.mjs Github}
    * @memberOf wsemi
+   * @param {Function} fn 輸入函數，可支援async與sync函數
    * @returns {Promise} 回傳Promise，皆使用resolve回傳物件資料，物件欄位有state與msg，state可有success、error與cancelled。cancelled代表reject回傳{ reason: 'cancelled' }
    * @example
    *
@@ -5291,24 +5328,46 @@
   function pm2resolve(fn) {
     return function () {
       var pm = genPm();
-      fn.apply(this, arguments).then(function (msg) {
+      var ret = null;
+      var err = null;
+
+      try {
+        ret = fn.apply(this, arguments);
+      } catch (e) {
+        err = e;
+      }
+
+      if (err !== null) {
         pm.resolve({
-          state: 'success',
-          msg: msg
+          state: 'error',
+          msg: err
         });
-      }).catch(function (msg) {
-        if (get_1(msg, 'reason') === 'cancelled') {
+      } else if (ispm(ret)) {
+        ret.then(function (msg) {
           pm.resolve({
-            state: 'cancelled',
-            msg: ''
-          });
-        } else {
-          pm.resolve({
-            state: 'error',
+            state: 'success',
             msg: msg
           });
-        }
-      });
+        }).catch(function (msg) {
+          if (get_1(msg, 'reason') === 'cancelled') {
+            pm.resolve({
+              state: 'cancelled',
+              msg: ''
+            });
+          } else {
+            pm.resolve({
+              state: 'error',
+              msg: msg
+            });
+          }
+        });
+      } else {
+        pm.resolve({
+          state: 'success',
+          msg: ret
+        });
+      }
+
       return pm;
     };
   }
