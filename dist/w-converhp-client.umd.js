@@ -1,5 +1,5 @@
 /*!
- * w-converhp-client v1.0.30
+ * w-converhp-client v1.0.31
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
@@ -808,10 +808,6 @@
     };
   };
 
-  /*global toString:true*/
-  // utils is a library of generic helper functions non-specific to axios
-
-
   var toString$1 = Object.prototype.toString;
   /**
    * Determine if a value is an Array
@@ -1010,7 +1006,7 @@
 
 
   function trim(str) {
-    return str.replace(/^\s*/, '').replace(/\s*$/, '');
+    return str.trim ? str.trim() : str.replace(/^\s+|\s+$/g, '');
   }
   /**
    * Determine if we're running in a standard browser environment
@@ -1255,10 +1251,12 @@
    */
 
 
-  InterceptorManager.prototype.use = function use(fulfilled, rejected) {
+  InterceptorManager.prototype.use = function use(fulfilled, rejected, options) {
     this.handlers.push({
       fulfilled: fulfilled,
-      rejected: rejected
+      rejected: rejected,
+      synchronous: options ? options.synchronous : false,
+      runWhen: options ? options.runWhen : null
     });
     return this.handlers.length - 1;
   };
@@ -1293,28 +1291,6 @@
   };
 
   var InterceptorManager_1 = InterceptorManager;
-
-  /**
-   * Transform the data for a request or a response
-   *
-   * @param {Object|String} data The data to be transformed
-   * @param {Array} headers The headers for the request or response
-   * @param {Array|Function} fns A single function or Array of functions
-   * @returns {*} The resulting transformed data
-   */
-
-
-  var transformData = function transformData(data, headers, fns) {
-    /*eslint no-param-reassign:0*/
-    utils.forEach(fns, function transform(fn) {
-      data = fn(data, headers);
-    });
-    return data;
-  };
-
-  var isCancel = function isCancel(value) {
-    return !!(value && value.__CANCEL__);
-  };
 
   var normalizeHeaderName = function normalizeHeaderName(headers, normalizedName) {
     utils.forEach(headers, function processHeader(value, name) {
@@ -1362,7 +1338,8 @@
         stack: this.stack,
         // Axios
         config: this.config,
-        code: this.code
+        code: this.code,
+        status: this.response && this.response.status ? this.response.status : null
       };
     };
 
@@ -1597,10 +1574,40 @@
     };
   }();
 
+  /**
+   * A `Cancel` is an object that is thrown when an operation is canceled.
+   *
+   * @class
+   * @param {string=} message The message.
+   */
+
+  function Cancel(message) {
+    this.message = message;
+  }
+
+  Cancel.prototype.toString = function toString() {
+    return 'Cancel' + (this.message ? ': ' + this.message : '');
+  };
+
+  Cancel.prototype.__CANCEL__ = true;
+  var Cancel_1 = Cancel;
+
   var xhr = function xhrAdapter(config) {
     return new Promise(function dispatchXhrRequest(resolve, reject) {
       var requestData = config.data;
       var requestHeaders = config.headers;
+      var responseType = config.responseType;
+      var onCanceled;
+
+      function done() {
+        if (config.cancelToken) {
+          config.cancelToken.unsubscribe(onCanceled);
+        }
+
+        if (config.signal) {
+          config.signal.removeEventListener('abort', onCanceled);
+        }
+      }
 
       if (utils.isFormData(requestData)) {
         delete requestHeaders['Content-Type']; // Let the browser set it
@@ -1617,24 +1624,16 @@
       var fullPath = buildFullPath(config.baseURL, config.url);
       request.open(config.method.toUpperCase(), buildURL(fullPath, config.params, config.paramsSerializer), true); // Set the request timeout in MS
 
-      request.timeout = config.timeout; // Listen for ready state
+      request.timeout = config.timeout;
 
-      request.onreadystatechange = function handleLoad() {
-        if (!request || request.readyState !== 4) {
-          return;
-        } // The request errored out and we didn't get a response, this will be
-        // handled by onerror instead
-        // With one exception: request that using file: protocol, most browsers
-        // will return status as 0 even though it's a successful request
-
-
-        if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
+      function onloadend() {
+        if (!request) {
           return;
         } // Prepare the response
 
 
         var responseHeaders = 'getAllResponseHeaders' in request ? parseHeaders(request.getAllResponseHeaders()) : null;
-        var responseData = !config.responseType || config.responseType === 'text' ? request.responseText : request.response;
+        var responseData = !responseType || responseType === 'text' || responseType === 'json' ? request.responseText : request.response;
         var response = {
           data: responseData,
           status: request.status,
@@ -1643,10 +1642,40 @@
           config: config,
           request: request
         };
-        settle(resolve, reject, response); // Clean up request
+        settle(function _resolve(value) {
+          resolve(value);
+          done();
+        }, function _reject(err) {
+          reject(err);
+          done();
+        }, response); // Clean up request
 
         request = null;
-      }; // Handle browser request cancellation (as opposed to a manual cancellation)
+      }
+
+      if ('onloadend' in request) {
+        // Use onloadend if available
+        request.onloadend = onloadend;
+      } else {
+        // Listen for ready state to emulate onloadend
+        request.onreadystatechange = function handleLoad() {
+          if (!request || request.readyState !== 4) {
+            return;
+          } // The request errored out and we didn't get a response, this will be
+          // handled by onerror instead
+          // With one exception: request that using file: protocol, most browsers
+          // will return status as 0 even though it's a successful request
+
+
+          if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
+            return;
+          } // readystate handler is calling before onerror or ontimeout handlers,
+          // so we should call onloadend on the next 'tick'
+
+
+          setTimeout(onloadend);
+        };
+      } // Handle browser request cancellation (as opposed to a manual cancellation)
 
 
       request.onabort = function handleAbort() {
@@ -1671,12 +1700,13 @@
 
       request.ontimeout = function handleTimeout() {
         var timeoutErrorMessage = 'timeout of ' + config.timeout + 'ms exceeded';
+        var transitional = config.transitional || defaults_1.transitional;
 
         if (config.timeoutErrorMessage) {
           timeoutErrorMessage = config.timeoutErrorMessage;
         }
 
-        reject(createError(timeoutErrorMessage, config, 'ECONNABORTED', request)); // Clean up request
+        reject(createError(timeoutErrorMessage, config, transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED', request)); // Clean up request
 
         request = null;
       }; // Add xsrf header
@@ -1712,16 +1742,8 @@
       } // Add responseType to request if needed
 
 
-      if (config.responseType) {
-        try {
-          request.responseType = config.responseType;
-        } catch (e) {
-          // Expected DOMException thrown by browsers not compatible XMLHttpRequest Level 2.
-          // But, this can be suppressed for 'json' type as it can be parsed by default 'transformResponse' function.
-          if (config.responseType !== 'json') {
-            throw e;
-          }
-        }
+      if (responseType && responseType !== 'json') {
+        request.responseType = config.responseType;
       } // Handle progress if needed
 
 
@@ -1734,18 +1756,24 @@
         request.upload.addEventListener('progress', config.onUploadProgress);
       }
 
-      if (config.cancelToken) {
+      if (config.cancelToken || config.signal) {
         // Handle cancellation
-        config.cancelToken.promise.then(function onCanceled(cancel) {
+        // eslint-disable-next-line func-names
+        onCanceled = function onCanceled(cancel) {
           if (!request) {
             return;
           }
 
+          reject(!cancel || cancel && cancel.type ? new Cancel_1('canceled') : cancel);
           request.abort();
-          reject(cancel); // Clean up request
-
           request = null;
-        });
+        };
+
+        config.cancelToken && config.cancelToken.subscribe(onCanceled);
+
+        if (config.signal) {
+          config.signal.aborted ? onCanceled() : config.signal.addEventListener('abort', onCanceled);
+        }
       }
 
       if (!requestData) {
@@ -1781,7 +1809,27 @@
     return adapter;
   }
 
+  function stringifySafely(rawValue, parser, encoder) {
+    if (utils.isString(rawValue)) {
+      try {
+        (parser || JSON.parse)(rawValue);
+        return utils.trim(rawValue);
+      } catch (e) {
+        if (e.name !== 'SyntaxError') {
+          throw e;
+        }
+      }
+    }
+
+    return (encoder || JSON.stringify)(rawValue);
+  }
+
   var defaults = {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
     adapter: getDefaultAdapter(),
     transformRequest: [function transformRequest(data, headers) {
       normalizeHeaderName(headers, 'Accept');
@@ -1800,20 +1848,30 @@
         return data.toString();
       }
 
-      if (utils.isObject(data)) {
-        setContentTypeIfUnset(headers, 'application/json;charset=utf-8');
-        return JSON.stringify(data);
+      if (utils.isObject(data) || headers && headers['Content-Type'] === 'application/json') {
+        setContentTypeIfUnset(headers, 'application/json');
+        return stringifySafely(data);
       }
 
       return data;
     }],
     transformResponse: [function transformResponse(data) {
-      /*eslint no-param-reassign:0*/
-      if (typeof data === 'string') {
+      var transitional = this.transitional || defaults.transitional;
+      var silentJSONParsing = transitional && transitional.silentJSONParsing;
+      var forcedJSONParsing = transitional && transitional.forcedJSONParsing;
+      var strictJSONParsing = !silentJSONParsing && this.responseType === 'json';
+
+      if (strictJSONParsing || forcedJSONParsing && utils.isString(data) && data.length) {
         try {
-          data = JSON.parse(data);
+          return JSON.parse(data);
         } catch (e) {
-          /* Ignore */
+          if (strictJSONParsing) {
+            if (e.name === 'SyntaxError') {
+              throw enhanceError(e, this, 'E_JSON_PARSE');
+            }
+
+            throw e;
+          }
         }
       }
 
@@ -1831,11 +1889,11 @@
     maxBodyLength: -1,
     validateStatus: function validateStatus(status) {
       return status >= 200 && status < 300;
-    }
-  };
-  defaults.headers = {
-    common: {
-      'Accept': 'application/json, text/plain, */*'
+    },
+    headers: {
+      common: {
+        'Accept': 'application/json, text/plain, */*'
+      }
     }
   };
   utils.forEach(['delete', 'get', 'head'], function forEachMethodNoData(method) {
@@ -1847,6 +1905,30 @@
   var defaults_1 = defaults;
 
   /**
+   * Transform the data for a request or a response
+   *
+   * @param {Object|String} data The data to be transformed
+   * @param {Array} headers The headers for the request or response
+   * @param {Array|Function} fns A single function or Array of functions
+   * @returns {*} The resulting transformed data
+   */
+
+
+  var transformData = function transformData(data, headers, fns) {
+    var context = this || defaults_1;
+    /*eslint no-param-reassign:0*/
+
+    utils.forEach(fns, function transform(fn) {
+      data = fn.call(context, data, headers);
+    });
+    return data;
+  };
+
+  var isCancel = function isCancel(value) {
+    return !!(value && value.__CANCEL__);
+  };
+
+  /**
    * Throws a `Cancel` if cancellation has been requested.
    */
 
@@ -1854,6 +1936,10 @@
   function throwIfCancellationRequested(config) {
     if (config.cancelToken) {
       config.cancelToken.throwIfRequested();
+    }
+
+    if (config.signal && config.signal.aborted) {
+      throw new Cancel_1('canceled');
     }
   }
   /**
@@ -1869,7 +1955,7 @@
 
     config.headers = config.headers || {}; // Transform request data
 
-    config.data = transformData(config.data, config.headers, config.transformRequest); // Flatten headers
+    config.data = transformData.call(config, config.data, config.headers, config.transformRequest); // Flatten headers
 
     config.headers = utils.merge(config.headers.common || {}, config.headers[config.method] || {}, config.headers);
     utils.forEach(['delete', 'get', 'head', 'post', 'put', 'patch', 'common'], function cleanHeaderConfig(method) {
@@ -1879,14 +1965,14 @@
     return adapter(config).then(function onAdapterResolution(response) {
       throwIfCancellationRequested(config); // Transform response data
 
-      response.data = transformData(response.data, response.headers, config.transformResponse);
+      response.data = transformData.call(config, response.data, response.headers, config.transformResponse);
       return response;
     }, function onAdapterRejection(reason) {
       if (!isCancel(reason)) {
         throwIfCancellationRequested(config); // Transform response data
 
         if (reason && reason.response) {
-          reason.response.data = transformData(reason.response.data, reason.response.headers, config.transformResponse);
+          reason.response.data = transformData.call(config, reason.response.data, reason.response.headers, config.transformResponse);
         }
       }
 
@@ -1908,10 +1994,6 @@
     // eslint-disable-next-line no-param-reassign
     config2 = config2 || {};
     var config = {};
-    var valueFromConfig2Keys = ['url', 'method', 'data'];
-    var mergeDeepPropertiesKeys = ['headers', 'auth', 'proxy', 'params'];
-    var defaultToConfig2Keys = ['baseURL', 'transformRequest', 'transformResponse', 'paramsSerializer', 'timeout', 'timeoutMessage', 'withCredentials', 'adapter', 'responseType', 'xsrfCookieName', 'xsrfHeaderName', 'onUploadProgress', 'onDownloadProgress', 'decompress', 'maxContentLength', 'maxBodyLength', 'maxRedirects', 'transport', 'httpAgent', 'httpsAgent', 'cancelToken', 'socketPath', 'responseEncoding'];
-    var directMergeKeys = ['validateStatus'];
 
     function getMergedValue(target, source) {
       if (utils.isPlainObject(target) && utils.isPlainObject(source)) {
@@ -1923,50 +2005,167 @@
       }
 
       return source;
-    }
+    } // eslint-disable-next-line consistent-return
+
 
     function mergeDeepProperties(prop) {
       if (!utils.isUndefined(config2[prop])) {
-        config[prop] = getMergedValue(config1[prop], config2[prop]);
+        return getMergedValue(config1[prop], config2[prop]);
       } else if (!utils.isUndefined(config1[prop])) {
-        config[prop] = getMergedValue(undefined, config1[prop]);
+        return getMergedValue(undefined, config1[prop]);
+      }
+    } // eslint-disable-next-line consistent-return
+
+
+    function valueFromConfig2(prop) {
+      if (!utils.isUndefined(config2[prop])) {
+        return getMergedValue(undefined, config2[prop]);
+      }
+    } // eslint-disable-next-line consistent-return
+
+
+    function defaultToConfig2(prop) {
+      if (!utils.isUndefined(config2[prop])) {
+        return getMergedValue(undefined, config2[prop]);
+      } else if (!utils.isUndefined(config1[prop])) {
+        return getMergedValue(undefined, config1[prop]);
+      }
+    } // eslint-disable-next-line consistent-return
+
+
+    function mergeDirectKeys(prop) {
+      if (prop in config2) {
+        return getMergedValue(config1[prop], config2[prop]);
+      } else if (prop in config1) {
+        return getMergedValue(undefined, config1[prop]);
       }
     }
 
-    utils.forEach(valueFromConfig2Keys, function valueFromConfig2(prop) {
-      if (!utils.isUndefined(config2[prop])) {
-        config[prop] = getMergedValue(undefined, config2[prop]);
-      }
+    var mergeMap = {
+      'url': valueFromConfig2,
+      'method': valueFromConfig2,
+      'data': valueFromConfig2,
+      'baseURL': defaultToConfig2,
+      'transformRequest': defaultToConfig2,
+      'transformResponse': defaultToConfig2,
+      'paramsSerializer': defaultToConfig2,
+      'timeout': defaultToConfig2,
+      'timeoutMessage': defaultToConfig2,
+      'withCredentials': defaultToConfig2,
+      'adapter': defaultToConfig2,
+      'responseType': defaultToConfig2,
+      'xsrfCookieName': defaultToConfig2,
+      'xsrfHeaderName': defaultToConfig2,
+      'onUploadProgress': defaultToConfig2,
+      'onDownloadProgress': defaultToConfig2,
+      'decompress': defaultToConfig2,
+      'maxContentLength': defaultToConfig2,
+      'maxBodyLength': defaultToConfig2,
+      'transport': defaultToConfig2,
+      'httpAgent': defaultToConfig2,
+      'httpsAgent': defaultToConfig2,
+      'cancelToken': defaultToConfig2,
+      'socketPath': defaultToConfig2,
+      'responseEncoding': defaultToConfig2,
+      'validateStatus': mergeDirectKeys
+    };
+    utils.forEach(Object.keys(config1).concat(Object.keys(config2)), function computeConfigValue(prop) {
+      var merge = mergeMap[prop] || mergeDeepProperties;
+      var configValue = merge(prop);
+      utils.isUndefined(configValue) && merge !== mergeDirectKeys || (config[prop] = configValue);
     });
-    utils.forEach(mergeDeepPropertiesKeys, mergeDeepProperties);
-    utils.forEach(defaultToConfig2Keys, function defaultToConfig2(prop) {
-      if (!utils.isUndefined(config2[prop])) {
-        config[prop] = getMergedValue(undefined, config2[prop]);
-      } else if (!utils.isUndefined(config1[prop])) {
-        config[prop] = getMergedValue(undefined, config1[prop]);
-      }
-    });
-    utils.forEach(directMergeKeys, function merge(prop) {
-      if (prop in config2) {
-        config[prop] = getMergedValue(config1[prop], config2[prop]);
-      } else if (prop in config1) {
-        config[prop] = getMergedValue(undefined, config1[prop]);
-      }
-    });
-    var axiosKeys = valueFromConfig2Keys.concat(mergeDeepPropertiesKeys).concat(defaultToConfig2Keys).concat(directMergeKeys);
-    var otherKeys = Object.keys(config1).concat(Object.keys(config2)).filter(function filterAxiosKeys(key) {
-      return axiosKeys.indexOf(key) === -1;
-    });
-    utils.forEach(otherKeys, mergeDeepProperties);
     return config;
   };
 
+  var data = {
+    "version": "0.22.0"
+  };
+
+  var VERSION = data.version;
+  var validators$1 = {}; // eslint-disable-next-line func-names
+
+  ['object', 'boolean', 'number', 'function', 'string', 'symbol'].forEach(function (type, i) {
+    validators$1[type] = function validator(thing) {
+      return _typeof(thing) === type || 'a' + (i < 1 ? 'n ' : ' ') + type;
+    };
+  });
+  var deprecatedWarnings = {};
+  /**
+   * Transitional option validator
+   * @param {function|boolean?} validator - set to false if the transitional option has been removed
+   * @param {string?} version - deprecated version / removed since version
+   * @param {string?} message - some message with additional info
+   * @returns {function}
+   */
+
+  validators$1.transitional = function transitional(validator, version, message) {
+    function formatMessage(opt, desc) {
+      return '[Axios v' + VERSION + '] Transitional option \'' + opt + '\'' + desc + (message ? '. ' + message : '');
+    } // eslint-disable-next-line func-names
+
+
+    return function (value, opt, opts) {
+      if (validator === false) {
+        throw new Error(formatMessage(opt, ' has been removed' + (version ? ' in ' + version : '')));
+      }
+
+      if (version && !deprecatedWarnings[opt]) {
+        deprecatedWarnings[opt] = true; // eslint-disable-next-line no-console
+
+        console.warn(formatMessage(opt, ' has been deprecated since v' + version + ' and will be removed in the near future'));
+      }
+
+      return validator ? validator(value, opt, opts) : true;
+    };
+  };
+  /**
+   * Assert object's properties type
+   * @param {object} options
+   * @param {object} schema
+   * @param {boolean?} allowUnknown
+   */
+
+
+  function assertOptions(options, schema, allowUnknown) {
+    if (_typeof(options) !== 'object') {
+      throw new TypeError('options must be an object');
+    }
+
+    var keys = Object.keys(options);
+    var i = keys.length;
+
+    while (i-- > 0) {
+      var opt = keys[i];
+      var validator = schema[opt];
+
+      if (validator) {
+        var value = options[opt];
+        var result = value === undefined || validator(value, opt, options);
+
+        if (result !== true) {
+          throw new TypeError('option ' + opt + ' must be ' + result);
+        }
+
+        continue;
+      }
+
+      if (allowUnknown !== true) {
+        throw Error('Unknown option ' + opt);
+      }
+    }
+  }
+
+  var validator = {
+    assertOptions: assertOptions,
+    validators: validators$1
+  };
+
+  var validators = validator.validators;
   /**
    * Create a new instance of Axios
    *
    * @param {Object} instanceConfig The default config for the instance
    */
-
 
   function Axios(instanceConfig) {
     this.defaults = instanceConfig;
@@ -2000,20 +2199,70 @@
       config.method = this.defaults.method.toLowerCase();
     } else {
       config.method = 'get';
-    } // Hook up interceptors middleware
+    }
+
+    var transitional = config.transitional;
+
+    if (transitional !== undefined) {
+      validator.assertOptions(transitional, {
+        silentJSONParsing: validators.transitional(validators.boolean),
+        forcedJSONParsing: validators.transitional(validators.boolean),
+        clarifyTimeoutError: validators.transitional(validators.boolean)
+      }, false);
+    } // filter out skipped interceptors
 
 
-    var chain = [dispatchRequest, undefined];
-    var promise = Promise.resolve(config);
+    var requestInterceptorChain = [];
+    var synchronousRequestInterceptors = true;
     this.interceptors.request.forEach(function unshiftRequestInterceptors(interceptor) {
-      chain.unshift(interceptor.fulfilled, interceptor.rejected);
-    });
-    this.interceptors.response.forEach(function pushResponseInterceptors(interceptor) {
-      chain.push(interceptor.fulfilled, interceptor.rejected);
-    });
+      if (typeof interceptor.runWhen === 'function' && interceptor.runWhen(config) === false) {
+        return;
+      }
 
-    while (chain.length) {
-      promise = promise.then(chain.shift(), chain.shift());
+      synchronousRequestInterceptors = synchronousRequestInterceptors && interceptor.synchronous;
+      requestInterceptorChain.unshift(interceptor.fulfilled, interceptor.rejected);
+    });
+    var responseInterceptorChain = [];
+    this.interceptors.response.forEach(function pushResponseInterceptors(interceptor) {
+      responseInterceptorChain.push(interceptor.fulfilled, interceptor.rejected);
+    });
+    var promise;
+
+    if (!synchronousRequestInterceptors) {
+      var chain = [dispatchRequest, undefined];
+      Array.prototype.unshift.apply(chain, requestInterceptorChain);
+      chain = chain.concat(responseInterceptorChain);
+      promise = Promise.resolve(config);
+
+      while (chain.length) {
+        promise = promise.then(chain.shift(), chain.shift());
+      }
+
+      return promise;
+    }
+
+    var newConfig = config;
+
+    while (requestInterceptorChain.length) {
+      var onFulfilled = requestInterceptorChain.shift();
+      var onRejected = requestInterceptorChain.shift();
+
+      try {
+        newConfig = onFulfilled(newConfig);
+      } catch (error) {
+        onRejected(error);
+        break;
+      }
+    }
+
+    try {
+      promise = dispatchRequest(newConfig);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    while (responseInterceptorChain.length) {
+      promise = promise.then(responseInterceptorChain.shift(), responseInterceptorChain.shift());
     }
 
     return promise;
@@ -2048,24 +2297,6 @@
   var Axios_1 = Axios;
 
   /**
-   * A `Cancel` is an object that is thrown when an operation is canceled.
-   *
-   * @class
-   * @param {string=} message The message.
-   */
-
-  function Cancel(message) {
-    this.message = message;
-  }
-
-  Cancel.prototype.toString = function toString() {
-    return 'Cancel' + (this.message ? ': ' + this.message : '');
-  };
-
-  Cancel.prototype.__CANCEL__ = true;
-  var Cancel_1 = Cancel;
-
-  /**
    * A `CancelToken` is an object that can be used to request cancellation of an operation.
    *
    * @class
@@ -2082,7 +2313,36 @@
     this.promise = new Promise(function promiseExecutor(resolve) {
       resolvePromise = resolve;
     });
-    var token = this;
+    var token = this; // eslint-disable-next-line func-names
+
+    this.promise.then(function (cancel) {
+      if (!token._listeners) return;
+      var i;
+      var l = token._listeners.length;
+
+      for (i = 0; i < l; i++) {
+        token._listeners[i](cancel);
+      }
+
+      token._listeners = null;
+    }); // eslint-disable-next-line func-names
+
+    this.promise.then = function (onfulfilled) {
+      var _resolve; // eslint-disable-next-line func-names
+
+
+      var promise = new Promise(function (resolve) {
+        token.subscribe(resolve);
+        _resolve = resolve;
+      }).then(onfulfilled);
+
+      promise.cancel = function reject() {
+        token.unsubscribe(_resolve);
+      };
+
+      return promise;
+    };
+
     executor(function cancel(message) {
       if (token.reason) {
         // Cancellation has already been requested
@@ -2101,6 +2361,39 @@
   CancelToken.prototype.throwIfRequested = function throwIfRequested() {
     if (this.reason) {
       throw this.reason;
+    }
+  };
+  /**
+   * Subscribe to the cancel signal
+   */
+
+
+  CancelToken.prototype.subscribe = function subscribe(listener) {
+    if (this.reason) {
+      listener(this.reason);
+      return;
+    }
+
+    if (this._listeners) {
+      this._listeners.push(listener);
+    } else {
+      this._listeners = [listener];
+    }
+  };
+  /**
+   * Unsubscribe from the cancel signal
+   */
+
+
+  CancelToken.prototype.unsubscribe = function unsubscribe(listener) {
+    if (!this._listeners) {
+      return;
+    }
+
+    var index = this._listeners.indexOf(listener);
+
+    if (index !== -1) {
+      this._listeners.splice(index, 1);
     }
   };
   /**
@@ -2167,23 +2460,24 @@
 
     utils.extend(instance, Axios_1.prototype, context); // Copy context to instance
 
-    utils.extend(instance, context);
+    utils.extend(instance, context); // Factory for creating new instances
+
+    instance.create = function create(instanceConfig) {
+      return createInstance(mergeConfig(defaultConfig, instanceConfig));
+    };
+
     return instance;
   } // Create the default instance to be exported
 
 
   var axios$1 = createInstance(defaults_1); // Expose Axios class to allow class inheritance
 
-  axios$1.Axios = Axios_1; // Factory for creating new instances
-
-  axios$1.create = function create(instanceConfig) {
-    return createInstance(mergeConfig(axios$1.defaults, instanceConfig));
-  }; // Expose Cancel & CancelToken
-
+  axios$1.Axios = Axios_1; // Expose Cancel & CancelToken
 
   axios$1.Cancel = Cancel_1;
   axios$1.CancelToken = CancelToken_1;
-  axios$1.isCancel = isCancel; // Expose all/spread
+  axios$1.isCancel = isCancel;
+  axios$1.VERSION = data.version; // Expose all/spread
 
   axios$1.all = function all(promises) {
     return Promise.all(promises);
