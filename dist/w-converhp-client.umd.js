@@ -1,5 +1,5 @@
 /*!
- * w-converhp-client v1.0.31
+ * w-converhp-client v1.0.32
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
@@ -1699,7 +1699,7 @@
 
 
       request.ontimeout = function handleTimeout() {
-        var timeoutErrorMessage = 'timeout of ' + config.timeout + 'ms exceeded';
+        var timeoutErrorMessage = config.timeout ? 'timeout of ' + config.timeout + 'ms exceeded' : 'timeout exceeded';
         var transitional = config.transitional || defaults_1.transitional;
 
         if (config.timeoutErrorMessage) {
@@ -2078,7 +2078,7 @@
   };
 
   var data = {
-    "version": "0.22.0"
+    "version": "0.24.0"
   };
 
   var VERSION = data.version;
@@ -5014,13 +5014,31 @@
    * console.log(ispint(0))
    * // => false
    *
+   * console.log(ispint('0'))
+   * // => false
+   *
    * console.log(ispint(125))
    * // => true
+   *
+   * console.log(ispint(1.25))
+   * // => false
    *
    * console.log(ispint('125'))
    * // => true
    *
-   * console.log(ispint(1.25))
+   * console.log(ispint('1.25'))
+   * // => false
+
+   * console.log(ispint(-125))
+   * // => false
+   *
+   * console.log(ispint(-1.25))
+   * // => false
+   *
+   * console.log(ispint('-125'))
+   * // => false
+   *
+   * console.log(ispint('-1.25'))
    * // => false
    *
    */

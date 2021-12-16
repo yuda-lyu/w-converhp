@@ -1,5 +1,5 @@
 /*!
- * w-converhp-server v1.0.31
+ * w-converhp-server v1.0.32
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
@@ -5571,6 +5571,59 @@
   }
 
   /**
+   * 判斷是否為數字
+   *
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnbr.test.mjs Github}
+   * @memberOf wsemi
+   * @param {*} v 輸入任意資料
+   * @returns {Boolean} 回傳判斷布林值
+   * @example
+   *
+   * console.log(isnbr(1.25))
+   * // => true
+   *
+   * console.log(isnbr('1.25'))
+   * // => false
+   *
+   */
+  function isnbr(v) {
+    var c = Object.prototype.toString.call(v);
+    return c === '[object Number]';
+  }
+
+  /**
+   * 判斷是否為數字
+   *
+   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnum.test.mjs Github}
+   * @memberOf wsemi
+   * @param {*} v 輸入任意資料
+   * @returns {Boolean} 回傳判斷布林值
+   * @example
+   *
+   * console.log(isnum(0))
+   * // => true
+   *
+   * console.log(isnum(1.25))
+   * // => true
+   *
+   * console.log(isnum('-125'))
+   * // => true
+   *
+   */
+
+  function isnum(v) {
+    var b = false;
+
+    if (isestr(v)) {
+      b = !isNaN(Number(v));
+    } else if (isnbr(v)) {
+      b = true;
+    }
+
+    return b;
+  }
+
+  /**
    * 判斷物件是否有key屬性
    *
    * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/haskey.test.mjs Github}
@@ -5591,7 +5644,7 @@
       return false;
     }
 
-    if (!isestr(key)) {
+    if (!isestr(key) && !isnum(key)) {
       return false;
     }
 
@@ -5814,59 +5867,6 @@
   var isInteger_1 = isInteger;
 
   /**
-   * 判斷是否為數字
-   *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnbr.test.mjs Github}
-   * @memberOf wsemi
-   * @param {*} v 輸入任意資料
-   * @returns {Boolean} 回傳判斷布林值
-   * @example
-   *
-   * console.log(isnbr(1.25))
-   * // => true
-   *
-   * console.log(isnbr('1.25'))
-   * // => false
-   *
-   */
-  function isnbr(v) {
-    var c = Object.prototype.toString.call(v);
-    return c === '[object Number]';
-  }
-
-  /**
-   * 判斷是否為數字
-   *
-   * Unit Test: {@link https://github.com/yuda-lyu/wsemi/blob/master/test/isnum.test.mjs Github}
-   * @memberOf wsemi
-   * @param {*} v 輸入任意資料
-   * @returns {Boolean} 回傳判斷布林值
-   * @example
-   *
-   * console.log(isnum(0))
-   * // => true
-   *
-   * console.log(isnum(1.25))
-   * // => true
-   *
-   * console.log(isnum('-125'))
-   * // => true
-   *
-   */
-
-  function isnum(v) {
-    var b = false;
-
-    if (isestr(v)) {
-      b = !isNaN(Number(v));
-    } else if (isnbr(v)) {
-      b = true;
-    }
-
-    return b;
-  }
-
-  /**
    * 數字或字串轉浮點數
    * 若輸入非數字則回傳0
    *
@@ -6028,11 +6028,32 @@
    * console.log(isnint(0))
    * // => false
    *
+   * console.log(isnint('0'))
+   * // => false
+   *
    * console.log(isnint(125))
    * // => false
    *
+   * console.log(isnint(1.25))
+   * // => false
+   *
+   * console.log(isnint('125'))
+   * // => false
+   *
+   * console.log(isnint('1.25'))
+   * // => false
+
    * console.log(isnint(-125))
    * // => true
+   *
+   * console.log(isnint(-1.25))
+   * // => false
+   *
+   * console.log(isnint('-125'))
+   * // => true
+   *
+   * console.log(isnint('-1.25'))
+   * // => false
    *
    */
 
