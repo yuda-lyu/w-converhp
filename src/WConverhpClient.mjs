@@ -1,8 +1,8 @@
 // import axiosNode from 'axios/lib/axios.js'
 // import axiosBrowser from 'axios/dist/axios.min.js'
 import axios from 'axios'
-// import FormDataNode from 'form-data/lib/form_data.js'
-import FormData from 'form-data'
+// import * as FormData from 'form-data/lib/form_data.js'
+// import FormData from 'form-data'
 import get from 'lodash/get'
 import each from 'lodash/each'
 // import getGlobal from 'wsemi/src/getGlobal.mjs'
@@ -245,7 +245,13 @@ function WConverhpClient(opt) {
                 fmd = new FormData()
             }
             else {
-                fmd = new FormData({ maxDataSize: 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1g
+                if (isfun(opt.FormData)) {
+                    fmd = new opt.FormData({ maxDataSize: 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1g
+                }
+                else {
+                    console.log(`invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
+                    throw new Error('invalid opt.FormData')
+                }
             }
 
             //append

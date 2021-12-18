@@ -11,7 +11,6 @@ fns = fns.filter((v) => {
 })
 
 rollupFiles({
-    bMinify: false,
     fns: fns,
     fdSrc,
     fdTar,
