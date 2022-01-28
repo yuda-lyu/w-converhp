@@ -20,7 +20,7 @@ rollupFiles({
         '@hapi/inert': '@hapi/inert',
         'events': 'events',
         'stream': 'stream',
-        'form-data': 'FormData',
+        // 'form-data': 'FormData',
         'crypto': 'crypto', //因crypto-js修改使用內建crypto方式, 會偵測nodejs並使用require內建的crypto, 故需剔除
         // 'combined-stream': 'combined-stream',
         // 'util': 'util',
@@ -37,6 +37,7 @@ rollupFiles({
         '@hapi/inert',
         'events',
         'stream',
+        // 'form-data',
         'crypto',
         // 'combined-stream',
         // 'util',
