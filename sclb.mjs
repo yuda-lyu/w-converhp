@@ -5,9 +5,9 @@ import WConverhpClient from './src/WConverhpClient.mjs'
 
 
 let opt = {
+    FormData,
     url: 'http://localhost:8080',
     apiName: 'api',
-    FormData,
 }
 
 //new
