@@ -1,6 +1,6 @@
-// import axiosNode from 'axios/lib/axios.js'
-// import axiosBrowser from 'axios/dist/axios.min.js'
-import axios from 'axios'
+import axiosNode from 'axios/lib/axios.js'
+import axiosBrowser from 'axios/dist/axios.min.js'
+// import axios from 'axios'
 // import * as FormData from 'form-data/lib/form_data.js'
 // import FormData from 'form-data'
 import get from 'lodash/get'
@@ -321,6 +321,15 @@ function WConverhpClient(opt) {
                 },
             }
             // console.log('s', s)
+
+            //axios, 若於目前套件內測試, 由於執行時axios自動選用nodejs或browser版本, 分不出差異, 但若是編譯後再給其他套件使用, 就會預設使用axiosNode, 導致無法於瀏覽器使用WConverhpClient
+            let axios = null
+            if (env === 'browser') {
+                axios = axiosBrowser
+            }
+            else {
+                axios = axiosNode
+            }
 
             //axios
             axios(s)
