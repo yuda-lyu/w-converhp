@@ -322,7 +322,9 @@ function WConverhpClient(opt) {
             }
             // console.log('s', s)
 
-            //axios, 若於目前套件內測試, 由於執行時axios自動選用nodejs或browser版本, 分不出差異, 但若是編譯後再給其他套件使用, 就會預設使用axiosNode, 導致無法於瀏覽器使用WConverhpClient
+            //axios
+            //使用import axios from 'axios', 若於套件內測試, 由於執行時axios自動選用nodejs或browser版本, 分不出差異
+            //但若是發佈成套件再由其他套件呼叫使用就會預設使用axiosNode版本, 導致瀏覽器端出錯: Cannot convert undefined or null to object[at mergeConfig]
             let axios = null
             if (env === 'browser') {
                 axios = axiosBrowser
