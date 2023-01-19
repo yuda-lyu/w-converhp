@@ -1,6 +1,8 @@
-import axiosNode from 'axios/lib/axios.js'
-import axiosBrowser from 'axios/dist/axios.min.js'
-// import axios from 'axios'
+// import axiosNode from 'axios/lib/axios.js'
+// import axiosNode from 'axios'
+// import axiosBrowser from 'axios/dist/axios.min.js'
+// import axiosBrowser from 'axios/dist/esm/axios.min.js'
+import axios from 'axios' //axios已可自動依照調用環境切換
 // import * as FormData from 'form-data/lib/form_data.js'
 // import FormData from 'form-data'
 import get from 'lodash/get'
@@ -303,12 +305,13 @@ function WConverhpClient(opt) {
 
                 },
                 onDownloadProgress: function (ev) {
-                    //console.log('onDownloadProgress', ev)
+                    // console.log('onDownloadProgress', ev)
 
                     //r
                     let r = 0
                     let loaded = ev.loaded
-                    let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
+                    // let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
+                    let total = ev.total
                     if (ispint(total)) {
                         r = (loaded * 100) / total
                     }
@@ -325,13 +328,13 @@ function WConverhpClient(opt) {
             //axios
             //使用import axios from 'axios', 若於套件內測試, 由於執行時axios自動選用nodejs或browser版本, 分不出差異
             //但若是發佈成套件再由其他套件呼叫使用就會預設使用axiosNode版本, 導致瀏覽器端出錯: Cannot convert undefined or null to object[at mergeConfig]
-            let axios = null
-            if (env === 'browser') {
-                axios = axiosBrowser
-            }
-            else {
-                axios = axiosNode
-            }
+            // let axios = null
+            // if (env === 'browser') {
+            //     axios = axiosBrowser
+            // }
+            // else {
+            //     axios = axiosNode
+            // }
 
             //axios
             axios(s)
