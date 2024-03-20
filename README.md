@@ -6,6 +6,7 @@ An operator for hapi in nodejs and browser.
 [![license](https://img.shields.io/npm/l/w-converhp.svg?style=flat)](https://npmjs.org/package/w-converhp) 
 [![gzip file size](http://img.badgesize.io/yuda-lyu/w-converhp/master/dist/w-converhp-server.umd.js.svg?compression=gzip)](https://github.com/yuda-lyu/w-converhp)
 [![npm download](https://img.shields.io/npm/dt/w-converhp.svg)](https://npmjs.org/package/w-converhp) 
+[![npm download](https://img.shields.io/npm/dm/w-converhp.svg)](https://npmjs.org/package/w-converhp)
 [![jsdelivr download](https://img.shields.io/jsdelivr/npm/hm/w-converhp.svg)](https://www.jsdelivr.com/package/npm/w-converhp)
 
 ## Documentation
@@ -224,7 +225,7 @@ wo.on('deliver', function(data) {
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.38/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@1.0.39/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]

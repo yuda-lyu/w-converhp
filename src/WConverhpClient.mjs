@@ -5,8 +5,8 @@
 import axios from 'axios' //axios已可自動依照調用環境切換
 // import * as FormData from 'form-data/lib/form_data.js'
 // import FormData from 'form-data'
-import get from 'lodash/get'
-import each from 'lodash/each'
+import get from 'lodash-es/get'
+import each from 'lodash-es/each'
 // import getGlobal from 'wsemi/src/getGlobal.mjs'
 import isWindow from 'wsemi/src/isWindow.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
