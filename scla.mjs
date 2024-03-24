@@ -26,7 +26,7 @@ wo.on('openOnce', function() {
         b: 34.56,
         c: 'test中文',
         d: {
-            name: name,
+            name,
             u8a: new Uint8Array([66, 97, 115]),
             // u8a: new Uint8Array(fs.readFileSync('../_data/500mb.7z')), //最多500mb, 因新版@hapi/pez無法處理1g檔案, 會出現: Invalid string length
         }
