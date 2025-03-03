@@ -1,19 +1,26 @@
-// import fs from 'fs'
+import path from 'path'
+import fs from 'fs'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
-import events from 'events'
 import stream from 'stream'
 import get from 'lodash-es/get.js'
-import map from 'lodash-es/map.js'
-import each from 'lodash-es/each.js'
-import cloneDeep from 'lodash-es/cloneDeep.js'
 import genPm from 'wsemi/src/genPm.mjs'
-import alive from 'wsemi/src/alive.mjs'
-import isstr from 'wsemi/src/isstr.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isp0int from 'wsemi/src/isp0int.mjs'
+import ispint from 'wsemi/src/ispint.mjs'
+import isearr from 'wsemi/src/isearr.mjs'
+import isbol from 'wsemi/src/isbol.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import ispm from 'wsemi/src/ispm.mjs'
+import cint from 'wsemi/src/cint.mjs'
+import evem from 'wsemi/src/evem.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
-import iser from 'wsemi/src/iser.mjs'
+import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
+import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
+import fsIsFile from 'wsemi/src/fsIsFile.mjs'
+import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 
 
 /**
@@ -21,78 +28,63 @@ import iser from 'wsemi/src/iser.mjs'
  *
  * @class
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port，預設8080
- * @param {String} [opt.apiName='api'] 輸入http API伺服器網址的api名稱，預設'api'
- * @returns {Object} 回傳通訊物件，可監聽事件open、error、clientChange、execute、broadcast、deliver，可使用函數broadcast
+ * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080
+ * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true
+ * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
+ * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
+ * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
+ * @param {Function} [opt.funCheck=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
+ * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
+ * @param {Integer} [opt.delayForBasic=0] 輸入基本API用延遲響應時間，單位ms，預設0
+ * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
+ * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null
+ * @returns {Object} 回傳通訊物件，可監聽事件execute、upload、handler
  * @example
  *
+ * import _ from 'lodash-es'
  * import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'
  *
  * let opt = {
  *     port: 8080,
  *     apiName: 'api',
+ *     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
+ *     funCheck: () => {
+ *         return true
+ *     },
  * }
  *
  * //new
  * let wo = new WConverhpServer(opt)
  *
- * wo.on('open', function() {
- *     console.log(`Server[port:${opt.port}]: open`)
- *
- *     //broadcast
- *     let n = 0
- *     setInterval(() => {
- *         n += 1
- *         let o = {
- *             text: `server broadcast hi(${n})`,
- *             data: new Uint8Array([66, 97, 115]), //support Uint8Array data
- *         }
- *         wo.broadcast(o, function (prog) {
- *             console.log('broadcast prog', prog)
- *         })
- *     }, 1000)
- *
- * })
- * wo.on('error', function(err) {
- *     console.log(`Server[port:${opt.port}]: error`, err)
- * })
- * wo.on('clientChange', function(num) {
- *     console.log(`Server[port:${opt.port}]: now clients: ${num}`)
- * })
- * wo.on('clientEnter', function(clientId, data) {
- *     console.log(`Server[port:${opt.port}]: client enter: ${clientId}`)
- *
- *     //deliver
- *     wo.deliver(clientId, `server deliver hi(${clientId})`)
- *
- * })
- * wo.on('clientLeave', function(clientId, data) {
- *     console.log(`Server[port:${opt.port}]: client leave: ${clientId}`)
- * })
  * wo.on('execute', function(func, input, pm) {
- *     //console.log(`Server[port:${opt.port}]: execute`, func, input)
+ *     // console.log(`Server[port:${opt.port}]: execute`, func, input)
  *     console.log(`Server[port:${opt.port}]: execute`, func)
  *
  *     try {
  *
  *         if (func === 'add') {
  *
- *             //save
  *             if (_.get(input, 'p.d.u8a', null)) {
- *                 // fs.writeFileSync(input.p.d.name, Buffer.from(input.p.d.u8a))
- *                 // console.log('writeFileSync input.p.d.name', input.p.d.name)
+ *                 console.log('input.p.d.u8a', input.p.d.u8a)
  *             }
  *
  *             let r = {
- *                 ab: input.p.a + input.p.b,
- *                 v: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
- *                 file: {
+ *                 _add: input.p.a + input.p.b,
+ *                 _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
+ *                 _bin: {
  *                     name: 'zdata.b2',
  *                     u8a: new Uint8Array([66, 97, 115]),
- *                     //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\z500mb.7z')),
+ *                     // name: '100mb.7z',
+ *                     // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\100mb.7z')),
+ *                     // name: '500mb.7z',
+ *                     // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\500mb.7z')),
+ *                     // name: '1000mb.7z',
+ *                     // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\1000mb.7z')),
  *                 },
  *             }
+ *
  *             pm.resolve(r)
+ *
  *         }
  *         else {
  *             console.log('invalid func')
@@ -106,72 +98,93 @@ import iser from 'wsemi/src/iser.mjs'
  *     }
  *
  * })
- * wo.on('broadcast', function(data) {
- *     console.log(`Server[port:${opt.port}]: broadcast`, data)
- * })
- * wo.on('deliver', function(data) {
- *     console.log(`Server[port:${opt.port}]: deliver`, data)
+ * wo.on('upload', function(input, pm) {
+ *     console.log(`Server[port:${opt.port}]: upload`, input)
+ *
+ *     try {
+ *         let output = input
+ *         pm.resolve(output)
+ *     }
+ *     catch (err) {
+ *         console.log('execute error', err)
+ *         pm.reject('execute error')
+ *     }
+ *
  * })
  * wo.on('handler', function(data) {
  *     // console.log(`Server[port:${opt.port}]: handler`, data)
  * })
  *
- *
  */
 function WConverhpServer(opt = {}) {
-    let broadcastMessages = {}
 
-
-    //default
-    if (!opt.port) {
-        opt.port = 8080
-    }
-    if (!opt.apiName) {
-        opt.apiName = 'api'
+    //port
+    let port = get(opt, 'port')
+    if (!ispint(port)) {
+        port = 8080
     }
 
-
-    //ee
-    let ee = new events.EventEmitter()
-
-
-    //ea
-    let ea = alive()
-
-
-    //ea broadcastMessages
-    setInterval(() => {
-
-        //now alive
-        let nowAlive = ea.get()
-        //console.log('nowAlive', nowAlive)
-
-        //clientIds
-        let clientIds = map(nowAlive, 'key')
-        //console.log('clientIds', clientIds)
-
-        //pick
-        let t = {}
-        each(clientIds, (clientId) => {
-            t[clientId] = get(broadcastMessages, clientId, [])
-        })
-        broadcastMessages = t
-        //console.log('broadcastMessages', broadcastMessages)
-
-    }, 1000)
-
-
-    //eeEmit
-    function eeEmit(name, ...args) {
-        setTimeout(() => {
-            ee.emit(name, ...args)
-        }, 1)
+    //useInert
+    let useInert = get(opt, 'useInert')
+    if (!isbol(useInert)) {
+        useInert = true
     }
 
+    //pathStaticFiles
+    let pathStaticFiles = get(opt, 'pathStaticFiles')
+    if (!isestr(pathStaticFiles)) {
+        pathStaticFiles = 'dist'
+    }
+
+    //apiName
+    let apiName = get(opt, 'apiName')
+    if (!isestr(apiName)) {
+        apiName = 'api'
+    }
+
+    //apiSliceName
+    let apiSliceName = `${apiName}slc`
+
+    //pathUploadTemp
+    let pathUploadTemp = get(opt, 'pathUploadTemp')
+    if (!isestr(pathUploadTemp)) {
+        pathUploadTemp = './uploadTemp'
+    }
+    if (!fsIsFolder(pathUploadTemp)) {
+        fsCreateFolder(pathUploadTemp)
+    }
+
+    //funCheck
+    let funCheck = get(opt, 'funCheck')
+    if (!isfun(funCheck)) {
+        funCheck = () => {
+            return true
+        }
+    }
+
+    //corsOrigins
+    let corsOrigins = get(opt, 'corsOrigins', [])
+    if (!isearr(corsOrigins)) {
+        corsOrigins = ['*']
+    }
+
+    //delayForBasic
+    let delayForBasic = get(opt, 'delayForBasic', '')
+    if (!isp0int(delayForBasic)) {
+        delayForBasic = 0
+    }
+    delayForBasic = cint(delayForBasic)
+
+    //delayForSlice
+    let delayForSlice = get(opt, 'delayForSlice', '')
+    if (!isp0int(delayForSlice)) {
+        delayForSlice = 100
+    }
+    delayForSlice = cint(delayForSlice)
 
     //server
-    let server
-    if (opt.serverHapi) {
+    let server = null
+    if (get(opt, 'serverHapi')) {
 
         //use serverHapi
         server = opt.serverHapi
@@ -181,106 +194,34 @@ function WConverhpServer(opt = {}) {
 
         //create server
         server = Hapi.server({
-            port: opt.port,
+            port,
             //host: 'localhost',
             routes: {
-                // cors: true,
                 cors: {
-                    origin: ['*'], //Access-Control-Allow-Origin
-                    //credentials: true //Access-Control-Allow-Credentials
-                }
+                    origin: corsOrigins, //Access-Control-Allow-Origin
+                    credentials: false, //Access-Control-Allow-Credentials
+                },
             },
         })
 
     }
 
+    //ee
+    let ee = evem() //new events.EventEmitter()
 
-    /**
-     * Hapi監聽開啟事件
-     *
-     * @memberof WConverhpServer
-     * @example
-     * wo.on('open', function() {
-     *     ...
-     * })
-     */
-    function onOpen() {} onOpen()
-    function open() {
-        eeEmit('open')
-    }
-    open()
-
-
-    /**
-     * Hapi監聽錯誤事件
-     *
-     * @memberof WConverhpServer
-     * @param {*} err 傳入錯誤訊息
-     * @example
-     * wo.on('error', function(err) {
-     *     ...
-     * })
-     */
-    function onError() {} onError()
-    function error(msg, err) {
-        eeEmit('error', { msg, err })
+    //eeEmit
+    function eeEmit(name, ...args) {
+        setTimeout(() => {
+            ee.emit(name, ...args)
+        }, 1)
     }
 
-
-    /**
-     * Hapi監聽客戶端上線事件
-     *
-     * @memberof WConverhpServer
-     * @param {String} clientId 識別用使用者主鍵
-     * @param {*} data 使用者request訊息
-     * @example
-     * wo.on('clientEnter', function(clientId, data) {
-     *     ...
-     * })
-     */
-    function onClientEnter() {} onClientEnter()
-    /**
-     * Hapi監聽客戶端下線事件
-     *
-     * @memberof WConverhpServer
-     * @example
-     * wo.on('clientLeave', function(clientId, data) {
-     *     ...
-     * })
-     */
-    function onClientLeave() {} onClientLeave()
-    /**
-     * Hapi監聽客戶端變更(上下線)事件
-     *
-     * @memberof WConverhpServer
-     * @example
-     * wo.on('clientChange', function(num) {
-     *     ...
-     * })
-     */
-    function onClientChange() {} onClientChange()
-    ea.on('message', function({ eventName, key, data, now }) {
-        //console.log({ eventName, key, data, now })
-        if (eventName === 'enter') {
-            eeEmit('clientEnter', key, data)
-        }
-        else if (eventName === 'leave') {
-            eeEmit('clientLeave', key, data)
-        }
-        eeEmit('clientChange', now)
-    })
-
-
-    //dealData
-    async function dealData(data) {
-        //console.log('dealData', data)
+    //procDeal
+    async function procDeal(data) {
 
         //pm, pmm
         let pm = genPm()
         let pmm = genPm()
-
-        //_mode
-        let _mode = get(data, '_mode', '')
 
         //重新處理回傳結果
         pmm
@@ -292,16 +233,13 @@ function WConverhpServer(opt = {}) {
                 //delete input, 因input可能很大故回傳數據不包含原input
                 delete data['input']
 
-                //resolve
                 pm.resolve(data)
-
             })
             .catch((err) => {
                 pm.reject(err)
             })
 
-        //emit
-        if (_mode === 'execute') {
+        if (true) {
 
             //func
             let func = get(data, 'func', '')
@@ -313,291 +251,550 @@ function WConverhpServer(opt = {}) {
             eeEmit('execute', func, input, pmm)
 
         }
-        else if (_mode === 'broadcast') {
 
-            //input
-            let input = get(data, 'input', null)
+        return pm
+    }
 
-            //broadcast 廣播
-            eeEmit('broadcast', input)
+    //procUpload
+    async function procUpload(input) {
+        //console.log('procUpload', data)
 
-            //resolve
-            pmm.resolve('ok')
+        //pm, pmm
+        let pm = genPm()
+        let pmm = genPm()
 
-        }
-        else if (_mode === 'deliver') {
+        //重新處理回傳結果
+        pmm
+            .then((output) => {
 
-            //input
-            let input = get(data, 'input', null)
+                //resolve
+                pm.resolve(output)
 
-            //deliver 發送
-            eeEmit('deliver', input)
+            })
+            .catch((err) => {
+                pm.reject(err)
+            })
 
-            //resolve
-            pmm.resolve('ok')
+        if (true) {
 
-        }
-        else if (_mode === 'polling') {
+            //upload 上傳檔案
+            eeEmit('upload', input, pmm)
 
-            //clientId
-            let clientId = get(data, 'clientId', '')
-
-            //polling messages
-            let pms = get(broadcastMessages, clientId, [])
-            pms = cloneDeep(pms)
-
-            //clear
-            broadcastMessages[clientId] = []
-
-            //resolve
-            pmm.resolve(pms)
-
-        }
-        else {
-            let msg = 'can not find _mode in data'
-            error(msg, data)
-            pm.reject(msg)
-            pmm.reject()
         }
 
         return pm
     }
 
+    //responseU8aStream
+    function responseU8aStream(res, u8a) {
+
+        //stream
+        let smr = new stream.Readable()
+        smr._read = () => {}
+        smr.push(u8a)
+        smr.push(null)
+
+        return res.response(smr)
+            .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            .header('Content-Type', 'application/octet-stream')
+            .header('Content-Length', smr.readableLength)
+    }
 
     //apiMain
     let apiMain = {
-        path: '/' + opt.apiName,
+        path: `/${apiName}`,
         method: 'POST',
-        // config: {
-        //     payload: {
-        //         output: 'stream',
-        //         maxBytes: 1024 * 1024 * 1024, //1g
-        //     },
-        // },
         options: {
             payload: {
-                maxBytes: 1024 * 1024 * 1024, //1g
-                timeout: 3 * 60 * 1000, //3分鐘, 注意payload timeout必須小於socket timeout
-                multipart: true, //hapi 19之後修改multipart預設值為false
+                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
+                timeout: false, //避免請求未完成時中斷
+                output: 'stream',
+                parse: false,
             },
             timeout: {
-                socket: 5 * 60 * 1000, //5分鐘
+                socket: false, //避免socket自動關閉
+                server: false,
             },
         },
         handler: async function (req, res) {
-            //console.log(req, res)
-            //console.log('payload', req.payload)
+            // console.log(req, res)
+            // console.log('payload', req.payload)
 
-            //發送原始接收訊息
+            //headers
             let headers = get(req, 'headers')
             headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
+
+            //query
             let query = get(req, 'query')
             query = iseobj(query) ? query : ''
+            // console.log('query', query)
+
+            //token
+            let token = get(query, 'token', '')
+
+            //check
+            if (true) {
+
+                //funCheck
+                let m = funCheck({ token, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
+
+                //check
+                if (m !== true) {
+                    return res.response({ error: 'permission denied' }).code(400)
+                }
+
+            }
+
+            //eeEmit
             eeEmit('handler', {
+                api: 'apiMain',
                 headers,
                 query,
             })
 
-            // if (Math.random() < 0.5) {
-            //     console.log('return code 500: Internal Server Error')
-            //     return res.response('Internal Server Error').code(500)
-            // }
+            //receive
+            let receive = () => {
 
-            //bbInp
-            let bbInp = get(req, 'payload.bb', null)
-            // console.log('bbInp', bbInp)
+                //pm
+                let pm = genPm()
 
-            //check
-            //console.log('isstr(bbInp)', isstr(bbInp))
-            if (isstr(bbInp)) {
-                bbInp = Buffer.from(bbInp, 'utf8') //收nodejs client的buffer會自動解析變成字串
+                //totalSize, chunks
+                // let totalSize = 0
+                let chunks = []
+
+                //smw
+                let smw = new stream.Writable({
+                    write(chunk, encoding, cb) {
+                        // console.log('receive payload', chunk)
+
+                        // //totalSize
+                        // totalSize += chunk.length
+
+                        //push
+                        chunks.push(chunk)
+                        // console.log('chunk.length', chunk.length, 'totalSize', totalSize)
+
+                        //setTimeout, 延遲觸發cb
+                        setTimeout(() => {
+                            cb()
+                        }, delayForBasic)
+
+                    }
+                })
+
+                //pipe
+                req.payload.pipe(smw)
+
+                //end
+                req.payload.on('end', () => {
+                    // console.log(`receive payload done`)
+
+                    //concat
+                    let fileBuffer = Buffer.concat(chunks)
+                    // console.log('fileBuffer', fileBuffer, fileBuffer.length)
+
+                    //clear, 釋放記憶體
+                    chunks = []
+
+                    //resolve
+                    pm.resolve(fileBuffer)
+
+                })
+
+                //error
+                req.payload.on('error', (err) => {
+                    console.log(`receive payload err`, err)
+                    // pm.reject(res.response({ error: err.message }).code(500))
+                    pm.reject(err.message)
+                })
+
+                return pm
             }
+
+            //receive
+            let bbInp = await receive()
+            // console.log('bbInp', bbInp)
 
             //u8aInp
             let u8aInp = new Uint8Array(bbInp)
-            //console.log('u8aInp', u8aInp)
+            // console.log('u8aInp', u8aInp)
 
             //u8arr2obj
             let inp = u8arr2obj(u8aInp)
-            //console.log('inp', inp)
+            // console.log('inp', inp)
 
-            //clientId
-            let clientId = get(inp, 'clientId')
-
-            //client
-            let client = {
-                headers: req.headers,
-                info: req.info,
-            }
-
-            //trigger
-            ea.trigger(clientId, client)
-
-            //dealData
+            //procDeal
             let out = {}
-            await dealData(inp)
+            await procDeal(inp)
                 .then(function(msg) {
                     out.success = msg
                 })
                 .catch(function(msg) {
                     out.error = msg
                 })
+            // console.log('out', out)
 
             //u8aOut
             let u8aOut = obj2u8arr(out)
+            // console.log('u8aOut', u8aOut)
 
-            //stream
-            let sm = new stream.Readable()
-            sm._read = () => {}
-            sm.push(u8aOut)
-            sm.push(null)
-            // if (out.success._mode !== 'polling') {
-            //     console.log('out', out)
-            //     console.log('u8aOut', u8aOut)
-            // }
-
-            return res.response(sm)
-                .header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                .header('Content-Type', 'application/octet-stream')
-                .header('Content-Length', sm.readableLength)
+            return responseU8aStream(res, u8aOut)
         },
     }
 
+    //apiSlice
+    let apiSlice = {
+        path: `/${apiSliceName}`,
+        method: 'POST',
+        options: {
+            payload: {
+                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
+                timeout: false, //避免請求未完成時中斷
+                output: 'stream',
+                parse: false,
+            },
+            timeout: {
+                socket: false, //避免socket自動關閉
+                server: false,
+            },
+        },
+        handler: async function (req, res) {
+            // console.log(req, res)
+            // console.log('payload', req.payload)
 
-    /**
-     * Hapi監聽客戶端執行事件
-     *
-     * @memberof WConverhpServer
-     * @param {String} func 傳入執行函數名稱字串
-     * @param {*} input 傳入執行函數之輸入數據
-     * @param {Function} callback 傳入執行函數之回調函數
-     * @param {Function} sendData 傳入執行函數之強制回傳函數，提供傳送任意訊息給客戶端，供由服器多次回傳數據之用
-     * @example
-     * wo.on('execute', function(func, input, callback, sendData) {
-     *     ...
-     * })
-     */
-    function onExecute() {} onExecute()
+            //headers
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
 
+            //query
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            // console.log('query', query)
 
-    /**
-     *  Hapi監聽客戶端廣播事件
-     *
-     * @memberof WConverhpServer
-     * @param {*} data 傳入廣播訊息
-     * @example
-     * wo.on('broadcast', function(data) {
-     *     ...
-     * })
-     */
-    function onBroadcast() {} onBroadcast()
+            //token
+            let token = get(query, 'token', '')
 
+            //check
+            if (true) {
 
-    /**
-     * Hapi監聽客戶端發送事件
-     *
-     * @memberof WConverhpServer
-     * @param {*} data 傳入發送訊息
-     * @example
-     * wo.on('deliver', function(data) {
-     *     ...
-     * })
-     */
-    function onDeliver() {} onDeliver()
+                //funCheck
+                let m = funCheck({ token, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
 
+                //check
+                if (m !== true) {
+                    return res.response({ error: 'permission denied' }).code(400)
+                }
 
-    /**
-     * Hapi通訊物件對全客戶端廣播函數
-     *
-     * @memberof WConverhpServer
-     * @function broadcast
-     * @param {*} data 輸入廣播函數之輸入資訊
-     * @param {Function} cb 輸入進度函數
-     * @example
-     * let data = {...}
-     * wo.broadcast(data, cb)
-     */
-    ee.broadcast = function (data, cbProgress = function () {}) {
+            }
 
-        //check, broadcastMessages受ea偵測頻率1s影響, 伺服器初始化後至少需1s才會有有效對象
-        if (iser(broadcastMessages)) {
-            //console.log('no client for broadcast')
-            return
-        }
-
-        //modify broadcast data
-        let t = {}
-        each(broadcastMessages, (v, k) => {
-
-            //push, 數據為陣列, 加入新廣播數據
-            v.push({
-                mode: 'broadcast',
-                data,
+            //eeEmit
+            eeEmit('handler', {
+                api: 'apiSlice',
+                headers,
+                query,
             })
 
-            //save
-            t[k] = v
+            //chunkIndex, chunkTotal, packageId, 從headers接收
+            let chunkIndex = get(headers, 'chunk-index', '')
+            let chunkTotal = get(headers, 'chunk-total', '')
+            let packageId = get(headers, 'package-id', '')
 
-        })
-        broadcastMessages = t
+            //check
+            if (!isp0int(chunkIndex)) {
+                console.log('invalid chunkIndex in headers')
+                return res.response({ error: 'invalid chunkIndex in headers' }).code(400)
+            }
+            chunkIndex = cint(chunkIndex)
+            if (!isp0int(chunkTotal)) {
+                console.log('invalid chunkTotal in headers')
+                return res.response({ error: 'invalid chunkTotal in headers' }).code(400)
+            }
+            chunkTotal = cint(chunkTotal)
+            if (!isestr(packageId)) {
+                console.log('invalid packageId in headers')
+                return res.response({ error: 'invalid packageId in headers' }).code(400)
+            }
 
-        //cbProgress, 無法馬上傳需等待客戶端輪詢接收, 故進度回調只能先回傳100%
-        cbProgress(100)
+            //pathFileChunk
+            let pathFileChunk = `${pathUploadTemp}/${packageId}_${chunkIndex}` //path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
+            // console.log('pathFileChunk', pathFileChunk)
 
+            //fileStream
+            let fileStream = fs.createWriteStream(pathFileChunk)
+
+            //receive
+            let receive = () => {
+
+                //pm
+                let pm = genPm()
+
+                //pipe
+                req.payload.pipe(fileStream)
+                // console.log(`receiving chunk[${chunkIndex + 1}/${chunkTotal}]...`)
+
+                //end
+                req.payload.on('end', () => {
+                    // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] done`)
+
+                    //setTimeout, 切片上傳添加延遲處理, 避免佔滿伺服器CPU與流量
+                    setTimeout(() => {
+                        pm.resolve(`chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] done`)
+                    }, delayForSlice)
+
+                })
+
+                //error
+                req.payload.on('error', (err) => {
+                    console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] err`, err)
+                    pm.reject(`chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] err`)
+                })
+
+                return pm
+            }
+
+            //receive
+            let out = {}
+            await receive()
+                .then(function(msg) {
+                    out.success = msg
+                })
+                .catch(function(msg) {
+                    out.error = msg
+                })
+            // console.log('out', out)
+
+            //u8aOut
+            let u8aOut = obj2u8arr(out)
+            // console.log('u8aOut', u8aOut)
+
+            return responseU8aStream(res, u8aOut)
+        },
     }
 
+    //apiSliceMerge
+    let apiSliceMerge = {
+        path: `/${apiSliceName}m`,
+        method: 'POST',
+        options: {
+            payload: {
+                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
+                timeout: false, //避免請求未完成時中斷
+                parse: true,
+            },
+            timeout: {
+                socket: false, //避免socket自動關閉
+                server: false,
+            },
+        },
+        handler: async function (req, res) {
+            // console.log(req, res)
+            // console.log('payload', req.payload)
 
-    /**
-     * Hapi通訊物件對客戶端發送訊息函數
-     *
-     * @memberof WConverhpServer
-     * @function deliver
-     * @param {String} clientId 輸入識別用使用者主鍵字串
-     * @param {*} data 輸入發送函數之輸入資訊
-     * @param {Function} cb 輸入進度函數
-     * @example
-     * let clientId = '...'
-     * let data = {...}
-     * wo.deliver(clientId, data, cb)
-     */
-    ee.deliver = function (clientId, data, cbProgress = function () {}) {
+            //headers
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
 
-        //bms, 此時有可能ea trigger為非同步, 尚未把
-        let bms = get(broadcastMessages, clientId, [])
+            //query
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            // console.log('query', query)
 
-        //push
-        bms.push({
-            mode: 'deliver',
-            data,
-        })
+            //token
+            let token = get(query, 'token', '')
 
-        //modify broadcast data
-        broadcastMessages[clientId] = bms
+            //check
+            if (true) {
 
-        //cbProgress, 無法馬上傳需等待客戶端輪詢接收, 故進度回調只能先回傳100%
-        cbProgress(100)
+                //funCheck
+                let m = funCheck({ token, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
 
+                //check
+                if (m !== true) {
+                    return res.response({ error: 'permission denied' }).code(400)
+                }
+
+            }
+
+            //eeEmit
+            eeEmit('handler', {
+                api: 'apiSliceMerge',
+                headers,
+                query,
+            })
+
+            //filename, chunkTotal, packageId, 從payload接收
+            let filename = get(req, 'payload.filename', '')
+            let chunkTotal = get(req, 'payload.chunk-total', '')
+            let packageId = get(req, 'payload.package-id', '')
+
+            //check
+            if (!isestr(filename)) {
+                console.log('invalid filename in payload')
+                return res.response({ error: 'invalid filename in payload' }).code(400)
+            }
+            if (!isp0int(chunkTotal)) {
+                console.log('invalid chunkTotal in payload')
+                return res.response({ error: 'invalid chunkTotal in payload' }).code(400)
+            }
+            chunkTotal = cint(chunkTotal)
+            if (!isestr(packageId)) {
+                console.log('invalid packageId in payload')
+                return res.response({ error: 'invalid packageId in payload' }).code(400)
+            }
+
+            //merge
+            let merge = async () => {
+                let errTemp = ''
+
+                //pathFileMerge
+                let pathFileMerge = path.join(pathUploadTemp, `${packageId}`)
+                // console.log('pathFileMerge', pathFileMerge)
+
+                //fileStream
+                let fileStream = fs.createWriteStream(pathFileMerge)
+                // console.log(`merge filename[${filename}] start`)
+
+                //使用try catch攔截，使stream能完整創造與結束
+                try {
+                    for (let i = 0; i < chunkTotal; i++) {
+                        // console.log(`merge ${i + 1}/${chunkTotal}`)
+
+                        //chunkIndex
+                        let chunkIndex = i
+
+                        //pathFileChunk
+                        let pathFileChunk = path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
+
+                        //check
+                        if (!fsIsFile(pathFileChunk)) {
+                            // console.log(`pathFileChunk[${pathFileChunk}] is not a file`)
+                            // return res.response({ error: `Missing chunk ${i} of filename[${filename}]` }).code(400)
+                            throw new Error(`Missing chunk ${i} of filename[${filename}]`)
+                        }
+
+                        // console.log(`merging chunk[${chunkIndex + 1}/${chunkTotal}]...`)
+
+                        //chunkData
+                        let chunkData = fs.readFileSync(pathFileChunk)
+
+                        //write
+                        fileStream.write(chunkData)
+
+                        //fsDeleteFile
+                        fsDeleteFile(pathFileChunk)
+
+                        // console.log(`merge chunk[${chunkIndex + 1}/${chunkTotal}] done`)
+                    }
+                }
+                catch (err) {
+                    errTemp = err.message
+                }
+
+                //end
+                fileStream.end()
+                // console.log(`merge filename[${filename}] done`)
+
+                //check
+                if (isestr(errTemp)) {
+                    return Promise.reject(errTemp)
+                }
+
+                //r
+                let r = {
+                    // message: `Merged filename[${filename}] successfully`,
+                    filename,
+                    path: pathFileMerge,
+                }
+
+                return r
+            }
+
+            //core
+            let core = async() => {
+
+                //merge
+                // console.log('merge start')
+                let r = await merge()
+                // console.log('merge done', r)
+
+                //procUpload
+                // console.log('procUpload start')
+                let rr = await procUpload(r)
+                // console.log('procUpload done', rr)
+
+                return rr
+            }
+
+            //core
+            let out = {}
+            await core()
+                .then(function(msg) {
+                    out.success = msg
+                })
+                .catch(function(msg) {
+                    out.error = msg
+                })
+            // console.log('out', out)
+
+            //u8aOut
+            let u8aOut = obj2u8arr(out)
+            // console.log('u8aOut', u8aOut)
+
+            return responseU8aStream(res, u8aOut)
+        },
     }
 
-
+    //startServer
     async function startServer() {
 
         //register inert
-        await server.register(Inert)
+        if (useInert) {
+            await server.register(Inert)
+        }
 
-        //api
-        let api = {
-            method: 'GET',
-            path: '/{file*}',
-            handler: {
-                directory: {
-                    path: './'
-                }
-            },
+        //apiRoutes
+        let apiRoutes = []
+        if (useInert) {
+            let api = {
+                method: 'GET',
+                path: '/{file*}',
+                handler: {
+                    directory: {
+                        path: `${pathStaticFiles}/`
+                    }
+                },
+            }
+            apiRoutes = [
+                ...apiRoutes,
+                api,
+            ]
+        }
+        if (true) {
+            apiRoutes = [
+                ...apiRoutes,
+                apiMain,
+                apiSlice,
+                apiSliceMerge,
+            ]
         }
 
         //route
-        server.route([api, apiMain])
+        server.route(apiRoutes)
 
         //start
         await server.start()
@@ -606,8 +803,9 @@ function WConverhpServer(opt = {}) {
 
     }
 
-    if (opt.serverHapi) {
-        opt.serverHapi.route(apiMain)
+    //start
+    if (get(opt, 'serverHapi')) {
+        opt.serverHapi.route([apiMain, apiSlice, apiSliceMerge])
     }
     else {
         startServer()

@@ -1,25 +1,24 @@
-// import axiosNode from 'axios/lib/axios.js'
-// import axiosNode from 'axios'
-// import axiosBrowser from 'axios/dist/axios.min.js'
-// import axiosBrowser from 'axios/dist/esm/axios.min.js'
-import axios from 'axios' //axios已可自動依照調用環境切換
+import axios from 'axios'
 // import * as FormData from 'form-data/lib/form_data.js'
 // import FormData from 'form-data'
 import get from 'lodash-es/get.js'
-import each from 'lodash-es/each.js'
-// import getGlobal from 'wsemi/src/getGlobal.mjs'
 import isWindow from 'wsemi/src/isWindow.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import genID from 'wsemi/src/genID.mjs'
-import Evem from 'wsemi/src/evem.mjs'
-import pm2resolve from 'wsemi/src/pm2resolve.mjs'
+import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
-import isearr from 'wsemi/src/isearr.mjs'
+import isp0int from 'wsemi/src/isp0int.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import iseobj from 'wsemi/src/iseobj.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import strright from 'wsemi/src/strright.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
+import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
+import now2strp from 'wsemi/src/now2strp.mjs'
 
 
 /**
@@ -28,15 +27,16 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * @class
  * @param {Object} opt 輸入設定參數物件
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
- * @param {String} [opt.apiName='api'] 輸入api名稱，預設為'api'
- * @param {Integer} [opt.timePolling=2000] 輸入輪詢間隔時間整數，單位為毫秒，預設為2000
+ * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
+ * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Integer} [opt.retry=3] 輸入傳輸失敗重試次數整數，預設為3
- * @returns {Object} 回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver
+ * @returns {Object} 回傳通訊物件，可使用函數execute、upload
  * @example
  *
  * import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'
  *
  * let opt = {
+ *     FormData,
  *     url: 'http://localhost:8080',
  *     apiName: 'api',
  * }
@@ -44,211 +44,219 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
  * //new
  * let wo = new WConverhpClient(opt)
  *
- * wo.on('open', function() {
- *     console.log('client nodejs: open')
- * })
- * wo.on('openOnce', function() {
- *     console.log('client nodejs: openOnce')
+ * async function execute(name, u8a) {
  *
  *     //p
- *     let name = 'zdata.b1'
  *     let p = {
  *         a: 12,
  *         b: 34.56,
  *         c: 'test中文',
  *         d: {
- *             name: name,
- *             u8a: new Uint8Array([66, 97, 115]),
- *             //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),
- *         }
+ *             name,
+ *             u8a,
+ *         },
  *     }
+ *     console.log('p', p)
  *
  *     //execute
- *     wo.execute('add', { p },
+ *     await wo.execute('add', { p },
  *         function (prog, p, m) {
- *             console.log('client nodejs: execute: prog', prog, p, m)
+ *             console.log('client web: execute: prog', prog, p, m)
  *         })
  *         .then(function(r) {
- *             console.log('client nodejs: execute: add', r)
+ *             console.log('client web: execute: add', r)
+ *             console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
+ *             // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
  *         })
- *         .catch(function(err) {
- *             console.log('client nodejs: execute: catch', err)
- *         })
- *
- *     //broadcast
- *     wo.broadcast('client nodejs broadcast hi', function (prog) {
- *         console.log('client nodejs: broadcast: prog', prog)
- *     })
- *         .catch(function(err) {
- *             console.log('client nodejs: broadcast: catch', err)
+ *         .catch(function (err) {
+ *             console.log('client web: execute: catch', err)
  *         })
  *
- *     //deliver
- *     wo.deliver('client nodejs deliver hi', function (prog) {
- *         console.log('client nodejs: deliver: prog', prog)
- *     })
- *         .catch(function(err) {
- *             console.log('client nodejs: deliver: catch', err)
- *         })
+ * }
  *
- * })
- * wo.on('close', function() {
- *     console.log('client nodejs: close')
- * })
- * wo.on('error', function(err) {
- *     console.log('client nodejs: error', err)
- * })
- * wo.on('reconn', function() {
- *     console.log('client nodejs: reconn')
- * })
- * wo.on('broadcast', function(data) {
- *     console.log('client nodejs: broadcast', data)
- * })
- * wo.on('deliver', function(data) {
- *     console.log('client nodejs: deliver', data)
- * })
+ * function executeWithU8a() {
+ *     let core = async() => {
+ *
+ *         //u8a
+ *         let u8a = new Uint8Array([66, 97, 115])
+ *         console.log('executeWithU8a u8a', u8a)
+ *
+ *         //execute
+ *         await execute('zdata.b1', u8a)
+ *
+ *     }
+ *     core()
+ * }
+ * executeWithU8a()
+ *
+ * function executeWithFile() {
+ *     let core = async() => {
+ *
+ *         //u8a
+ *         let u8a = new Uint8Array(fs.readFileSync('../_data/10mb.7z'))
+ *         console.log('executeWithFile u8a', u8a)
+ *
+ *         //execute
+ *         await execute('10mb.7z', u8a)
+ *
+ *     }
+ *     core()
+ * }
+ * executeWithFile()
+ *
+ * function uploadLargeFile() {
+ *     let core = async() => {
+ *
+ *         //u8a
+ *         let u8a = new Uint8Array(fs.readFileSync('../_data/1000mb.7z'))
+ *         console.log('u8a.length', u8a.length)
+ *         console.log('uploadLargeFile u8a', u8a)
+ *
+ *         await wo.upload('1000mb.7z', u8a,
+ *             function (prog, p, m) {
+ *                 console.log('client web: upload: prog', prog, p, m)
+ *             })
+ *             .then(function(res) {
+ *                 console.log('client web: upload: then', res)
+ *             })
+ *             .catch(function (err) {
+ *                 console.log('client web: upload: catch', err)
+ *             })
+ *
+ *     }
+ *     core()
+ * }
+ * uploadLargeFile()
  *
  */
 function WConverhpClient(opt) {
-    let clientId = genID() //供伺服器識別真實連線使用者
 
-
-    //ee, ev
-    let ee = new Evem()
-    //let ev = new Evem()
-
-
-    //eeEmit
-    function eeEmit(name, ...args) {
-        setTimeout(() => {
-            ee.emit(name, ...args)
-        }, 1)
+    //_url
+    let _url = get(opt, 'url')
+    if (!isestr(_url)) {
+        _url = 'http://localhost:8080'
     }
 
+    //apiName
+    let apiName = get(opt, 'apiName')
+    if (!isestr(apiName)) {
+        apiName = 'api'
+    }
 
-    function core() {
+    //url
+    let url = ''
+    if (strright(_url, 1) === '/') {
+        url = _url + apiName
+    }
+    else {
+        url = _url + '/' + apiName
+    }
 
+    //sizeSlice
+    let sizeSlice = get(opt, 'sizeSlice')
+    if (!ispint(sizeSlice)) {
+        sizeSlice = 1024 * 1024 //1m
+    }
 
-        //default
-        if (!opt.url) {
-            opt.url = 'http://localhost:8080'
-        }
-        if (!opt.apiName) {
-            opt.apiName = 'api'
-        }
-        if (!opt.timePolling) {
-            opt.timePolling = 2000
-        }
-        if (!opt.retry) {
-            opt.retry = 3
-        }
+    //retry
+    let retry = get(opt, 'retry')
+    if (!isp0int(retry)) {
+        retry = 3
+    }
 
+    //env
+    let env = isWindow() ? 'browser' : 'nodejs'
+    // console.log('env', env)
 
-        //url
-        let url = ''
-        if (strright(opt.url, 1) === '/') {
-            url = opt.url + opt.apiName
+    //res2u8arr
+    async function res2u8arr(bb) {
+        //blob(in browser) or buffer(in nodejs) to u8a
+        let u8a
+        if (env === 'browser') {
+            u8a = await blob2u8arr(bb)
         }
         else {
-            url = opt.url + '/' + opt.apiName
+            u8a = new Uint8Array(bb)
         }
+        return u8a
+    }
 
-
-        /**
-         * Hapi監聽開啟事件
-         *
-         * @memberof WConverhpClient
-         * @example
-         * wo.on('open', function() {
-         *     ...
-         * })
-         */
-        function onOpen() {} onOpen()
-        function open() {
-            eeEmit('open')
+    //u8arr2bb
+    function u8arr2bb(u8a) {
+        //u8a to blob(in browser) or buffer(in nodejs)
+        let bb
+        if (env === 'browser') {
+            bb = new Blob([u8a.buffer])
         }
-
-
-        /**
-         * Hapi監聽第一次開啟事件
-         *
-         * @memberof WConverhpClient
-         * @example
-         * wo.on('openOnce', function() {
-         *     ...
-         * })
-         */
-        function onOpenOnce() {} onOpenOnce()
-        function openOnce() {
-            eeEmit('openOnce')
+        else { //nodejs
+            bb = Buffer.from(u8a)
         }
+        return bb
+    }
 
+    //send
+    function send(type, pkg, opt = {}) {
 
-        /**
-         * Hapi監聽錯誤事件
-         *
-         * @memberof WConverhpClient
-         * @param {*} err 接收錯誤訊息
-         * @example
-         * wo.on('error', function(err) {
-         *     ...
-         * })
-         */
-        function onError() {} onError()
-        function error(msg, err) {
-            eeEmit('error', { msg, err })
+        //headers
+        let headers = get(opt, 'headers')
+        if (!isobj(headers)) {
+            headers = {}
         }
+        // console.log('headers', headers)
 
+        //dataType
+        let dataType = get(opt, 'dataType', '')
+        if (dataType !== 'blob' && dataType !== 'obj' && dataType !== 'fmd' && dataType !== 'json') {
+            dataType = 'blob'
+        }
+        // console.log('dataType', dataType)
 
-        //res2u8arr
-        async function res2u8arr(env, bb) {
-            let u8a
-            if (env === 'browser') {
-                u8a = await blob2u8arr(bb)
+        //cbProgress
+        let cbProgress = get(opt, 'cbProgress')
+
+        //urlUse
+        let urlUse = ''
+        if (type === 'basic') {
+            urlUse = url
+        }
+        else if (type === 'slice') {
+            urlUse = `${url}slc`
+        }
+        else if (type === 'slicemerge') {
+            urlUse = `${url}slcm`
+        }
+        else {
+            throw new Error(`invalid type[${type}]`)
+        }
+        // console.log('urlUse', urlUse)
+
+        //pm
+        let pm = genPm()
+
+        //dd, ct
+        let dd = null
+        let ct = {}
+        if (dataType === 'blob') {
+
+            //set ct
+            ct = {
+                'Content-Type': 'application/octet-stream',
             }
-            else {
-                u8a = new Uint8Array(bb)
-            }
-            return u8a
+
+            //set dd
+            dd = pkg
+
         }
+        else if (dataType === 'fmd') {
 
-
-        //sendDataCore
-        function sendDataCore(data, cbProgress) {
-            //console.log('sendData', data, cbProgress)
-
-            //pm
-            let pm = genPm()
-
-            //env
-            let env = isWindow() ? 'browser' : 'nodejs'
-            // console.log('env', env)
-
-            // //g
-            // let g = getGlobal()
-
-            //obj2u8arr
-            let u8a = obj2u8arr(data)
-            // console.log('u8a', u8a)
-
-            //u8a to blob(in browser) or buffer(in nodejs)
-            let bb
-            if (env === 'browser') {
-                bb = new Blob([u8a.buffer])
-            }
-            else { //nodejs
-                bb = Buffer.from(u8a)
-            }
-            // console.log('bb', bb)
-
-            //new
+            //fmd
             let fmd
             if (env === 'browser') {
                 fmd = new FormData()
             }
             else {
                 if (isfun(opt.FormData)) {
-                    fmd = new opt.FormData({ maxDataSize: 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1g
+                    fmd = new opt.FormData({ maxDataSize: 1024 * 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1tb
                 }
                 else {
                     console.log(`invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
@@ -257,441 +265,369 @@ function WConverhpClient(opt) {
             }
 
             //append
-            //fmd.append('aa', 'test')
-            fmd.append('bb', bb)
+            fmd.append('bb', pkg)
             // console.log('fmd', fmd)
 
-            //ct
-            let ct = 'multipart/form-data'
+            //set ct
             if (env === 'nodejs') {
-                ct += `; boundary=${fmd.getBoundary()}` //nodejs, 使用套件form-data需設定boundary
-            }
-            // console.log('ct', ct)
-
-            //rt
-            let rt = 'blob'
-            if (env === 'nodejs') {
-                rt = 'arraybuffer' //nodejs下沒有blob, 只能設定'json', 'arraybuffer', 'document', 'json', 'text', 'stream'
-            }
-            // console.log('rt', rt)
-
-            //s
-            let s = {
-                method: 'POST',
-                url,
-                data: fmd,
-                headers: {
-                    'Content-Type': ct, //數據視為file上傳
-                },
-                timeout: 5 * 60 * 1000, //5分鐘
-                maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
-                maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
-                responseType: rt,
-                onUploadProgress: function(ev) {
-                    //console.log('onUploadProgress', ev)
-
-                    //r
-                    let r = 0
-                    let loaded = ev.loaded
-                    let total = ev.total
-                    if (ispint(total)) {
-                        r = (loaded * 100) / total
-                    }
-
-                    //cbProgress
-                    if (isfun(cbProgress)) {
-                        cbProgress(Math.floor(r), loaded, 'upload')
-                    }
-
-                },
-                onDownloadProgress: function (ev) {
-                    // console.log('onDownloadProgress', ev)
-
-                    //r
-                    let r = 0
-                    let loaded = ev.loaded
-                    // let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
-                    let total = ev.total
-                    if (ispint(total)) {
-                        r = (loaded * 100) / total
-                    }
-
-                    //cbProgress
-                    if (isfun(cbProgress)) {
-                        cbProgress(Math.floor(r), loaded, 'donwload')
-                    }
-
-                },
-            }
-            // console.log('s', s)
-
-            //axios
-            //使用import axios from 'axios', 若於套件內測試, 由於執行時axios自動選用nodejs或browser版本, 分不出差異
-            //但若是發佈成套件再由其他套件呼叫使用就會預設使用axiosNode版本, 導致瀏覽器端出錯: Cannot convert undefined or null to object[at mergeConfig]
-            // let axios = null
-            // if (env === 'browser') {
-            //     axios = axiosBrowser
-            // }
-            // else {
-            //     axios = axiosNode
-            // }
-
-            //axios
-            axios(s)
-                .then(async (res) => {
-                    // console.log('axios then', res)
-
-                    //bb
-                    let bb = get(res, 'data')
-                    // console.log('bb', bb)
-
-                    //res2u8arr
-                    let u8a = await res2u8arr(env, bb)
-                    // console.log('u8a', u8a)
-
-                    //u8arr2obj
-                    let data = u8arr2obj(u8a)
-                    // console.log('data', data)
-
-                    pm.resolve(data)
-                })
-                .catch(async (res) => {
-                    //console.log('axios catch', res.toJSON())
-                    //Network Error除可能是網路斷線之外, 亦可能因硬碟空間不足(<4g)無法下載, 或是被瀏覽器外掛封鎖阻擋
-
-                    //statusText, err
-                    let statusText = get(res, 'response.statusText') || get(res, 'message')
-                    let err = get(res, 'response.data') || get(res, 'stack')
-
-                    if (statusText) {
-                        // console.log('statusText', statusText)
-                        data = statusText
-                    }
-                    else if (err) {
-                        // console.log('err', err)
-                        data = err
-                    }
-                    else {
-                        try {
-                            res = res.toJSON()
-                        }
-                        catch (err) {}
-                        console.log('err', res)
-                        data = 'Can not connect to server.'
-                    }
-                    if (data === 'Network Error') {
-                        data = `${data}. Make sure your space of hard drive is large enough or blocking by browser plugins.`
-                    }
-
-                    pm.reject(data)
-                })
-
-            return pm
-        }
-
-
-        //sendData
-        async function sendData(data, cbProgress) {
-
-            //sendDataCore
-            let r = await pm2resolve(sendDataCore)(data, cbProgress)
-
-            let n = 0
-            while (r.state === 'error') {
-                n += 1
-                if (n > opt.retry) {
-                    break
+                ct = {
+                    'Content-Type': `multipart/form-data; boundary=${fmd.getBoundary()}` //nodejs, 使用套件form-data需設定boundary
                 }
-                console.log(`retry n=${n}`)
-                r = await pm2resolve(sendDataCore)(data, cbProgress)
+                // console.log('ct', ct)
             }
 
-            //return
-            if (r.state === 'success') {
-                return r.msg
-            }
-            else {
-                return Promise.reject(r.msg)
-            }
+            //set dd
+            dd = fmd
 
         }
-
-
-        //sendMsg
-        function sendMsg(msg, cbResult, cbProgress) {
-            //console.log(msg, cbResult, cbProgress)
-
-            //sendData
-            sendData(msg, cbProgress)
-                .then((res) => {
-                    //console.log('sendData then', res)
-
-                    //cbResult
-                    cbResult(res)
-
-                })
-                .catch((err) => {
-                    //console.log('sendData catch', err)
-
-                    //cbResult
-                    cbResult({
-                        error: err,
-                    })
-
-                })
-
+        else if (dataType === 'json') {
+            dd = JSON.stringify(pkg)
         }
-
-
-        function polling() {
-
-            //setInterval
-            setInterval(() => {
-
-                //triggerPolling
-                triggerPolling()
-                    .then((res) => {
-                        //console.log('polling res', res)
-
-                        //output
-                        let output = get(res, 'success.output', null)
-                        //console.log('output', output)
-
-                        //check
-                        if (output === null) {
-                            return
-                        }
-                        if (!isearr(output)) {
-                            return
-                        }
-
-                        //each
-                        each(output, (v, k) => {
-                            setTimeout(() => {
-
-                                if (get(v, 'mode') === 'broadcast') {
-                                    //broadcast 廣播
-                                    eeEmit('broadcast', get(v, 'data'))
-                                }
-                                else if (get(v, 'mode') === 'deliver') {
-                                    //deliver 發送
-                                    eeEmit('deliver', get(v, 'data'))
-                                }
-                                else {
-                                    error('invalid data.mode in polling', v)
-                                }
-
-                            }, 10 * (k + 1))
-                        })
-
-                    })
-                    .catch((err) => {
-                        error('can not polling', err)
-                        eeEmit('reconn')
-                    })
-
-            }, opt.timePolling)
-
+        else if (dataType === 'obj') {
+            dd = pkg
         }
+        // console.log('dd', dd)
 
-
-        function triggerPolling() {
-
-            //pm
-            let pm = genPm()
-
-            //msg
-            let msg = {
-                _mode: 'polling',
-                clientId,
-            }
-
-            //cb
-            function cb(res) {
-                pm.resolve(res)
-            }
-
-            //sendMsg
-            sendMsg(msg, cb, () => {})
-
-            return pm
+        //rt
+        let rt = 'blob'
+        if (env === 'nodejs') {
+            rt = 'arraybuffer' //nodejs下沒有blob, 只能設定'json', 'arraybuffer', 'document', 'json', 'text', 'stream'
         }
+        // console.log('rt', rt)
 
+        //s
+        let s = {
+            method: 'POST',
+            url: urlUse,
+            data: dd,
+            headers: {
+                ...ct,
+                ...headers,
+            },
+            timeout: 60 * 60 * 1000, //1hr
+            maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
+            maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
+            responseType: rt,
+            onUploadProgress: function(ev) {
+                //console.log('onUploadProgress', ev)
 
-        function triggerExecute(func, input, cbResult, cbProgress) {
-            //console.log('triggerExecute', func, input, cbResult, cbProgress)
+                //r
+                let r = 0
+                let loaded = ev.loaded
+                let total = ev.total
+                if (ispint(total)) {
+                    r = (loaded * 100) / total
+                }
 
-            //mode
-            let mode = 'execute'
+                //cbProgress
+                if (isfun(cbProgress)) {
+                    cbProgress(Math.floor(r), loaded, 'upload')
+                }
 
-            //msg
-            let msg = {
-                _mode: mode,
-                clientId,
-                func,
-                input,
-            }
+            },
+            onDownloadProgress: function (ev) {
+                // console.log('onDownloadProgress', ev)
 
-            //sendMsg
-            sendMsg(msg, cbResult, cbProgress)
+                //r
+                let r = 0
+                let loaded = ev.loaded
+                // let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
+                let total = ev.total
+                if (ispint(total)) {
+                    r = (loaded * 100) / total
+                }
 
+                //cbProgress
+                if (isfun(cbProgress)) {
+                    cbProgress(Math.floor(r), loaded, 'donwload')
+                }
+
+            },
         }
+        // console.log('s', s)
 
+        //axios
+        axios(s)
+            .then(async (res) => {
+                // console.log('axios then', res)
 
-        function triggerBroadcast(input, cbResult, cbProgress) {
-            triggerCommon(input, cbResult, cbProgress, 'broadcast')
-        }
+                //bb
+                let bb = get(res, 'data')
+                // console.log('bb', bb)
 
+                //res2u8arr
+                let u8a = await res2u8arr(bb)
+                // console.log('u8a', u8a)
 
-        function triggerDeliver(input, cbResult, cbProgress) {
-            triggerCommon(input, cbResult, cbProgress, 'deliver')
-        }
+                //u8arr2obj
+                let data = u8arr2obj(u8a)
+                // console.log('data', data)
 
+                //check
+                if (!iseobj(data)) {
+                    console.log('data is not an effective object', data)
+                    pm.reject(`data is not an effective object`)
+                    return
+                }
 
-        function triggerCommon(input, cbResult, cbProgress, mode) {
+                //分離伺服器資料的success或error
+                if (haskey(data, 'success')) {
+                    pm.resolve(data.success)
+                }
+                else if (haskey(data, 'error')) {
+                    pm.resolve(data.error)
+                }
+                else {
+                    console.log('invalid data', data)
+                    pm.reject(`invalid data`)
+                }
 
-            //msg
-            let msg = {
-                _mode: mode,
-                clientId,
-                input,
-            }
+            })
+            .catch(async (res) => {
+                //console.log('axios catch', res.toJSON())
+                //Network Error除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足(<4g)無法下載被瀏覽器拒絕
 
-            //sendMsg
-            sendMsg(msg, cbResult, cbProgress)
+                //data
+                let data = null
 
-        }
+                //statusText, err
+                let statusText = get(res, 'response.statusText') || get(res, 'message')
+                let err = get(res, 'response.data') || get(res, 'stack')
 
+                if (statusText) {
+                    // console.log('statusText', statusText)
+                    data = statusText
+                }
+                else if (err) {
+                    // console.log('err', err)
+                    data = err
+                }
+                else {
+                    try {
+                        res = res.toJSON()
+                    }
+                    catch (err) {}
+                    console.log('err', res)
+                    data = 'Can not connect to server.'
+                }
+                if (data === 'Network Error') {
+                    data = `Network Error. Make sure your space of hard drive is large enough or blocking by browser plugins.`
+                }
 
-        //triggerExecute, 若斷線重連則需自動清除過去監聽事件
-        ee.removeAllListeners('triggerExecute')
-        ee.on('triggerExecute', triggerExecute)
+                pm.reject(data)
+            })
 
-
-        //triggerBroadcast, 若斷線重連則需自動清除過去監聽事件
-        ee.removeAllListeners('triggerBroadcast')
-        ee.on('triggerBroadcast', triggerBroadcast)
-
-
-        //triggerDeliver, 若斷線重連則需自動清除過去監聽事件
-        ee.removeAllListeners('triggerDeliver')
-        ee.on('triggerDeliver', triggerDeliver)
-
-
-        //open, openOnce, polling
-        open()
-        openOnce()
-        polling()
-
-
+        return pm
     }
 
 
-    //parseOutput
-    function parseOutput(pm, data) {
-        let resSuccess = get(data, 'success', null)
-        let resError = get(data, 'error', null)
-        if (resSuccess !== null) {
-            let output = get(resSuccess, 'output')
-            pm.resolve(output)
+    //sendPkg
+    async function sendPkg(type, data, cbProgress) {
+
+        //bb
+        let bb = null
+        try {
+
+            //obj2u8arr
+            let u8a = obj2u8arr(data)
+            // console.log('u8a', u8a)
+
+            //u8a to blob(in browser) or buffer(in nodejs)
+            bb = u8arr2bb(u8a)
+            // console.log('bb', bb)
+
+        }
+        catch (err) {
+            return Promise.reject(err)
+        }
+
+        //send
+        // console.log('send bb...')
+        let res = await send(type, bb, { dataType: 'blob', cbProgress })
+        // console.log('send done', res)
+
+        return res
+    }
+
+
+    //sendData
+    async function sendData(type, data, cbProgress) {
+
+        //fun
+        let fun = pmConvertResolve(sendPkg)
+
+        //sendPkg
+        let r = await fun(type, data, cbProgress)
+
+        let n = 0
+        while (r.state === 'error') {
+            n += 1
+            if (n > retry) {
+                break
+            }
+            console.log(`retry n=${n}`)
+            r = await fun(data, cbProgress)
+        }
+
+        if (r.state === 'success') {
+            return r.msg
         }
         else {
-            pm.reject(resError)
+            return Promise.reject(r.msg)
         }
     }
 
 
-    /**
-     * Hapi通訊物件對伺服器端執行函數，表示傳送資料給伺服器，並請伺服器執行函數
-     *
-     * @memberof WConverhpClient
-     * @function execute
-     * @param {String} func 輸入執行函數之名稱字串
-     * @param {*} [input=null] 輸入執行函數之輸入資訊
-     * @example
-     * let func = 'NameOfFunction'
-     * let input = {...}
-     * wo.execute(func, input)
-     */
-    ee.execute = function (func, input, cbProgress = function () {}) {
-        let pm = genPm()
-        eeEmit('triggerExecute', func, input,
-            function(data) { //結果用promise回傳
-                parseOutput(pm, data)
-            },
-            cbProgress //傳輸進度用cb回傳
-        )
-        return pm
+    //sendDataSlice
+    async function sendDataSlice(tempId, bb, cbProgress) {
+
+        //n
+        let n = 0
+        if (n === 0) {
+            try {
+                n = bb.size //for Blob
+                n = cint(n)
+                console.log('size n', n)
+            }
+            catch (err) {}
+        }
+        if (n === 0) {
+            try {
+                n = bb.length //for Uint8Array
+                n = cint(n)
+            }
+            catch (err) {}
+        }
+        if (n === 0) {
+            return Promise.reject(`Can not get size of bb`)
+        }
+        // console.log('n', n)
+
+        //chunkTotal
+        let chunkTotal = Math.ceil(n / sizeSlice)
+        // console.log('chunkTotal', chunkTotal)
+
+        //packageId
+        let packageId = `${now2strp()}-${genID()}`
+        // console.log('packageId', packageId)
+
+        //upload slice
+        for (let i = 0; i < chunkTotal; i++) {
+
+            //start
+            let start = i * sizeSlice
+
+            //end
+            let end = Math.min(start + sizeSlice, n)
+
+            //chunk
+            let chunk = bb.slice(start, end)
+
+            //hd
+            let hd = {
+                'chunk-index': i,
+                'chunk-total': chunkTotal,
+                'package-id': packageId,
+            }
+
+            //send slice
+            // console.log(`uploading chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}]...`)
+            await send('slice', chunk, { headers: hd, dataType: 'blob', cbProgress })
+            // console.log(`upload chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}] done`, res)
+
+        }
+
+        //send merge
+        // console.log(`merging tempId[${tempId}]...`)
+        let msg = {
+            'filename': tempId,
+            'chunk-total': chunkTotal,
+            'package-id': packageId,
+        }
+        let resMg = await send('slicemerge', msg, { dataType: 'obj', cbProgress }) //bbb fmd obj
+        // console.log(`merge tempId[${tempId}] done`, resMg)
+
+        return resMg
     }
 
+    //execute
+    async function execute(func, input, cbProgress) {
 
-    /**
-     * Hapi通訊物件對伺服器端廣播函數，表示傳送資料給伺服器，還需轉送其他客戶端
-     *
-     * @memberof WConverhpClient
-     * @function broadcast
-     * @param {*} data 輸入廣播函數之輸入資訊
-     * @example
-     * let data = {...}
-     * wo.broadcast(data)
-     */
-    ee.broadcast = function (data, cbProgress = function () {}) {
-        let pm = genPm()
-        eeEmit('triggerBroadcast', data,
-            function(data) { //結果用promise回傳
-                parseOutput(pm, data)
-            },
-            cbProgress //傳輸進度用cb回傳
-        )
-        return pm
+        //msg
+        let msg = {
+            // _mode: mode,
+            // clientId,
+            func,
+            input,
+        }
+
+        //sendData
+        let state = ''
+        let res = null
+        await sendData('basic', msg, cbProgress)
+            .then((msg) => {
+                // console.log('msg', msg)
+
+                //check
+                if (!iseobj(msg)) {
+                    console.log('msg is not an effective object', msg)
+                    state = 'error'
+                    res = 'msg is not an effective object'
+                    return
+                }
+
+                //check, 預期msg格式為{func,input,output}, 但input會刪除
+                if (!haskey(msg, 'output')) {
+                    console.log('invalid msg.output', msg)
+                    state = 'error'
+                    res = 'invalid msg.output'
+                    return
+                }
+
+                state = 'success'
+                res = msg.output
+            })
+            .catch((msg) => {
+                state = 'error'
+                res = msg
+            })
+
+        //r
+        let r = {
+            state,
+            msg: res,
+        }
+        // console.log('sendData r', r)
+
+        //check
+        if (state === '') {
+            console.log('invalid state', state)
+            return Promise.reject('invalid state')
+        }
+
+        //check
+        if (state === 'error') {
+            return Promise.reject('invalid state')
+        }
+
+        return r.msg
     }
 
+    //upload
+    async function upload(tempId, input, cbProgress) {
 
-    /**
-     * Hapi通訊物件對伺服器端發送函數，表示僅傳送資料給伺服器
-     *
-     * @memberof WConverhpClient
-     * @function deliver
-     * @param {*} data 輸入發送函數之輸入資訊
-     * @example
-     * let data = {...}
-     * wo.deliver(data)
-     */
-    ee.deliver = function (data, cbProgress = function () {}) {
-        let pm = genPm()
-        eeEmit('triggerDeliver', data,
-            function(data) { //結果用promise回傳
-                parseOutput(pm, data)
-            },
-            cbProgress //傳輸進度用cb回傳
-        )
-        return pm
+        //bb
+        let bb = input
+
+        return sendDataSlice(tempId, bb, cbProgress)
     }
 
+    //r
+    let r = {}
+    r.execute = execute
+    r.upload = upload
 
-    // /**
-    //  * Hapi監聽重連事件
-    //  *
-    //  * @memberof WConverhpClient
-    //  * @example
-    //  * wo.on('reconn', function() {
-    //  *     ...
-    //  * })
-    //  */
-    // function onReconn() {} onReconn()
-    // function reconn() {
-    //     eeEmit('reconn')
-    //     setTimeout(function() {
-    //         core()
-    //     }, 1000)
-    // }
-
-
-    //core
-    core()
-
-
-    return ee
+    return r
 }
 
 

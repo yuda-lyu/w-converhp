@@ -1,22 +1,22 @@
 {
   "name": "w-converhp",
-  "version": "1.0.40",
+  "version": "2.0.0",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
-    "@hapi/hapi": "^21.3.7",
+    "@hapi/hapi": "^21.3.12",
     "@hapi/inert": "^7.1.0",
-    "axios": "^1.6.8",
+    "axios": "^1.8.1",
     "lodash-es": "^4.17.21",
-    "wsemi": "^1.7.49"
+    "wsemi": "^1.7.70"
   },
   "devDependencies": {
-    "form-data": "^4.0.0",
-    "w-package-tools": "^1.0.75"
+    "form-data": "^4.0.2",
+    "w-package-tools": "^1.0.82"
   },
   "scripts": {
     "@hapi/hapi": "^20.2.1",
     "@hapi/inert": "^6.0.5",
-    "test": "mocha --parallel --timeout 60000 --experimental-modules --es-module-specifier-resolution=node",
+    "test": "mocha --parallel --timeout 60000 --experimental-modules",
     "deploy": "gh-pages -d docs"
   },
   "repository": {

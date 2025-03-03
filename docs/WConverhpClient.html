@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpClient.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpClient.html#.execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpen">onOpen</a></li><li data-type='method'><a href="WConverhpClient.html#.onOpenOnce">onOpenOnce</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a><ul class='methods'><li data-type='method'><a href="WConverhpServer.html#.broadcast">broadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.deliver">deliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onBroadcast">onBroadcast</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientChange">onClientChange</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientEnter">onClientEnter</a></li><li data-type='method'><a href="WConverhpServer.html#.onClientLeave">onClientLeave</a></li><li data-type='method'><a href="WConverhpServer.html#.onDeliver">onDeliver</a></li><li data-type='method'><a href="WConverhpServer.html#.onError">onError</a></li><li data-type='method'><a href="WConverhpServer.html#.onExecute">onExecute</a></li><li data-type='method'><a href="WConverhpServer.html#.onOpen">onOpen</a></li></ul></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul>
     
 </nav>
 
@@ -80,7 +80,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line112">line 112</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line132">line 132</a>
     </li></ul></dd>
     
 
@@ -127,7 +127,7 @@
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'let opt = {    url: 'http://localhost:8080',    apiName: 'api',}//newlet wo = new WConverhpClient(opt)wo.on('open', function() {    console.log('client nodejs: open')})wo.on('openOnce', function() {    console.log('client nodejs: openOnce')    //p    let name = 'zdata.b1'    let p = {        a: 12,        b: 34.56,        c: 'test中文',        d: {            name: name,            u8a: new Uint8Array([66, 97, 115]),            //u8a: new Uint8Array(fs.readFileSync('C:\\Users\\Administrator\\Desktop\\'+name)),        }    }    //execute    wo.execute('add', { p },        function (prog, p, m) {            console.log('client nodejs: execute: prog', prog, p, m)        })        .then(function(r) {            console.log('client nodejs: execute: add', r)        })        .catch(function(err) {            console.log('client nodejs: execute: catch', err)        })    //broadcast    wo.broadcast('client nodejs broadcast hi', function (prog) {        console.log('client nodejs: broadcast: prog', prog)    })        .catch(function(err) {            console.log('client nodejs: broadcast: catch', err)        })    //deliver    wo.deliver('client nodejs deliver hi', function (prog) {        console.log('client nodejs: deliver: prog', prog)    })        .catch(function(err) {            console.log('client nodejs: deliver: catch', err)        })})wo.on('close', function() {    console.log('client nodejs: close')})wo.on('error', function(err) {    console.log('client nodejs: error', err)})wo.on('reconn', function() {    console.log('client nodejs: reconn')})wo.on('broadcast', function(data) {    console.log('client nodejs: broadcast', data)})wo.on('deliver', function(data) {    console.log('client nodejs: deliver', data)})</code></pre>
+    <pre class="prettyprint"><code>import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'let opt = {    FormData,    url: 'http://localhost:8080',    apiName: 'api',}//newlet wo = new WConverhpClient(opt)async function execute(name, u8a) {    //p    let p = {        a: 12,        b: 34.56,        c: 'test中文',        d: {            name,            u8a,        },    }    console.log('p', p)    //execute    await wo.execute('add', { p },        function (prog, p, m) {            console.log('client web: execute: prog', prog, p, m)        })        .then(function(r) {            console.log('client web: execute: add', r)            console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)            // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)        })        .catch(function (err) {            console.log('client web: execute: catch', err)        })}function executeWithU8a() {    let core = async() => {        //u8a        let u8a = new Uint8Array([66, 97, 115])        console.log('executeWithU8a u8a', u8a)        //execute        await execute('zdata.b1', u8a)    }    core()}executeWithU8a()function executeWithFile() {    let core = async() => {        //u8a        let u8a = new Uint8Array(fs.readFileSync('../_data/10mb.7z'))        console.log('executeWithFile u8a', u8a)        //execute        await execute('10mb.7z', u8a)    }    core()}executeWithFile()function uploadLargeFile() {    let core = async() => {        //u8a        let u8a = new Uint8Array(fs.readFileSync('../_data/1000mb.7z'))        console.log('u8a.length', u8a.length)        console.log('uploadLargeFile u8a', u8a)        await wo.upload('1000mb.7z', u8a,            function (prog, p, m) {                console.log('client web: upload: prog', prog, p, m)            })            .then(function(res) {                console.log('client web: upload: then', res)            })            .catch(function (err) {                console.log('client web: upload: catch', err)            })    }    core()}uploadLargeFile()</code></pre>
 
 
 
@@ -277,14 +277,14 @@
                 </td>
             
 
-            <td class="description last"><p>輸入api名稱，預設為'api'</p></td>
+            <td class="description last"><p>輸入API名稱字串，預設'api'</p></td>
         </tr>
 
     
 
         <tr>
             
-                <td class="name"><code>timePolling</code></td>
+                <td class="name"><code>sizeSlice</code></td>
             
 
             <td class="type">
@@ -312,12 +312,12 @@
             
                 <td class="default">
                 
-                    <code>2000</code>
+                    <code>1024*1024</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入輪詢間隔時間整數，單位為毫秒，預設為2000</p></td>
+            <td class="description last"><p>輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024</p></td>
         </tr>
 
     
@@ -390,7 +390,7 @@
 
         
 <div class="param-desc">
-    <p>回傳通訊物件，可監聽事件open、openOnce、close、error、reconn、broadcast、deliver，可使用函數execute、broadcast、deliver</p>
+    <p>回傳通訊物件，可使用函數execute、upload</p>
 </div>
 
 
@@ -431,806 +431,6 @@
     
 
     
-        <h3 class="subsection-title">Methods</h3>
-
-        
-            
-
-    
-
-    <h4 class="name" id=".broadcast"><span class="type-signature type-signature-static">(static) </span>broadcast<span class="signature">(data)</span><span class="type-signature"></span></h4>
-
-    
-
-
-
-
-<dl class="details">
-    
-    <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>Hapi通訊物件對伺服器端廣播函數，表示傳送資料給伺服器，還需轉送其他客戶端</p></li></ul></dd>
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line628">line 628</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-    <h5 class="h5-examples">Example</h5>
-    
-    <pre class="prettyprint"><code>let data = {...}wo.broadcast(data)</code></pre>
-
-
-
-
-    <h5 class="h5-parameters">Parameters:</h5>
-    
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Name</th>
-        
-
-        <th>Type</th>
-
-        
-
-        
-
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-
-    <tbody>
-    
-
-        <tr>
-            
-                <td class="name"><code>data</code></td>
-            
-
-            <td class="type">
-            
-                
-<span class="param-type">*</span>
-
-
-
-            
-            </td>
-
-            
-
-            
-
-            <td class="description last"><p>輸入廣播函數之輸入資訊</p></td>
-        </tr>
-
-    
-    </tbody>
-</table>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    <h4 class="name" id=".deliver"><span class="type-signature type-signature-static">(static) </span>deliver<span class="signature">(data)</span><span class="type-signature"></span></h4>
-
-    
-
-
-
-
-<dl class="details">
-    
-    <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>Hapi通訊物件對伺服器端發送函數，表示僅傳送資料給伺服器</p></li></ul></dd>
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line650">line 650</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-    <h5 class="h5-examples">Example</h5>
-    
-    <pre class="prettyprint"><code>let data = {...}wo.deliver(data)</code></pre>
-
-
-
-
-    <h5 class="h5-parameters">Parameters:</h5>
-    
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Name</th>
-        
-
-        <th>Type</th>
-
-        
-
-        
-
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-
-    <tbody>
-    
-
-        <tr>
-            
-                <td class="name"><code>data</code></td>
-            
-
-            <td class="type">
-            
-                
-<span class="param-type">*</span>
-
-
-
-            
-            </td>
-
-            
-
-            
-
-            <td class="description last"><p>輸入發送函數之輸入資訊</p></td>
-        </tr>
-
-    
-    </tbody>
-</table>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    <h4 class="name" id=".execute"><span class="type-signature type-signature-static">(static) </span>execute<span class="signature">(func, input<span class="signature-attributes">opt</span>)</span><span class="type-signature"></span></h4>
-
-    
-
-
-
-
-<dl class="details">
-    
-    <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>Hapi通訊物件對伺服器端執行函數，表示傳送資料給伺服器，並請伺服器執行函數</p></li></ul></dd>
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line604">line 604</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-    <h5 class="h5-examples">Example</h5>
-    
-    <pre class="prettyprint"><code>let func = 'NameOfFunction'let input = {...}wo.execute(func, input)</code></pre>
-
-
-
-
-    <h5 class="h5-parameters">Parameters:</h5>
-    
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Name</th>
-        
-
-        <th>Type</th>
-
-        
-        <th>Attributes</th>
-        
-
-        
-        <th>Default</th>
-        
-
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-
-    <tbody>
-    
-
-        <tr>
-            
-                <td class="name"><code>func</code></td>
-            
-
-            <td class="type">
-            
-                
-<span class="param-type">String</span>
-
-
-
-            
-            </td>
-
-            
-                <td class="attributes">
-                
-
-                
-
-                
-                </td>
-            
-
-            
-                <td class="default">
-                
-                </td>
-            
-
-            <td class="description last"><p>輸入執行函數之名稱字串</p></td>
-        </tr>
-
-    
-
-        <tr>
-            
-                <td class="name"><code>input</code></td>
-            
-
-            <td class="type">
-            
-                
-<span class="param-type">*</span>
-
-
-
-            
-            </td>
-
-            
-                <td class="attributes">
-                
-                    &lt;optional><br>
-                
-
-                
-
-                
-                </td>
-            
-
-            
-                <td class="default">
-                
-                    <code>null</code>
-                
-                </td>
-            
-
-            <td class="description last"><p>輸入執行函數之輸入資訊</p></td>
-        </tr>
-
-    
-    </tbody>
-</table>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    <h4 class="name" id=".onError"><span class="type-signature type-signature-static">(static) </span>onError<span class="signature">(err)</span><span class="type-signature"></span></h4>
-
-    
-
-
-
-
-<dl class="details">
-    
-    <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>Hapi監聽錯誤事件</p></li></ul></dd>
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line197">line 197</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-    <h5 class="h5-examples">Example</h5>
-    
-    <pre class="prettyprint"><code>wo.on('error', function(err) {    ...})</code></pre>
-
-
-
-
-    <h5 class="h5-parameters">Parameters:</h5>
-    
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Name</th>
-        
-
-        <th>Type</th>
-
-        
-
-        
-
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-
-    <tbody>
-    
-
-        <tr>
-            
-                <td class="name"><code>err</code></td>
-            
-
-            <td class="type">
-            
-                
-<span class="param-type">*</span>
-
-
-
-            
-            </td>
-
-            
-
-            
-
-            <td class="description last"><p>接收錯誤訊息</p></td>
-        </tr>
-
-    
-    </tbody>
-</table>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    <h4 class="name" id=".onOpen"><span class="type-signature type-signature-static">(static) </span>onOpen<span class="signature">()</span><span class="type-signature"></span></h4>
-
-    
-
-
-
-
-<dl class="details">
-    
-    <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>Hapi監聽開啟事件</p></li></ul></dd>
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line166">line 166</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-    <h5 class="h5-examples">Example</h5>
-    
-    <pre class="prettyprint"><code>wo.on('open', function() {    ...})</code></pre>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-            
-
-    
-
-    <h4 class="name" id=".onOpenOnce"><span class="type-signature type-signature-static">(static) </span>onOpenOnce<span class="signature">()</span><span class="type-signature"></span></h4>
-
-    
-
-
-
-
-<dl class="details">
-    
-    <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>Hapi監聽第一次開啟事件</p></li></ul></dd>
-    
-
-    
-    <dt class="tag-source">Source:</dt>
-    <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line181">line 181</a>
-    </li></ul></dd>
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-</dl>
-
-
-
-
-
-
-
-
-
-
-
-    <h5 class="h5-examples">Example</h5>
-    
-    <pre class="prettyprint"><code>wo.on('openOnce', function() {    ...})</code></pre>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-    
 
     
 
@@ -1249,7 +449,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Sun Mar 24 2024 22:49:11 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Mon Mar 03 2025 12:11:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
