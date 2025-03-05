@@ -14,6 +14,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import strright from 'wsemi/src/strright.mjs'
+import evem from 'wsemi/src/evem.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
@@ -168,6 +169,16 @@ function WConverhpClient(opt) {
     let env = isWindow() ? 'browser' : 'nodejs'
     // console.log('env', env)
 
+    //ee
+    let ee = evem() //new events.EventEmitter()
+
+    //eeEmit
+    function eeEmit(name, ...args) {
+        setTimeout(() => {
+            ee.emit(name, ...args)
+        }, 1)
+    }
+
     //res2u8arr
     async function res2u8arr(bb) {
         //blob(in browser) or buffer(in nodejs) to u8a
@@ -259,7 +270,8 @@ function WConverhpClient(opt) {
                     fmd = new opt.FormData({ maxDataSize: 1024 * 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1tb
                 }
                 else {
-                    console.log(`invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
+                    // console.log(`invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
+                    eeEmit('error', `invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
                     throw new Error('invalid opt.FormData')
                 }
             }
@@ -365,7 +377,8 @@ function WConverhpClient(opt) {
 
                 //check
                 if (!iseobj(data)) {
-                    console.log('data is not an effective object', data)
+                    // console.log('data is not an effective object', data)
+                    eeEmit('error', `data is not an effective object`)
                     pm.reject(`data is not an effective object`)
                     return
                 }
@@ -378,7 +391,8 @@ function WConverhpClient(opt) {
                     pm.resolve(data.error)
                 }
                 else {
-                    console.log('invalid data', data)
+                    // console.log('invalid data', data)
+                    eeEmit('error', `invalid data`)
                     pm.reject(`invalid data`)
                 }
 
@@ -407,7 +421,8 @@ function WConverhpClient(opt) {
                         res = res.toJSON()
                     }
                     catch (err) {}
-                    console.log('err', res)
+                    // console.log('err', res)
+                    eeEmit('error', res)
                     data = 'Can not connect to server.'
                 }
                 if (data === 'Network Error') {
@@ -419,7 +434,6 @@ function WConverhpClient(opt) {
 
         return pm
     }
-
 
     //sendPkg
     async function sendPkg(type, data, cbProgress) {
@@ -449,7 +463,6 @@ function WConverhpClient(opt) {
         return res
     }
 
-
     //sendData
     async function sendData(type, data, cbProgress) {
 
@@ -477,7 +490,6 @@ function WConverhpClient(opt) {
         }
     }
 
-
     //sendDataSlice
     async function sendDataSlice(tempId, bb, cbProgress) {
 
@@ -487,7 +499,6 @@ function WConverhpClient(opt) {
             try {
                 n = bb.size //for Blob
                 n = cint(n)
-                console.log('size n', n)
             }
             catch (err) {}
         }
@@ -499,6 +510,7 @@ function WConverhpClient(opt) {
             catch (err) {}
         }
         if (n === 0) {
+            eeEmit('error', `Can not get size of bb`)
             return Promise.reject(`Can not get size of bb`)
         }
         // console.log('n', n)
@@ -544,7 +556,7 @@ function WConverhpClient(opt) {
             'chunk-total': chunkTotal,
             'package-id': packageId,
         }
-        let resMg = await send('slicemerge', msg, { dataType: 'obj', cbProgress }) //bbb fmd obj
+        let resMg = await send('slicemerge', msg, { dataType: 'obj', cbProgress })
         // console.log(`merge tempId[${tempId}] done`, resMg)
 
         return resMg
@@ -601,13 +613,16 @@ function WConverhpClient(opt) {
 
         //check
         if (state === '') {
-            console.log('invalid state', state)
+            // console.log('invalid state', r)
+            eeEmit('error', `invalid state`)
             return Promise.reject('invalid state')
         }
 
         //check
         if (state === 'error') {
-            return Promise.reject('invalid state')
+            // console.log('send data error', r)
+            eeEmit('error', `send data error`)
+            return Promise.reject('send data error')
         }
 
         return r.msg
@@ -622,12 +637,11 @@ function WConverhpClient(opt) {
         return sendDataSlice(tempId, bb, cbProgress)
     }
 
-    //r
-    let r = {}
-    r.execute = execute
-    r.upload = upload
+    //save
+    ee.execute = execute
+    ee.upload = upload
 
-    return r
+    return ee
 }
 
 

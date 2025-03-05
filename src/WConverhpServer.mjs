@@ -408,8 +408,8 @@ function WConverhpServer(opt = {}) {
 
                 //error
                 req.payload.on('error', (err) => {
-                    console.log(`receive payload err`, err)
-                    // pm.reject(res.response({ error: err.message }).code(500))
+                    // console.log(`receive payload err`, err)
+                    eeEmit('error', `receive payload err`)
                     pm.reject(err.message)
                 })
 
@@ -554,8 +554,9 @@ function WConverhpServer(opt = {}) {
                 })
 
                 //error
-                req.payload.on('error', (err) => {
-                    console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] err`, err)
+                req.payload.on('error', () => {
+                    // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] err`, err)
+                    eeEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] err`)
                     pm.reject(`chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] err`)
                 })
 
