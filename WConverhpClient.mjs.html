@@ -46,8 +46,6 @@
     <section>
         <article>
             <pre class="prettyprint source linenums"><code>import axios from 'axios'
-// import * as FormData from 'form-data/lib/form_data.js'
-// import FormData from 'form-data'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
@@ -59,6 +57,7 @@ import isp0int from 'wsemi/src/isp0int.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
+import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import strright from 'wsemi/src/strright.mjs'
 import evem from 'wsemi/src/evem.mjs'
@@ -76,9 +75,10 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  * @param {Object} opt 輸入設定參數物件
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
+ * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Integer} [opt.retry=3] 輸入傳輸失敗重試次數整數，預設為3
- * @returns {Object} 回傳通訊物件，可使用函數execute、upload
+ * @returns {Object} 回傳事件物件，可使用函數execute、upload
  * @example
  *
  * import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'
@@ -200,6 +200,14 @@ function WConverhpClient(opt) {
         url = _url + '/' + apiName
     }
 
+    //getToken
+    let getToken = get(opt, 'getToken', null)
+    if (!isfun(getToken)) {
+        getToken = () => {
+            return ''
+        }
+    }
+
     //sizeSlice
     let sizeSlice = get(opt, 'sizeSlice')
     if (!ispint(sizeSlice)) {
@@ -220,7 +228,7 @@ function WConverhpClient(opt) {
     let ee = evem() //new events.EventEmitter()
 
     //eeEmit
-    function eeEmit(name, ...args) {
+    let eeEmit = (name, ...args) => {
         setTimeout(() => {
             ee.emit(name, ...args)
         }, 1)
@@ -253,7 +261,7 @@ function WConverhpClient(opt) {
     }
 
     //send
-    function send(type, pkg, opt = {}) {
+    async function send(type, pkg, opt = {}) {
 
         //headers
         let headers = get(opt, 'headers')
@@ -264,13 +272,16 @@ function WConverhpClient(opt) {
 
         //dataType
         let dataType = get(opt, 'dataType', '')
-        if (dataType !== 'blob' &amp;&amp; dataType !== 'obj' &amp;&amp; dataType !== 'fmd' &amp;&amp; dataType !== 'json') {
+        if (dataType !== 'blob' &amp;&amp; dataType !== 'fmd' &amp;&amp; dataType !== 'json') {
             dataType = 'blob'
         }
         // console.log('dataType', dataType)
 
         //cbProgress
         let cbProgress = get(opt, 'cbProgress')
+        if (!isfun(cbProgress)) {
+            cbProgress = () => {}
+        }
 
         //urlUse
         let urlUse = ''
@@ -286,7 +297,6 @@ function WConverhpClient(opt) {
         else {
             throw new Error(`invalid type[${type}]`)
         }
-        // console.log('urlUse', urlUse)
 
         //pm
         let pm = genPm()
@@ -334,16 +344,23 @@ function WConverhpClient(opt) {
                 }
                 // console.log('ct', ct)
             }
+            else {
+                //browser會自動根據fmd的邊界boundary來設定
+            }
 
             //set dd
             dd = fmd
 
         }
         else if (dataType === 'json') {
+            //axios預設會將物件自動轉換為JSON, 此處指定Content-Type且強制轉, 避免可能問題
+
+            //set ct
+            ct = {
+                'Content-Type': 'application/json',
+            }
+
             dd = JSON.stringify(pkg)
-        }
-        else if (dataType === 'obj') {
-            dd = pkg
         }
         // console.log('dd', dd)
 
@@ -354,12 +371,19 @@ function WConverhpClient(opt) {
         }
         // console.log('rt', rt)
 
+        //token
+        let token = getToken()
+        if (ispm(token)) {
+            token = await token
+        }
+
         //s
         let s = {
             method: 'POST',
             url: urlUse,
             data: dd,
             headers: {
+                Authorization: `Bearer ${token}`,
                 ...ct,
                 ...headers,
             },
@@ -379,9 +403,7 @@ function WConverhpClient(opt) {
                 }
 
                 //cbProgress
-                if (isfun(cbProgress)) {
-                    cbProgress(Math.floor(r), loaded, 'upload')
-                }
+                cbProgress(Math.floor(r), loaded, 'upload')
 
             },
             onDownloadProgress: function (ev) {
@@ -397,9 +419,7 @@ function WConverhpClient(opt) {
                 }
 
                 //cbProgress
-                if (isfun(cbProgress)) {
-                    cbProgress(Math.floor(r), loaded, 'donwload')
-                }
+                cbProgress(Math.floor(r), loaded, 'download')
 
             },
         }
@@ -435,7 +455,8 @@ function WConverhpClient(opt) {
                     pm.resolve(data.success)
                 }
                 else if (haskey(data, 'error')) {
-                    pm.resolve(data.error)
+                    eeEmit('error', data.error)
+                    pm.reject(data.error)
                 }
                 else {
                     // console.log('invalid data', data)
@@ -454,6 +475,10 @@ function WConverhpClient(opt) {
                 //statusText, err
                 let statusText = get(res, 'response.statusText') || get(res, 'message')
                 let err = get(res, 'response.data') || get(res, 'stack')
+                // console.log(`get(res, 'response.statusText')`, get(res, 'response.statusText'))
+                // console.log(`get(res, 'message')`, get(res, 'message'))
+                // console.log(`get(res, 'response.data')`, get(res, 'response.data'))
+                // console.log(`get(res, 'stack')`, get(res, 'stack'))
 
                 if (statusText) {
                     // console.log('statusText', statusText)
@@ -526,7 +551,7 @@ function WConverhpClient(opt) {
                 break
             }
             console.log(`retry n=${n}`)
-            r = await fun(data, cbProgress)
+            r = await fun(type, data, cbProgress)
         }
 
         if (r.state === 'success') {
@@ -570,6 +595,29 @@ function WConverhpClient(opt) {
         let packageId = `${now2strp()}-${genID()}`
         // console.log('packageId', packageId)
 
+        //progCount, progWeightSlice
+        let progCount = 0
+        let progWeightSlice = 0.99 //上傳階段進度使用99%
+        // let progWeightMerge = 0.01 //合併階段進度使用1%
+
+        //cbProgressSlice
+        let cbProgressSlice = (perc, _psiz, dir) => {
+            if (dir === 'upload' &amp;&amp; perc === 100) {
+                progCount++
+                let r = progCount / chunkTotal
+                let prog = r * progWeightSlice * 100
+                let psiz = r * n
+                cbProgress(prog, psiz, 'upload')
+            }
+        }
+
+        //cbProgressMerge
+        let cbProgressMerge = (perc, _psiz, dir) => {
+            if (dir === 'download' &amp;&amp; perc === 100) {
+                cbProgress(100, n, 'upload')
+            }
+        }
+
         //upload slice
         for (let i = 0; i &lt; chunkTotal; i++) {
 
@@ -591,19 +639,19 @@ function WConverhpClient(opt) {
 
             //send slice
             // console.log(`uploading chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}]...`)
-            await send('slice', chunk, { headers: hd, dataType: 'blob', cbProgress })
+            await send('slice', chunk, { headers: hd, dataType: 'blob', cbProgress: cbProgressSlice })
             // console.log(`upload chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}] done`, res)
 
         }
 
         //send merge
-        // console.log(`merging tempId[${tempId}]...`)
+        console.log(`merging tempId[${tempId}]...`)
         let msg = {
             'filename': tempId,
             'chunk-total': chunkTotal,
             'package-id': packageId,
         }
-        let resMg = await send('slicemerge', msg, { dataType: 'obj', cbProgress })
+        let resMg = await send('slicemerge', msg, { dataType: 'json', cbProgress: cbProgressMerge })
         // console.log(`merge tempId[${tempId}] done`, resMg)
 
         return resMg
@@ -627,7 +675,14 @@ function WConverhpClient(opt) {
             .then((msg) => {
                 // console.log('msg', msg)
 
-                //check
+                //check, 若為字串為錯誤訊息
+                if (isestr(msg)) {
+                    state = 'error'
+                    res = msg
+                    return
+                }
+
+                //check, 若為非物件為非預期錯誤
                 if (!iseobj(msg)) {
                     console.log('msg is not an effective object', msg)
                     state = 'error'
@@ -635,7 +690,7 @@ function WConverhpClient(opt) {
                     return
                 }
 
-                //check, 預期msg格式為{func,input,output}, 但input會刪除
+                //check, 若不存在output為非預期錯誤, msg格式為{func,input,output}但input會刪除
                 if (!haskey(msg, 'output')) {
                     console.log('invalid msg.output', msg)
                     state = 'error'
@@ -651,13 +706,6 @@ function WConverhpClient(opt) {
                 res = msg
             })
 
-        //r
-        let r = {
-            state,
-            msg: res,
-        }
-        // console.log('sendData r', r)
-
         //check
         if (state === '') {
             // console.log('invalid state', r)
@@ -668,11 +716,11 @@ function WConverhpClient(opt) {
         //check
         if (state === 'error') {
             // console.log('send data error', r)
-            eeEmit('error', `send data error`)
-            return Promise.reject('send data error')
+            // eeEmit('error', res) //一般錯誤會嘗試n次, 每次也都會emit, 故此處不再基於已知state='error'時再emit
+            return Promise.reject(res)
         }
 
-        return r.msg
+        return res
     }
 
     //upload
@@ -707,7 +755,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Wed Mar 05 2025 11:15:07 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Sun Mar 30 2025 19:42:30 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
