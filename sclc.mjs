@@ -8,10 +8,17 @@ let opt = {
     FormData,
     url: 'http://localhost:8080',
     apiName: 'api',
+    getToken: () => {
+        return 'token-for-test'
+    },
 }
 
 //new
 let wo = new WConverhpClient(opt)
+
+wo.on('error', function(err) {
+    console.log(`error`, err)
+})
 
 function uploadLargeFile() {
     let core = async() => {
@@ -23,7 +30,10 @@ function uploadLargeFile() {
 
         await wo.upload('1000mb.7z', u8a,
             function (prog, p, m) {
-                console.log('client web: upload: prog', prog, p, m)
+                // console.log('client web: upload: prog', prog, p, m)
+                if (m === 'upload') {
+                    console.log('client web: upload: prog', prog)
+                }
             })
             .then(function(res) {
                 console.log('client web: upload: then', res)

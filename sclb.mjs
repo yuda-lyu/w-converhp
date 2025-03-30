@@ -8,10 +8,17 @@ let opt = {
     FormData,
     url: 'http://localhost:8080',
     apiName: 'api',
+    getToken: () => {
+        return 'token-for-test'
+    },
 }
 
 //new
 let wo = new WConverhpClient(opt)
+
+wo.on('error', function(err) {
+    console.log(`error`, err)
+})
 
 async function execute(name, u8a) {
 
@@ -30,7 +37,12 @@ async function execute(name, u8a) {
     //execute
     await wo.execute('add', { p },
         function (prog, p, m) {
-            console.log('client web: execute: prog', prog, p, m)
+            if (m === 'upload') {
+                console.log('client web: execute: prog', prog * 0.5, p, m)
+            }
+            if (m === 'download') {
+                console.log('client web: execute: prog', 50 + prog * 0.5, p, m)
+            }
         })
         .then(function(r) {
             console.log('client web: execute: add', r)

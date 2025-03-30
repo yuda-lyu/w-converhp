@@ -11,7 +11,7 @@ fns = fns.filter((v) => {
 })
 
 rollupFiles({
-    fns: fns,
+    fns,
     fdSrc,
     fdTar,
     nameDistType: 'kebabCase',

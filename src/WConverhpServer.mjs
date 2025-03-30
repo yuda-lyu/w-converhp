@@ -38,7 +38,7 @@ import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
  * @param {Integer} [opt.delayForBasic=0] 輸入基本API用延遲響應時間，單位ms，預設0
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null
- * @returns {Object} 回傳通訊物件，可監聽事件execute、upload、handler
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、handler
  * @example
  *
  * import _ from 'lodash-es'
@@ -194,8 +194,8 @@ function WConverhpServer(opt = {}) {
 
         //create server
         server = Hapi.server({
-            port,
             //host: 'localhost',
+            port,
             routes: {
                 cors: {
                     origin: corsOrigins, //Access-Control-Allow-Origin
@@ -210,7 +210,7 @@ function WConverhpServer(opt = {}) {
     let ee = evem() //new events.EventEmitter()
 
     //eeEmit
-    function eeEmit(name, ...args) {
+    let eeEmit = (name, ...args) => {
         setTimeout(() => {
             ee.emit(name, ...args)
         }, 1)
@@ -309,7 +309,7 @@ function WConverhpServer(opt = {}) {
                 maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
-                output: 'stream',
+                output: 'stream', //前端用blob與application/octet-stream傳
                 parse: false,
             },
             timeout: {
@@ -332,20 +332,31 @@ function WConverhpServer(opt = {}) {
             // console.log('query', query)
 
             //token
-            let token = get(query, 'token', '')
+            // let token = get(query, 'token', '')
+            let token = get(headers, 'authorization', '')
+            token = isestr(token) ? token : ''
 
             //check
             if (true) {
 
                 //funCheck
-                let m = funCheck({ token, headers, query })
+                let m = funCheck({ apiType: 'main', token, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
 
                 //check
                 if (m !== true) {
-                    return res.response({ error: 'permission denied' }).code(400)
+
+                    //u8aOut
+                    let out = {
+                        error: 'permission denied',
+                    }
+                    let u8aOut = obj2u8arr(out)
+                    // console.log('main u8aOut', u8aOut)
+
+                    // console.log('main return permission denied')
+                    return responseU8aStream(res, u8aOut)
                 }
 
             }
@@ -456,7 +467,7 @@ function WConverhpServer(opt = {}) {
                 maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
-                output: 'stream',
+                output: 'stream', //前端用blob與application/octet-stream傳
                 parse: false,
             },
             timeout: {
@@ -479,20 +490,31 @@ function WConverhpServer(opt = {}) {
             // console.log('query', query)
 
             //token
-            let token = get(query, 'token', '')
+            // let token = get(query, 'token', '')
+            let token = get(headers, 'authorization', '')
+            token = isestr(token) ? token : ''
 
             //check
             if (true) {
 
                 //funCheck
-                let m = funCheck({ token, headers, query })
+                let m = funCheck({ apiType: 'slice', token, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
 
                 //check
                 if (m !== true) {
-                    return res.response({ error: 'permission denied' }).code(400)
+
+                    //u8aOut
+                    let out = {
+                        error: 'permission denied',
+                    }
+                    let u8aOut = obj2u8arr(out)
+                    // console.log('slice u8aOut', u8aOut)
+
+                    // console.log('slice return permission denied')
+                    return responseU8aStream(res, u8aOut)
                 }
 
             }
@@ -591,7 +613,8 @@ function WConverhpServer(opt = {}) {
                 maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
-                parse: true,
+                // output: 'stream',
+                parse: true, //前端送obj過來
             },
             timeout: {
                 socket: false, //避免socket自動關閉
@@ -613,20 +636,31 @@ function WConverhpServer(opt = {}) {
             // console.log('query', query)
 
             //token
-            let token = get(query, 'token', '')
+            // let token = get(query, 'token', '')
+            let token = get(headers, 'authorization', '')
+            token = isestr(token) ? token : ''
 
             //check
             if (true) {
 
                 //funCheck
-                let m = funCheck({ token, headers, query })
+                let m = funCheck({ apiType: 'merge', token, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
 
                 //check
                 if (m !== true) {
-                    return res.response({ error: 'permission denied' }).code(400)
+
+                    //u8aOut
+                    let out = {
+                        error: 'permission denied',
+                    }
+                    let u8aOut = obj2u8arr(out)
+                    // console.log('mergeu8aOut', u8aOut)
+
+                    // console.log('merge return permission denied')
+                    return responseU8aStream(res, u8aOut)
                 }
 
             }
@@ -684,7 +718,6 @@ function WConverhpServer(opt = {}) {
                         //check
                         if (!fsIsFile(pathFileChunk)) {
                             // console.log(`pathFileChunk[${pathFileChunk}] is not a file`)
-                            // return res.response({ error: `Missing chunk ${i} of filename[${filename}]` }).code(400)
                             throw new Error(`Missing chunk ${i} of filename[${filename}]`)
                         }
 

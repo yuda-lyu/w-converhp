@@ -18,10 +18,6 @@ To view documentation or get support, visit [docs](https://yuda-lyu.github.io/w-
 
 ## Installation
 ### Using npm(ES6 module):
-> **Note:** `w-converhp-server` is mainly dependent on `@hapi/hapi` and `@hapi/inert`.
-
-> **Note:** `w-converhp-client` is mainly dependent on `form-data`.
-
 ```alias
 npm i w-converhp
 ```
@@ -207,7 +203,7 @@ uploadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.1/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.2/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]

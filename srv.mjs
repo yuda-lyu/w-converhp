@@ -6,7 +6,8 @@ let opt = {
     port: 8080,
     apiName: 'api',
     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
-    funCheck: () => {
+    funCheck: ({ apiType, token, headers, query }) => {
+        console.log('funCheck', apiType, token)
         return true
     },
 }
@@ -68,6 +69,9 @@ wo.on('upload', function(input, pm) {
         pm.reject('execute error')
     }
 
+})
+wo.on('error', function(err) {
+    console.log(`Server[port:${opt.port}]: error`, err)
 })
 wo.on('handler', function(data) {
     // console.log(`Server[port:${opt.port}]: handler`, data)
