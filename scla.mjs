@@ -36,7 +36,7 @@ async function execute(name, u8a) {
 
     //execute
     await wo.execute('add', { p },
-        function (prog, p, m) {
+        function ({ prog, p, m }) {
             if (m === 'upload') {
                 console.log('client web: execute: prog', prog * 0.5, p, m)
             }

@@ -62,7 +62,7 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  *
  *     //execute
  *     await wo.execute('add', { p },
- *         function (prog, p, m) {
+ *         function ({ prog, p, m }) {
  *             console.log('client web: execute: prog', prog, p, m)
  *         })
  *         .then(function(r) {
@@ -115,7 +115,7 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  *         console.log('uploadLargeFile u8a', u8a)
  *
  *         await wo.upload('1000mb.7z', u8a,
- *             function (prog, p, m) {
+ *             function ({ prog, p, m }) {
  *                 console.log('client web: upload: prog', prog, p, m)
  *             })
  *             .then(function(res) {
@@ -363,7 +363,7 @@ function WConverhpClient(opt) {
                 }
 
                 //cbProgress
-                cbProgress(Math.floor(r), loaded, 'upload')
+                cbProgress({ prog: Math.floor(r), p: loaded, m: 'upload' })
 
             },
             onDownloadProgress: function (ev) {
@@ -379,7 +379,7 @@ function WConverhpClient(opt) {
                 }
 
                 //cbProgress
-                cbProgress(Math.floor(r), loaded, 'download')
+                cbProgress({ prog: Math.floor(r), p: loaded, m: 'download' })
 
             },
         }
@@ -561,20 +561,24 @@ function WConverhpClient(opt) {
         // let progWeightMerge = 0.01 //合併階段進度使用1%
 
         //cbProgressSlice
-        let cbProgressSlice = (perc, _psiz, dir) => {
+        let cbProgressSlice = (msg) => {
+            let perc = msg.prog
+            let dir = msg.m
             if (dir === 'upload' && perc === 100) {
                 progCount++
                 let r = progCount / chunkTotal
                 let prog = r * progWeightSlice * 100
                 let psiz = r * n
-                cbProgress(prog, psiz, 'upload')
+                cbProgress({ prog, p: psiz, m: 'upload' })
             }
         }
 
         //cbProgressMerge
-        let cbProgressMerge = (perc, _psiz, dir) => {
+        let cbProgressMerge = (msg) => {
+            let perc = msg.prog
+            let dir = msg.m
             if (dir === 'download' && perc === 100) {
-                cbProgress(100, n, 'upload')
+                cbProgress({ prog: 100, p: n, m: 'upload' })
             }
         }
 

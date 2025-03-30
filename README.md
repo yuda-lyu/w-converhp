@@ -128,7 +128,7 @@ async function execute(name, u8a) {
 
     //execute
     await wo.execute('add', { p },
-        function (prog, p, m) {
+        function ({ prog, p, m }) {
             console.log('client web: execute: prog', prog, p, m)
         })
         .then(function(r) {
@@ -181,7 +181,7 @@ function uploadLargeFile() {
         console.log('uploadLargeFile u8a', u8a)
 
         await wo.upload('1000mb.7z', u8a,
-            function (prog, p, m) {
+            function ({ prog, p, m }) {
                 console.log('client web: upload: prog', prog, p, m)
             })
             .then(function(res) {
@@ -203,7 +203,7 @@ uploadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.3/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.4/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]
@@ -235,7 +235,7 @@ async function execute(name, u8a){
 
     //execute
     await wo.execute('add', { p },
-        function (prog, p, m) {
+        function ({ prog, p, m }) {
             console.log('client web: execute: prog', prog, p, m)
         })
         .then(function(r) {
@@ -317,7 +317,7 @@ function uploadLargeFile(){
 
         //upload
         await wo.upload(file.name, file,
-            function (prog, p, m) {
+            function ({ prog, p, m }) {
                 console.log('client web: upload: prog', prog, p, m)
             })
             .then(function(res) {

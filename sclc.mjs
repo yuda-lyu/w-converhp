@@ -29,7 +29,7 @@ function uploadLargeFile() {
         console.log('uploadLargeFile u8a', u8a)
 
         await wo.upload('1000mb.7z', u8a,
-            function (prog, p, m) {
+            function ({ prog, p, m }) {
                 // console.log('client web: upload: prog', prog, p, m)
                 if (m === 'upload') {
                     console.log('client web: upload: prog', prog)

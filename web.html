@@ -50,7 +50,7 @@
 
                 //execute
                 await wo.execute('add', { p },
-                    function (prog, p, m) {
+                    function ({ prog, p, m }) {
                         console.log('client web: execute: prog', prog, p, m)
                     })
                     .then(function(r) {
@@ -132,7 +132,7 @@
 
                     //upload
                     await wo.upload(file.name, file,
-                        function (prog, p, m) {
+                        function ({ prog, p, m }) {
                             console.log('client web: upload: prog', prog, p, m)
                         })
                         .then(function(res) {
