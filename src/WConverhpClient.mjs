@@ -29,6 +29,7 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''
+ * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Integer} [opt.retry=3] 輸入傳輸失敗重試次數整數，預設為3
  * @returns {Object} 回傳事件物件，可使用函數execute、upload
@@ -159,6 +160,12 @@ function WConverhpClient(opt) {
         getToken = () => {
             return ''
         }
+    }
+
+    //tokenType
+    let tokenType = get(opt, 'tokenType')
+    if (!isestr(tokenType)) {
+        tokenType = 'Bearer'
     }
 
     //sizeSlice
@@ -336,7 +343,7 @@ function WConverhpClient(opt) {
             url: urlUse,
             data: dd,
             headers: {
-                Authorization: `Bearer ${token}`,
+                Authorization: `${tokenType} ${token}`,
                 ...ct,
                 ...headers,
             },

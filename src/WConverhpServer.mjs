@@ -333,14 +333,14 @@ function WConverhpServer(opt = {}) {
 
             //token
             // let token = get(query, 'token', '')
-            let token = get(headers, 'authorization', '')
-            token = isestr(token) ? token : ''
+            let authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
 
             //check
             if (true) {
 
                 //funCheck
-                let m = funCheck({ apiType: 'main', token, headers, query })
+                let m = funCheck({ apiType: 'main', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
@@ -491,14 +491,14 @@ function WConverhpServer(opt = {}) {
 
             //token
             // let token = get(query, 'token', '')
-            let token = get(headers, 'authorization', '')
-            token = isestr(token) ? token : ''
+            let authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
 
             //check
             if (true) {
 
                 //funCheck
-                let m = funCheck({ apiType: 'slice', token, headers, query })
+                let m = funCheck({ apiType: 'slice', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
@@ -637,14 +637,14 @@ function WConverhpServer(opt = {}) {
 
             //token
             // let token = get(query, 'token', '')
-            let token = get(headers, 'authorization', '')
-            token = isestr(token) ? token : ''
+            let authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
 
             //check
             if (true) {
 
                 //funCheck
-                let m = funCheck({ apiType: 'merge', token, headers, query })
+                let m = funCheck({ apiType: 'merge', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }

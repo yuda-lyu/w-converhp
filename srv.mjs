@@ -6,8 +6,8 @@ let opt = {
     port: 8080,
     apiName: 'api',
     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
-    funCheck: ({ apiType, token, headers, query }) => {
-        console.log('funCheck', apiType, token)
+    funCheck: ({ apiType, authorization, headers, query }) => {
+        console.log('funCheck', `apiType[${apiType}]`, `authorization[${authorization}]`)
         return true
     },
 }
