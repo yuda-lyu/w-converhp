@@ -21,7 +21,7 @@ let opt = {
 //new
 let wo = new WConverhpServer(opt)
 
-wo.on('execute', function(func, input, pm) {
+wo.on('execute', (func, input, pm) => {
     // console.log(`Server[port:${opt.port}]: execute`, func, input)
     console.log(`Server[port:${opt.port}]: execute`, func)
 
@@ -63,7 +63,7 @@ wo.on('execute', function(func, input, pm) {
     }
 
 })
-wo.on('upload', function(input, pm) {
+wo.on('upload', (input, pm) => {
     console.log(`Server[port:${opt.port}]: upload`, input)
 
     try {
@@ -71,15 +71,15 @@ wo.on('upload', function(input, pm) {
         pm.resolve(output)
     }
     catch (err) {
-        console.log('execute error', err)
-        pm.reject('execute error')
+        console.log('upload error', err)
+        pm.reject('upload error')
     }
 
 })
-wo.on('error', function(err) {
+wo.on('error', (err) => {
     console.log(`Server[port:${opt.port}]: error`, err)
 })
-wo.on('handler', function(data) {
+wo.on('handler', (data) => {
     // console.log(`Server[port:${opt.port}]: handler`, data)
 })
 

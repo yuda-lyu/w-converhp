@@ -1,8 +1,7 @@
-import path from 'path'
 import fs from 'fs'
+import stream from 'stream'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
-import stream from 'stream'
 import get from 'lodash-es/get.js'
 import genPm from 'wsemi/src/genPm.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
@@ -19,8 +18,7 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-import fsIsFile from 'wsemi/src/fsIsFile.mjs'
-import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
+import mergeFiles from './mergeFiles.wk.umd.js'
 
 
 /**
@@ -56,7 +54,7 @@ import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
  * //new
  * let wo = new WConverhpServer(opt)
  *
- * wo.on('execute', function(func, input, pm) {
+ * wo.on('execute', (func, input, pm) => {
  *     // console.log(`Server[port:${opt.port}]: execute`, func, input)
  *     console.log(`Server[port:${opt.port}]: execute`, func)
  *
@@ -98,7 +96,7 @@ import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
  *     }
  *
  * })
- * wo.on('upload', function(input, pm) {
+ * wo.on('upload', (input, pm) => {
  *     console.log(`Server[port:${opt.port}]: upload`, input)
  *
  *     try {
@@ -106,12 +104,12 @@ import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
  *         pm.resolve(output)
  *     }
  *     catch (err) {
- *         console.log('execute error', err)
- *         pm.reject('execute error')
+ *         console.log('upload error', err)
+ *         pm.reject('upload error')
  *     }
  *
  * })
- * wo.on('handler', function(data) {
+ * wo.on('handler', (data) => {
  *     // console.log(`Server[port:${opt.port}]: handler`, data)
  * })
  *
@@ -197,6 +195,10 @@ function WConverhpServer(opt = {}) {
             //host: 'localhost',
             port,
             routes: {
+                timeout: {
+                    server: false, //關閉伺服器超時
+                    socket: false, //關閉socket超時
+                },
                 cors: {
                     origin: corsOrigins, //Access-Control-Allow-Origin
                     credentials: false, //Access-Control-Allow-Credentials
@@ -313,8 +315,8 @@ function WConverhpServer(opt = {}) {
                 parse: false,
             },
             timeout: {
-                socket: false, //避免socket自動關閉
-                server: false,
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
             },
         },
         handler: async function (req, res) {
@@ -471,8 +473,8 @@ function WConverhpServer(opt = {}) {
                 parse: false,
             },
             timeout: {
-                socket: false, //避免socket自動關閉
-                server: false,
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
             },
         },
         handler: async function (req, res) {
@@ -617,8 +619,8 @@ function WConverhpServer(opt = {}) {
                 parse: true, //前端送obj過來
             },
             timeout: {
-                socket: false, //避免socket自動關閉
-                server: false,
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
             },
         },
         handler: async function (req, res) {
@@ -692,78 +694,13 @@ function WConverhpServer(opt = {}) {
                 return res.response({ error: 'invalid packageId in payload' }).code(400)
             }
 
-            //merge
-            let merge = async () => {
-                let errTemp = ''
-
-                //pathFileMerge
-                let pathFileMerge = path.join(pathUploadTemp, `${packageId}`)
-                // console.log('pathFileMerge', pathFileMerge)
-
-                //fileStream
-                let fileStream = fs.createWriteStream(pathFileMerge)
-                // console.log(`merge filename[${filename}] start`)
-
-                //使用try catch攔截，使stream能完整創造與結束
-                try {
-                    for (let i = 0; i < chunkTotal; i++) {
-                        // console.log(`merge ${i + 1}/${chunkTotal}`)
-
-                        //chunkIndex
-                        let chunkIndex = i
-
-                        //pathFileChunk
-                        let pathFileChunk = path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
-
-                        //check
-                        if (!fsIsFile(pathFileChunk)) {
-                            // console.log(`pathFileChunk[${pathFileChunk}] is not a file`)
-                            throw new Error(`Missing chunk ${i} of filename[${filename}]`)
-                        }
-
-                        // console.log(`merging chunk[${chunkIndex + 1}/${chunkTotal}]...`)
-
-                        //chunkData
-                        let chunkData = fs.readFileSync(pathFileChunk)
-
-                        //write
-                        fileStream.write(chunkData)
-
-                        //fsDeleteFile
-                        fsDeleteFile(pathFileChunk)
-
-                        // console.log(`merge chunk[${chunkIndex + 1}/${chunkTotal}] done`)
-                    }
-                }
-                catch (err) {
-                    errTemp = err.message
-                }
-
-                //end
-                fileStream.end()
-                // console.log(`merge filename[${filename}] done`)
-
-                //check
-                if (isestr(errTemp)) {
-                    return Promise.reject(errTemp)
-                }
-
-                //r
-                let r = {
-                    // message: `Merged filename[${filename}] successfully`,
-                    filename,
-                    path: pathFileMerge,
-                }
-
-                return r
-            }
-
             //core
             let core = async() => {
 
                 //merge
                 // console.log('merge start')
-                let r = await merge()
+                // let r = await merge()
+                let r = await mergeFiles(pathUploadTemp, packageId, chunkTotal, filename)
                 // console.log('merge done', r)
 
                 //procUpload
@@ -839,7 +776,8 @@ function WConverhpServer(opt = {}) {
 
     //start
     if (get(opt, 'serverHapi')) {
-        opt.serverHapi.route([apiMain, apiSlice, apiSliceMerge])
+        // opt.serverHapi.route([apiMain, apiSlice, apiSliceMerge])
+        server.route([apiMain, apiSlice, apiSliceMerge])
     }
     else {
         startServer()

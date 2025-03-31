@@ -542,8 +542,8 @@ function WConverhpClient(opt) {
             catch (err) {}
         }
         if (n === 0) {
-            eeEmit('error', `Can not get size of bb`)
-            return Promise.reject(`Can not get size of bb`)
+            eeEmit('error', `can not get size of bb`)
+            return Promise.reject(`can not get size of bb`)
         }
         // console.log('n', n)
 
@@ -609,7 +609,7 @@ function WConverhpClient(opt) {
         }
 
         //send merge
-        console.log(`merging tempId[${tempId}]...`)
+        // console.log(`merging tempId[${tempId}]...`)
         let msg = {
             'filename': tempId,
             'chunk-total': chunkTotal,

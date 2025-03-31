@@ -16,7 +16,7 @@ let opt = {
 //new
 let wo = new WConverhpClient(opt)
 
-wo.on('error', function(err) {
+wo.on('error', (err) => {
     console.log(`error`, err)
 })
 

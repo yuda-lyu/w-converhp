@@ -38,7 +38,7 @@ let opt = {
 //new
 let wo = new WConverhpServer(opt)
 
-wo.on('execute', function(func, input, pm) {
+wo.on('execute', (func, input, pm) => {
     // console.log(`Server[port:${opt.port}]: execute`, func, input)
     console.log(`Server[port:${opt.port}]: execute`, func)
 
@@ -80,7 +80,7 @@ wo.on('execute', function(func, input, pm) {
     }
 
 })
-wo.on('upload', function(input, pm) {
+wo.on('upload', (input, pm) => {
     console.log(`Server[port:${opt.port}]: upload`, input)
 
     try {
@@ -88,12 +88,12 @@ wo.on('upload', function(input, pm) {
         pm.resolve(output)
     }
     catch (err) {
-        console.log('execute error', err)
-        pm.reject('execute error')
+        console.log('upload error', err)
+        pm.reject('upload error')
     }
 
 })
-wo.on('handler', function(data) {
+wo.on('handler', (data) => {
     // console.log(`Server[port:${opt.port}]: handler`, data)
 })
 
@@ -203,7 +203,7 @@ uploadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.4/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.5/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]
