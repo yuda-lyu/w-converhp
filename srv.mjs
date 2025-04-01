@@ -3,6 +3,8 @@ import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from './src/WConverhpServer.mjs'
 
+let ms = []
+
 let opt = {
     port: 8080,
     apiName: 'api',
@@ -31,6 +33,7 @@ wo.on('execute', (func, input, pm) => {
 
             if (_.get(input, 'p.d.u8a', null)) {
                 console.log('input.p.d.u8a', input.p.d.u8a)
+                ms.push({ 'input.p.d.u8a': input.p.d.u8a })
             }
 
             let r = {
@@ -38,13 +41,7 @@ wo.on('execute', (func, input, pm) => {
                 _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
                 _bin: {
                     name: 'zdata.b2',
-                    u8a: new Uint8Array([66, 97, 115]),
-                    // name: '100mb.7z',
-                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\100mb.7z')),
-                    // name: '500mb.7z',
-                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\500mb.7z')),
-                    // name: '1000mb.7z',
-                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\1000mb.7z')),
+                    u8a: new Uint8Array([52, 66, 97, 115]),
                 },
             }
 
@@ -67,6 +64,7 @@ wo.on('upload', (input, pm) => {
     console.log(`Server[port:${opt.port}]: upload`, input)
 
     try {
+        ms.push({ 'receive and return': input })
         let output = input
         pm.resolve(output)
     }
@@ -82,5 +80,12 @@ wo.on('error', (err) => {
 wo.on('handler', (data) => {
     // console.log(`Server[port:${opt.port}]: handler`, data)
 })
+
+setTimeout(() => {
+    console.log('ms', ms)
+    // console.log('ms', JSON.stringify(ms))
+    wo.stop()
+}, 3000)
+
 
 //node --experimental-modules srv.mjs

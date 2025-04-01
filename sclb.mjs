@@ -4,6 +4,8 @@ import FormData from 'form-data'
 import WConverhpClient from './src/WConverhpClient.mjs'
 
 
+let ms = []
+
 let opt = {
     FormData,
     url: 'http://localhost:8080',
@@ -33,6 +35,7 @@ async function execute(name, u8a) {
         },
     }
     console.log('p', p)
+    ms.push({ 'execute input': p })
 
     //execute
     await wo.execute('add', { p },
@@ -46,8 +49,9 @@ async function execute(name, u8a) {
         })
         .then(function(r) {
             console.log('client web: execute: add', r)
-            console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
+            // console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
             // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
+            ms.push({ 'execute output': r })
         })
         .catch(function (err) {
             console.log('client web: execute: catch', err)
@@ -60,10 +64,12 @@ function executeWithFile() {
 
         //u8a
         let u8a = new Uint8Array(fs.readFileSync('../_data/10mb.7z'))
-        console.log('executeWithFile u8a', u8a)
+        // console.log('executeWithFile u8a', u8a)
 
         //execute
         await execute('10mb.7z', u8a)
+
+        console.log('ms', ms)
 
     }
     core()

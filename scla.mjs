@@ -3,6 +3,7 @@ import w from 'wsemi'
 import FormData from 'form-data'
 import WConverhpClient from './src/WConverhpClient.mjs'
 
+let ms = []
 
 let opt = {
     FormData,
@@ -33,6 +34,7 @@ async function execute(name, u8a) {
         },
     }
     console.log('p', p)
+    ms.push({ 'execute input': p })
 
     //execute
     await wo.execute('add', { p },
@@ -46,8 +48,9 @@ async function execute(name, u8a) {
         })
         .then(function(r) {
             console.log('client web: execute: add', r)
-            console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
+            // console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
             // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
+            ms.push({ 'execute output': r })
         })
         .catch(function (err) {
             console.log('client web: execute: catch', err)
@@ -60,10 +63,12 @@ function executeWithU8a() {
 
         //u8a
         let u8a = new Uint8Array([66, 97, 115])
-        console.log('executeWithU8a u8a', u8a)
+        // console.log('executeWithU8a u8a', u8a)
 
         //execute
         await execute('zdata.b1', u8a)
+
+        console.log('ms', JSON.stringify(ms))
 
     }
     core()

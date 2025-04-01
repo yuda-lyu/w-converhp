@@ -1,5 +1,6 @@
-import path from 'path' //native lib要用動態import加載
-import fs from 'fs' //native lib要用動態import加載
+import path from 'path'
+import fs from 'fs'
+import genPm from 'wsemi/src/genPm.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
@@ -7,6 +8,8 @@ import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 
 let mergeFiles = async (pathUploadTemp, packageId, chunkTotal, filename) => {
     let errTemp = ''
+
+    let pm = genPm()
 
     //pathFileMerge
     let pathFileMerge = path.join(pathUploadTemp, packageId)
@@ -53,21 +56,41 @@ let mergeFiles = async (pathUploadTemp, packageId, chunkTotal, filename) => {
 
     //end
     fileStream.end()
-    // console.log(`merge filename[${filename}] done`)
 
-    //check
-    if (isestr(errTemp)) {
-        return Promise.reject(errTemp)
-    }
+    //error
+    fileStream.on('error', (err) => {
+        errTemp = err.message
+    })
 
-    //r
-    let r = {
-        // message: `Merged filename[${filename}] successfully`,
-        filename,
-        path: pathFileMerge,
-    }
+    //finish, end之後檔案未必完成寫入, 得要監聽finish才能確定寫入檔案完成
+    fileStream.on('finish', () => {
+        // console.log(`merge filename[${filename}] end`)
 
-    return r
+        //check
+        if (isestr(errTemp)) {
+
+            //reject
+            pm.reject(errTemp)
+
+        }
+        else {
+
+            //r
+            let r = {
+                filename,
+                path: pathFileMerge,
+            }
+            // let s = fs.statSync(pathFileMerge)
+            // console.log('s.size', s.size)
+
+            //resolve
+            pm.resolve(r)
+
+        }
+
+    })
+
+    return pm
 }
 
 export default mergeFiles

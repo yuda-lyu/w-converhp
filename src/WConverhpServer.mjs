@@ -19,6 +19,7 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import mergeFiles from './mergeFiles.wk.umd.js'
+// import mergeFiles from './mergeFiles.mjs'
 
 
 /**
@@ -718,6 +719,7 @@ function WConverhpServer(opt = {}) {
                     out.success = msg
                 })
                 .catch(function(msg) {
+                    console.log('bbb msg', msg)
                     out.error = msg
                 })
             // console.log('out', out)
@@ -782,6 +784,14 @@ function WConverhpServer(opt = {}) {
     else {
         startServer()
     }
+
+    //stop
+    let stop = () => {
+        server.stop()
+    }
+
+    //save
+    ee.stop = stop
 
     return ee
 }
