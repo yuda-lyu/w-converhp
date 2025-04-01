@@ -32,7 +32,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
- * @param {Function} [opt.funCheck=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
+ * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
  * @param {Integer} [opt.delayForBasic=0] 輸入基本API用延遲響應時間，單位ms，預設0
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
@@ -47,7 +47,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *     port: 8080,
  *     apiName: 'api',
  *     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
- *     funCheck: () => {
+ *     verifyConn: () => {
  *         return true
  *     },
  * }
@@ -153,10 +153,10 @@ function WConverhpServer(opt = {}) {
         fsCreateFolder(pathUploadTemp)
     }
 
-    //funCheck
-    let funCheck = get(opt, 'funCheck')
-    if (!isfun(funCheck)) {
-        funCheck = () => {
+    //verifyConn
+    let verifyConn = get(opt, 'verifyConn')
+    if (!isfun(verifyConn)) {
+        verifyConn = () => {
             return true
         }
     }
@@ -342,8 +342,8 @@ function WConverhpServer(opt = {}) {
             //check
             if (true) {
 
-                //funCheck
-                let m = funCheck({ apiType: 'main', authorization, headers, query })
+                //verifyConn
+                let m = verifyConn({ apiType: 'main', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
@@ -500,8 +500,8 @@ function WConverhpServer(opt = {}) {
             //check
             if (true) {
 
-                //funCheck
-                let m = funCheck({ apiType: 'slice', authorization, headers, query })
+                //verifyConn
+                let m = verifyConn({ apiType: 'slice', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
@@ -646,8 +646,8 @@ function WConverhpServer(opt = {}) {
             //check
             if (true) {
 
-                //funCheck
-                let m = funCheck({ apiType: 'merge', authorization, headers, query })
+                //verifyConn
+                let m = verifyConn({ apiType: 'merge', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }

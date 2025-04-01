@@ -18,8 +18,8 @@ describe('uploadLargeFile', function() {
             port: 8082, //8080, //同時test故得要不同port
             apiName: 'api',
             pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
-            funCheck: async ({ apiType, authorization, headers, query }) => {
-                // console.log('funCheck', `apiType[${apiType}]`, `authorization[${authorization}]`)
+            verifyConn: async ({ apiType, authorization, headers, query }) => {
+                // console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
                 let token = w.strdelleft(authorization, 7) //刪除Bearer
                 if (!w.isestr(token)) {
                     return false
