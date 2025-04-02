@@ -536,7 +536,7 @@ function WConverhpClient(opt) {
         }
         if (n === 0) {
             try {
-                n = bb.length //for Uint8Array
+                n = bb.length //for Uint8Array //後端用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
                 n = cint(n)
             }
             catch (err) {}
@@ -544,7 +544,7 @@ function WConverhpClient(opt) {
         if (n === 0) {
             // eeEmit('error', `can not get size of bb`)
             // return Promise.reject(`can not get size of bb`)
-            n = 1
+            n = 1 //最小給1, 使能支援無大小檔案上傳
         }
         // console.log('n', n)
 
