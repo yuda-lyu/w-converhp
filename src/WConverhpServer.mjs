@@ -554,8 +554,8 @@ function WConverhpServer(opt = {}) {
             let pathFileChunk = `${pathUploadTemp}/${packageId}_${chunkIndex}` //path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
             // console.log('pathFileChunk', pathFileChunk)
 
-            //fileStream
-            let fileStream = fs.createWriteStream(pathFileChunk)
+            //streamWrite
+            let streamWrite = fs.createWriteStream(pathFileChunk)
 
             //receive
             let receive = () => {
@@ -564,7 +564,7 @@ function WConverhpServer(opt = {}) {
                 let pm = genPm()
 
                 //pipe
-                req.payload.pipe(fileStream)
+                req.payload.pipe(streamWrite)
                 // console.log(`receiving chunk[${chunkIndex + 1}/${chunkTotal}]...`)
 
                 //end
@@ -719,7 +719,6 @@ function WConverhpServer(opt = {}) {
                     out.success = msg
                 })
                 .catch(function(msg) {
-                    console.log('bbb msg', msg)
                     out.error = msg
                 })
             // console.log('out', out)

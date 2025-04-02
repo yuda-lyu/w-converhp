@@ -542,10 +542,11 @@ function WConverhpClient(opt) {
             catch (err) {}
         }
         if (n === 0) {
-            eeEmit('error', `can not get size of bb`)
-            return Promise.reject(`can not get size of bb`)
+            // eeEmit('error', `can not get size of bb`)
+            // return Promise.reject(`can not get size of bb`)
+            n = 1
         }
-        // console.log('n', n)
+        console.log('n', n)
 
         //chunkTotal
         let chunkTotal = Math.ceil(n / sizeSlice)

@@ -26,12 +26,12 @@ function uploadLargeFile() {
     let core = async() => {
 
         //u8a
-        let u8a = new Uint8Array(fs.readFileSync('../_data/1mb.7z')) //1000mb
+        let u8a = new Uint8Array(fs.readFileSync('../_data/1000mb.7z')) //1000mb
         console.log('u8a.length', u8a.length)
         // console.log('uploadLargeFile u8a', u8a)
         ms.push({ 'upload u8a.length': u8a.length })
 
-        await wo.upload('1mb.7z', u8a,
+        await wo.upload('1000mb.7z', u8a,
             function ({ prog, p, m }) {
                 // console.log('client web: upload: prog', prog, p, m)
                 if (m === 'upload') {
