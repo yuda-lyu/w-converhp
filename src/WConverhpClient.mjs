@@ -19,8 +19,6 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
 import now2strp from 'wsemi/src/now2strp.mjs'
-import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
-import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 
 
 /**
@@ -496,9 +494,7 @@ function WConverhpClient(opt) {
 
                     //fdDownload, 只有後端下載才使用fdDownload
                     let fdDownload = get(opt, 'fdDownload', '')
-                    if (!fsIsFolder(fdDownload)) {
-                        fsCreateFolder(fdDownload)
-                    }
+                    fs.mkdirSync(fdDownload, { recursive: true }) //須使用mkdirSync, 不要用fsIsFolder與fsCreateFolder避免編譯
                     // console.log('fdDownload', fdDownload)
 
                     //fp

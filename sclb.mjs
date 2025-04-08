@@ -1,4 +1,6 @@
+import path from 'path'
 import fs from 'fs'
+import _ from 'lodash-es'
 import w from 'wsemi'
 import FormData from 'form-data'
 import WConverhpClient from './src/WConverhpClient.mjs'
