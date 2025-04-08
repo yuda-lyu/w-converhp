@@ -25,13 +25,15 @@ wo.on('error', (err) => {
 function uploadLargeFile() {
     let core = async() => {
 
+        let fsz = '1000mb' //0mb 10mb 100mb 1000mb
+
         //u8a
-        let u8a = new Uint8Array(fs.readFileSync('../_data/0mb.7z')) //1000mb
+        let u8a = new Uint8Array(fs.readFileSync(`../_data/${fsz}.7z`)) //後端並無blob格式, 用fs讀有檔案大小上限
         console.log('u8a.length', u8a.length)
         // console.log('uploadLargeFile u8a', u8a)
         ms.push({ 'upload u8a.length': u8a.length })
 
-        await wo.upload('0mb.7z', u8a,
+        await wo.upload(`${fsz}.7z`, u8a,
             function ({ prog, p, m }) {
                 // console.log('client web: upload: prog', prog, p, m)
                 if (m === 'upload') {

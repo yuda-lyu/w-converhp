@@ -15,7 +15,7 @@ describe('executeWithFile', function() {
         let ms = []
 
         let opt = {
-            port: 8081, //8080, //同時test故得要不同port
+            port: 8081, //同時test故得要不同port
             apiName: 'api',
             pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
             verifyConn: async ({ apiType, authorization, headers, query }) => {

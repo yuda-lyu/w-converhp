@@ -1,3 +1,5 @@
+import path from 'path'
+import fs from 'fs'
 import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
@@ -19,6 +21,8 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
 import now2strp from 'wsemi/src/now2strp.mjs'
+import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
+import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 
 
 /**
@@ -129,6 +133,35 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  *     core()
  * }
  * uploadLargeFile()
+ *
+ * function downloadLargeFile() {
+ *     let core = async() => {
+ *
+ *         await wo.download('id-for-file',
+ *             function ({ prog, p, m }) {
+ *                 // console.log('client web: download: prog', prog, p, m)
+ *                 if (m === 'download') {
+ *                     console.log('client web: download: prog', prog)
+ *                 }
+ *             },
+ *             {
+ *                 fdDownload: './',
+ *             })
+ *             .then(function(res) {
+ *                 console.log('client web: download: then', res)
+ *                 ms.push({ 'download output': res })
+ *             })
+ *             .catch(function (err) {
+ *                 console.log('client web: download: catch', err)
+ *             })
+ *
+ *         console.log('ms', ms)
+ *
+ *     }
+ *     core()
+ * }
+ *
+ * downloadLargeFile()
  *
  */
 function WConverhpClient(opt) {
@@ -254,6 +287,9 @@ function WConverhpClient(opt) {
         else if (type === 'slicemerge') {
             urlUse = `${url}slcm`
         }
+        else if (type === 'download') {
+            urlUse = `${url}dw`
+        }
         else {
             throw new Error(`invalid type[${type}]`)
         }
@@ -328,6 +364,9 @@ function WConverhpClient(opt) {
         let rt = 'blob'
         if (env === 'nodejs') {
             rt = 'arraybuffer' //nodejs下沒有blob, 只能設定'json', 'arraybuffer', 'document', 'json', 'text', 'stream'
+            if (type === 'download') {
+                rt = 'stream' //nodejs download模式採用stream接收
+            }
         }
         // console.log('rt', rt)
 
@@ -385,10 +424,114 @@ function WConverhpClient(opt) {
         }
         // console.log('s', s)
 
+        //getFilenameByHeader
+        let getFilenameByHeader = (contentDisposition) => {
+            let fn = 'unknow'
+            try {
+                let reg = /filename="(.+?)"/
+                let matches = reg.exec(contentDisposition)
+                fn = matches ? matches[1] : 'unknown'
+            }
+            catch (err) {}
+            return fn
+        }
+
+        //downloadStream
+        let downloadStream = (res) => {
+            // console.log('res.headers', res.headers)
+
+            //pm
+            let pm = genPm()
+
+            //returnType
+            let returnType = get(res, `headers['return-type']`, '')
+            // console.log('returnType', returnType)
+
+            //returnMsg
+            let returnMsg = get(res, `headers['return-msg']`, '')
+            // console.log('returnMsg', returnMsg)
+
+            //check
+            if (returnType === 'error') {
+                pm.reject(returnMsg)
+                return pm
+            }
+
+            //contentDisposition
+            let contentDisposition = get(res, `headers['content-disposition']`, '')
+            // console.log('contentDisposition', contentDisposition)
+
+            //filename
+            let filename = getFilenameByHeader(contentDisposition)
+            // console.log('filename', filename)
+
+            //streamRecv
+            let streamRecv = get(res, 'data')
+
+            if (env === 'browser') {
+
+                //通過createObjectURL與a元素下載
+                let url = URL.createObjectURL(streamRecv)
+                let a = document.createElement('a')
+                a.href = url
+                a.download = filename // 動態設置檔名
+                document.body.appendChild(a)
+                a.click()
+                a.remove()
+                URL.revokeObjectURL(url)
+
+                pm.resolve(filename)
+            }
+            else {
+
+                //fdDownload, 只有後端下載才使用fdDownload
+                let fdDownload = get(opt, 'fdDownload', '')
+                if (!fsIsFolder(fdDownload)) {
+                    fsCreateFolder(fdDownload)
+                }
+                // console.log('fdDownload', fdDownload)
+
+                //fp
+                let fp = path.resolve(fdDownload, filename)
+                // console.log('fp', fp)
+
+                //streamWriter
+                let streamWriter = fs.createWriteStream(fp)
+
+                //pipe
+                streamRecv.pipe(streamWriter)
+
+                //finish
+                streamWriter.on('finish', () => {
+                    pm.resolve(fp)
+                })
+
+                //error
+                streamWriter.on('error', (err) => {
+                    pm.reject(err)
+                })
+
+            }
+
+            return pm
+        }
+
         //axios
         axios(s)
             .then(async (res) => {
                 // console.log('axios then', res)
+
+                //check download
+                if (type === 'download') {
+                    await downloadStream(res)
+                        .then((_res) => {
+                            pm.resolve(_res)
+                        })
+                        .catch((_err) => {
+                            pm.reject(_err)
+                        })
+                    return
+                }
 
                 //bb
                 let bb = get(res, 'data')
@@ -426,7 +569,7 @@ function WConverhpClient(opt) {
 
             })
             .catch(async (res) => {
-                //console.log('axios catch', res.toJSON())
+                // console.log('axios catch', res.toJSON())
                 //Network Error除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足(<4g)無法下載被瀏覽器拒絕
 
                 //data
@@ -460,6 +603,7 @@ function WConverhpClient(opt) {
                 if (data === 'Network Error') {
                     data = `Network Error. Make sure your space of hard drive is large enough or blocking by browser plugins.`
                 }
+                // console.log('data', data)
 
                 pm.reject(data)
             })
@@ -697,9 +841,23 @@ function WConverhpClient(opt) {
         return sendDataSlice(tempId, bb, cbProgress)
     }
 
+    //download
+    async function download(fileId, cbProgress, opt = {}) {
+
+        //msg
+        let msg = { fileId }
+
+        //send download
+        let resMg = await send('download', msg, { ...opt, dataType: 'json', cbProgress })
+        // console.log('resMg', resMg)
+
+        return resMg
+    }
+
     //save
     ee.execute = execute
     ee.upload = upload
+    ee.download = download
 
     return ee
 }

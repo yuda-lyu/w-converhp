@@ -149,6 +149,27 @@
                 core()
             }
 
+            function downloadLargeFile(){
+                let core = async()=>{
+
+                    await wo.download('id-for-file',
+                        function ({ prog, p, m }) {
+                            // console.log('client web: download: prog', prog, p, m)
+                            if (m === 'download') {
+                                console.log('client web: download: prog', prog)
+                            }
+                        })
+                        .then(function(res) {
+                            console.log('client web: download: then', res)
+                        })
+                        .catch(function (err) {
+                            console.log('client web: download: catch', err)
+                        })
+
+                }
+                core()
+            }
+
         </script>
 
     </head>
@@ -172,7 +193,13 @@
             <button onclick="uploadLargeFile()">upload large file</button>
         
         </div>
-                    
+        
+        <div style="padding:10px;">
+    
+            <button onclick="downloadLargeFile()">download large file</button>
+        
+        </div>
+        
     </body>
 
 </html>

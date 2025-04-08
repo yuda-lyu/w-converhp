@@ -93,6 +93,44 @@ wo.on('upload', (input, pm) => {
     }
 
 })
+wo.on('download', (input, pm) => {
+    console.log(`Server[port:${opt.port}]: download`, input)
+
+    try {
+        ms.push({ 'download': input })
+
+        //fp
+        let fp = `./test/1mb.7z`
+
+        //streamRead
+        let streamRead = fs.createReadStream(fp)
+
+        //fileName
+        let fileName = `1mb.7z`
+
+        //fileSize
+        let stats = fs.statSync(fp)
+        let fileSize = stats.size
+
+        //fileType
+        let fileType = 'application/x-7z-compressed'
+
+        //output
+        let output = {
+            streamRead,
+            fileName,
+            fileSize,
+            fileType,
+        }
+
+        pm.resolve(output)
+    }
+    catch (err) {
+        console.log('download error', err)
+        pm.reject('download error')
+    }
+
+})
 wo.on('handler', (data) => {
     // console.log(`Server[port:${opt.port}]: handler`, data)
 })
@@ -196,6 +234,33 @@ function uploadLargeFile() {
 }
 uploadLargeFile()
 
+function downloadLargeFile() {
+    let core = async() => {
+
+        await wo.download('id-for-file',
+            function ({ prog, p, m }) {
+                // console.log('client web: download: prog', prog, p, m)
+                if (m === 'download') {
+                    console.log('client web: download: prog', prog)
+                }
+            },
+            {
+                fdDownload: './',
+            })
+            .then(function(res) {
+                console.log('client web: download: then', res)
+                ms.push({ 'download output': res })
+            })
+            .catch(function (err) {
+                console.log('client web: download: catch', err)
+            })
+
+        console.log('ms', ms)
+
+    }
+    core()
+}
+downloadLargeFile()
 ```
 
 ### In a browser(UMD module):
@@ -203,7 +268,7 @@ uploadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.10/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.11/dist/w-converhp-client.umd.js"></script>
 ```
 #### Example for w-converhp-client:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]

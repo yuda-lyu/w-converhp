@@ -4,6 +4,7 @@ import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
 import genPm from 'wsemi/src/genPm.mjs'
+import evem from 'wsemi/src/evem.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
@@ -11,9 +12,10 @@ import ispint from 'wsemi/src/ispint.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
+import isnum from 'wsemi/src/isnum.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
-import evem from 'wsemi/src/evem.mjs'
+import haskey from 'wsemi/src/haskey.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
@@ -110,6 +112,44 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *     }
  *
  * })
+ * wo.on('download', (input, pm) => {
+ *     console.log(`Server[port:${opt.port}]: download`, input)
+ *
+ *     try {
+ *         ms.push({ 'download': input })
+ *
+ *         //fp
+ *         let fp = `./test/1mb.7z`
+ *
+ *         //streamRead
+ *         let streamRead = fs.createReadStream(fp)
+ *
+ *         //fileName
+ *         let fileName = `1mb.7z`
+ *
+ *         //fileSize
+ *         let stats = fs.statSync(fp)
+ *         let fileSize = stats.size
+ *
+ *         //fileType
+ *         let fileType = 'application/x-7z-compressed'
+ *
+ *         //output
+ *         let output = {
+ *             streamRead,
+ *             fileName,
+ *             fileSize,
+ *             fileType,
+ *         }
+ *
+ *         pm.resolve(output)
+ *     }
+ *     catch (err) {
+ *         console.log('download error', err)
+ *         pm.reject('download error')
+ *     }
+ *
+ * })
  * wo.on('handler', (data) => {
  *     // console.log(`Server[port:${opt.port}]: handler`, data)
  * })
@@ -141,8 +181,11 @@ function WConverhpServer(opt = {}) {
         apiName = 'api'
     }
 
-    //apiSliceName
-    let apiSliceName = `${apiName}slc`
+    //apiUploadSliceName
+    let apiUploadSliceName = `${apiName}slc`
+
+    //apiDownloadName
+    let apiDownloadName = `${apiName}dw`
 
     //pathUploadTemp
     let pathUploadTemp = get(opt, 'pathUploadTemp')
@@ -260,7 +303,7 @@ function WConverhpServer(opt = {}) {
 
     //procUpload
     async function procUpload(input) {
-        //console.log('procUpload', data)
+        //console.log('procUpload', input)
 
         //pm, pmm
         let pm = genPm()
@@ -280,7 +323,7 @@ function WConverhpServer(opt = {}) {
 
         if (true) {
 
-            //upload 上傳檔案
+            //upload, 上傳檔案
             eeEmit('upload', input, pmm)
 
         }
@@ -288,8 +331,38 @@ function WConverhpServer(opt = {}) {
         return pm
     }
 
+    //procDownload
+    async function procDownload(input) {
+        // console.log('procDownload', input)
+
+        //pm, pmm
+        let pm = genPm()
+        let pmm = genPm()
+
+        //重新處理回傳結果
+        pmm
+            .then((output) => {
+
+                //resolve
+                pm.resolve(output)
+
+            })
+            .catch((err) => {
+                pm.reject(err)
+            })
+
+        if (true) {
+
+            //download, 下載檔案
+            eeEmit('download', input, pmm)
+
+        }
+
+        return pm
+    }
+
     //responseU8aStream
-    function responseU8aStream(res, u8a) {
+    function responseU8aStream(res, u8a, opt = {}) {
 
         //stream
         let smr = new stream.Readable()
@@ -297,10 +370,30 @@ function WConverhpServer(opt = {}) {
         smr.push(u8a)
         smr.push(null)
 
+        //returnType
+        let returnType = get(opt, 'returnType', '')
+
+        //returnMsg
+        let returnMsg = get(opt, 'returnMsg', '')
+
         return res.response(smr)
+            .header('Return-Type', returnType)
+            .header('Return-Msg', returnMsg)
             .header('Cache-Control', 'no-cache, no-store, must-revalidate')
             .header('Content-Type', 'application/octet-stream')
             .header('Content-Length', smr.readableLength)
+    }
+
+    //responseU8aStreamWithError
+    function responseU8aStreamWithError(res, msg) {
+
+        //u8aOut
+        let u8aOut = obj2u8arr({
+            error: msg,
+        })
+        // console.log('download u8aOut', u8aOut)
+
+        return responseU8aStream(res, u8aOut, { returnType: 'error', returnMsg: msg })
     }
 
     //apiMain
@@ -312,7 +405,7 @@ function WConverhpServer(opt = {}) {
                 maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
-                output: 'stream', //前端用blob與application/octet-stream傳
+                output: 'stream', //代表前端用stream傳至伺服器(Content-Type為application/octet-stream)
                 parse: false,
             },
             timeout: {
@@ -334,8 +427,7 @@ function WConverhpServer(opt = {}) {
             query = iseobj(query) ? query : ''
             // console.log('query', query)
 
-            //token
-            // let token = get(query, 'token', '')
+            //authorization
             let authorization = get(headers, 'authorization', '')
             authorization = isestr(authorization) ? authorization : ''
 
@@ -350,16 +442,7 @@ function WConverhpServer(opt = {}) {
 
                 //check
                 if (m !== true) {
-
-                    //u8aOut
-                    let out = {
-                        error: 'permission denied',
-                    }
-                    let u8aOut = obj2u8arr(out)
-                    // console.log('main u8aOut', u8aOut)
-
-                    // console.log('main return permission denied')
-                    return responseU8aStream(res, u8aOut)
+                    return responseU8aStreamWithError(res, 'permission denied')
                 }
 
             }
@@ -377,21 +460,15 @@ function WConverhpServer(opt = {}) {
                 //pm
                 let pm = genPm()
 
-                //totalSize, chunks
-                // let totalSize = 0
+                //chunks
                 let chunks = []
-
-                //smw
                 let smw = new stream.Writable({
                     write(chunk, encoding, cb) {
                         // console.log('receive payload', chunk)
 
-                        // //totalSize
-                        // totalSize += chunk.length
-
                         //push
                         chunks.push(chunk)
-                        // console.log('chunk.length', chunk.length, 'totalSize', totalSize)
+                        // console.log('chunk.length', chunk.length)
 
                         //setTimeout, 延遲觸發cb
                         setTimeout(() => {
@@ -408,7 +485,7 @@ function WConverhpServer(opt = {}) {
                 req.payload.on('end', () => {
                     // console.log(`receive payload done`)
 
-                    //concat
+                    //fileBuffer
                     let fileBuffer = Buffer.concat(chunks)
                     // console.log('fileBuffer', fileBuffer, fileBuffer.length)
 
@@ -444,12 +521,18 @@ function WConverhpServer(opt = {}) {
 
             //procDeal
             let out = {}
+            let returnType = ''
+            let returnMsg = ''
             await procDeal(inp)
                 .then(function(msg) {
                     out.success = msg
+                    returnType = 'success'
+                    returnMsg = 'need to parse'
                 })
                 .catch(function(msg) {
                     out.error = msg
+                    returnType = 'error'
+                    returnMsg = 'need to parse'
                 })
             // console.log('out', out)
 
@@ -457,20 +540,20 @@ function WConverhpServer(opt = {}) {
             let u8aOut = obj2u8arr(out)
             // console.log('u8aOut', u8aOut)
 
-            return responseU8aStream(res, u8aOut)
+            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
         },
     }
 
-    //apiSlice
-    let apiSlice = {
-        path: `/${apiSliceName}`,
+    //apiUploadSlice
+    let apiUploadSlice = {
+        path: `/${apiUploadSliceName}`,
         method: 'POST',
         options: {
             payload: {
                 maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
-                output: 'stream', //前端用blob與application/octet-stream傳
+                output: 'stream', //代表前端用stream傳至伺服器(Content-Type為application/octet-stream)
                 parse: false,
             },
             timeout: {
@@ -492,8 +575,7 @@ function WConverhpServer(opt = {}) {
             query = iseobj(query) ? query : ''
             // console.log('query', query)
 
-            //token
-            // let token = get(query, 'token', '')
+            //authorization
             let authorization = get(headers, 'authorization', '')
             authorization = isestr(authorization) ? authorization : ''
 
@@ -501,30 +583,21 @@ function WConverhpServer(opt = {}) {
             if (true) {
 
                 //verifyConn
-                let m = verifyConn({ apiType: 'slice', authorization, headers, query })
+                let m = verifyConn({ apiType: 'upload-slice', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
 
                 //check
                 if (m !== true) {
-
-                    //u8aOut
-                    let out = {
-                        error: 'permission denied',
-                    }
-                    let u8aOut = obj2u8arr(out)
-                    // console.log('slice u8aOut', u8aOut)
-
-                    // console.log('slice return permission denied')
-                    return responseU8aStream(res, u8aOut)
+                    return responseU8aStreamWithError(res, 'permission denied')
                 }
 
             }
 
             //eeEmit
             eeEmit('handler', {
-                api: 'apiSlice',
+                api: 'apiUploadSlice',
                 headers,
                 query,
             })
@@ -590,12 +663,18 @@ function WConverhpServer(opt = {}) {
 
             //receive
             let out = {}
+            let returnType = ''
+            let returnMsg = ''
             await receive()
                 .then(function(msg) {
                     out.success = msg
+                    returnType = 'success'
+                    returnMsg = 'need to parse'
                 })
                 .catch(function(msg) {
                     out.error = msg
+                    returnType = 'error'
+                    returnMsg = 'need to parse'
                 })
             // console.log('out', out)
 
@@ -603,13 +682,13 @@ function WConverhpServer(opt = {}) {
             let u8aOut = obj2u8arr(out)
             // console.log('u8aOut', u8aOut)
 
-            return responseU8aStream(res, u8aOut)
+            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
         },
     }
 
-    //apiSliceMerge
-    let apiSliceMerge = {
-        path: `/${apiSliceName}m`,
+    //apiUploadSliceMerge
+    let apiUploadSliceMerge = {
+        path: `/${apiUploadSliceName}m`,
         method: 'POST',
         options: {
             payload: {
@@ -638,8 +717,7 @@ function WConverhpServer(opt = {}) {
             query = iseobj(query) ? query : ''
             // console.log('query', query)
 
-            //token
-            // let token = get(query, 'token', '')
+            //authorization
             let authorization = get(headers, 'authorization', '')
             authorization = isestr(authorization) ? authorization : ''
 
@@ -647,30 +725,21 @@ function WConverhpServer(opt = {}) {
             if (true) {
 
                 //verifyConn
-                let m = verifyConn({ apiType: 'merge', authorization, headers, query })
+                let m = verifyConn({ apiType: 'upload-slice-merge', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
 
                 //check
                 if (m !== true) {
-
-                    //u8aOut
-                    let out = {
-                        error: 'permission denied',
-                    }
-                    let u8aOut = obj2u8arr(out)
-                    // console.log('mergeu8aOut', u8aOut)
-
-                    // console.log('merge return permission denied')
-                    return responseU8aStream(res, u8aOut)
+                    return responseU8aStreamWithError(res, 'permission denied')
                 }
 
             }
 
             //eeEmit
             eeEmit('handler', {
-                api: 'apiSliceMerge',
+                api: 'apiUploadSliceMerge',
                 headers,
                 query,
             })
@@ -714,7 +783,103 @@ function WConverhpServer(opt = {}) {
 
             //core
             let out = {}
+            let returnType = ''
+            let returnMsg = ''
             await core()
+                .then(function(msg) {
+                    out.success = msg
+                    returnType = 'success'
+                    returnMsg = 'need to parse'
+                })
+                .catch(function(msg) {
+                    out.error = msg
+                    returnType = 'error'
+                    returnMsg = 'need to parse'
+                })
+            // console.log('out', out)
+
+            //u8aOut
+            let u8aOut = obj2u8arr(out)
+            // console.log('u8aOut', u8aOut)
+
+            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
+        },
+    }
+
+    //apiDownload
+    let apiDownload = {
+        path: `/${apiDownloadName}`,
+        method: 'POST',
+        options: {
+            payload: {
+                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
+                timeout: false, //避免請求未完成時中斷
+                // output: 'stream',
+                parse: true, //前端送obj過來
+            },
+            timeout: {
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
+            },
+        },
+        handler: async function (req, res) {
+            // console.log(req, res)
+            // console.log('payload', req.payload)
+
+            //headers
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
+
+            //query
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            // console.log('query', query)
+
+            //authorization
+            let authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
+
+            //check
+            if (true) {
+
+                //verifyConn
+                let m = verifyConn({ apiType: 'download', authorization, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
+
+                //check
+                if (m !== true) {
+                    return responseU8aStreamWithError(res, 'permission denied')
+                }
+
+            }
+
+            //eeEmit
+            eeEmit('handler', {
+                api: 'apiDownload',
+                headers,
+                query,
+            })
+
+            //fileId, 從payload接收
+            let fileId = get(req, 'payload.fileId', '')
+            // console.log('fileId', fileId)
+
+            //check
+            if (!isestr(fileId)) {
+                // console.log('invalid fileId in payload')
+                return responseU8aStreamWithError(res, 'invalid fileId in payload')
+            }
+
+            //inp
+            let inp = { fileId }
+
+            //procDownload
+            let out = {}
+            await procDownload(inp)
                 .then(function(msg) {
                     out.success = msg
                 })
@@ -723,11 +888,32 @@ function WConverhpServer(opt = {}) {
                 })
             // console.log('out', out)
 
-            //u8aOut
-            let u8aOut = obj2u8arr(out)
-            // console.log('u8aOut', u8aOut)
+            //return
+            if (haskey(out, 'error')) {
+                // console.log('out.error', out.error)
+                return responseU8aStreamWithError(res, `can not get file from fileId[${fileId}]`)
+            }
 
-            return responseU8aStream(res, u8aOut)
+            //streamRead, fileName, fileSize, fileType
+            let r = get(out, 'success')
+            let streamRead = get(r, 'streamRead')
+            let fileName = get(r, 'fileName')
+            if (!isestr(fileName)) {
+                return res.response({ error: `invalid fileName` }).code(400)
+            }
+            let fileSize = get(r, 'fileSize')
+            if (!isnum(fileSize)) {
+                return res.response({ error: `invalid fileSize` }).code(400)
+            }
+            let fileType = get(r, 'fileType')
+            if (!isestr(fileType)) {
+                return res.response({ error: `invalid fileType` }).code(400)
+            }
+
+            return res.response(streamRead)
+                .type(fileType)
+                .header('Content-Disposition', `attachment; filename="${fileName}"`)
+                .header('Content-Length', fileSize)
         },
     }
 
@@ -760,8 +946,9 @@ function WConverhpServer(opt = {}) {
             apiRoutes = [
                 ...apiRoutes,
                 apiMain,
-                apiSlice,
-                apiSliceMerge,
+                apiUploadSlice,
+                apiUploadSliceMerge,
+                apiDownload,
             ]
         }
 
@@ -777,8 +964,8 @@ function WConverhpServer(opt = {}) {
 
     //start
     if (get(opt, 'serverHapi')) {
-        // opt.serverHapi.route([apiMain, apiSlice, apiSliceMerge])
-        server.route([apiMain, apiSlice, apiSliceMerge])
+        // opt.serverHapi.route([apiMain, apiUploadSlice, apiUploadSliceMerge, apiDownload])
+        server.route([apiMain, apiUploadSlice, apiUploadSliceMerge, apiDownload])
     }
     else {
         startServer()

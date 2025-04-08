@@ -6,7 +6,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 
 
-describe('uploadLargeFile', function() {
+describe('downloadLargeFile', function() {
 
     let msAll = []
 
@@ -15,7 +15,7 @@ describe('uploadLargeFile', function() {
         let ms = []
 
         let opt = {
-            port: 8082, //同時test故得要不同port
+            port: 8083, //同時test故得要不同port
             apiName: 'api',
             pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
             verifyConn: async ({ apiType, authorization, headers, query }) => {
@@ -32,25 +32,43 @@ describe('uploadLargeFile', function() {
         //new
         let wo = new WConverhpServer(opt)
 
-        wo.on('upload', (input, pm) => {
-            // console.log(`Server[port:${opt.port}]: upload`, input)
+        wo.on('download', (input, pm) => {
+            // console.log(`Server[port:${opt.port}]: download`, input)
 
             try {
+                ms.push({ 'download': input })
+                // console.log('ms', ms)
+                msAll.push({ server: ms })
 
-                let b = fs.readFileSync(`./${input.path}`)
-                let u8a = new Uint8Array(b)
-                let t = u8a
-                let ts = [t[0], t[1], t[2]]
-                ms.push({ 'receive and return': ts })
+                //fp
+                let fp = `./test/1mb.7z`
 
-                fs.unlinkSync(`./${input.path}`) //測試完刪除臨時檔
+                //streamRead
+                let streamRead = fs.createReadStream(fp) //createReadStream得指定使用test內檔案
 
-                let output = input
+                //fileName
+                let fileName = `1mb.7z`
+
+                //fileSize
+                let stats = fs.statSync(fp)
+                let fileSize = stats.size
+
+                //fileType
+                let fileType = 'application/x-7z-compressed'
+
+                //output
+                let output = {
+                    streamRead,
+                    fileName,
+                    fileSize,
+                    fileType,
+                }
+
                 pm.resolve(output)
             }
             catch (err) {
-                // console.log('upload error', err)
-                pm.reject('upload error')
+                // console.log('download error', err)
+                pm.reject('download error')
             }
 
         })
@@ -62,8 +80,6 @@ describe('uploadLargeFile', function() {
         })
 
         setTimeout(() => {
-            // console.log('ms', ms)
-            msAll.push({ server: ms })
             wo.stop()
         }, 2000)
 
@@ -75,7 +91,7 @@ describe('uploadLargeFile', function() {
 
         let opt = {
             FormData,
-            url: 'http://localhost:8082', //同時test故得要不同port
+            url: 'http://localhost:8083', //同時test故得要不同port
             apiName: 'api',
             getToken: () => {
                 return 'token-for-test'
@@ -89,30 +105,31 @@ describe('uploadLargeFile', function() {
             // console.log(`error`, err)
         })
 
-        function uploadLargeFile() {
+        function downloadLargeFile() {
             let core = async() => {
 
-                //u8a
-                let u8a = new Uint8Array(fs.readFileSync('./test/1mb.7z')) //readFileSync得指定使用test內檔案
-                // console.log('u8a.length', u8a.length)
-                // console.log('uploadLargeFile u8a', u8a)
-                let t = u8a
-                let ts = [t[0], t[1], t[2]]
-                ms.push({ 'upload u8a.length': ts })
-
-                await wo.upload('./1mb.7z', u8a,
+                await wo.download('id-for-file',
                     function ({ prog, p, m }) {
-                        // console.log('client web: upload: prog', prog, p, m)
-                        if (m === 'upload') {
-                            // console.log('client web: upload: prog', prog)
+                        // console.log('client web: download: prog', prog, p, m)
+                        if (m === 'download') {
+                            // console.log('client web: download: prog', prog)
                         }
+                    },
+                    {
+                        fdDownload: './',
                     })
                     .then(function(res) {
-                        // console.log('client web: upload: then', res)
-                        ms.push({ 'upload output': { filename: res.filename } })
+                        // console.log('client web: download: then', res)
+
+                        //getFileName
+                        res = w.getFileName(res)
+                        ms.push({ 'download output': res })
+
+                        fs.unlinkSync(res) //測試完刪除臨時檔
+
                     })
                     .catch(function () {
-                        // console.log('client web: upload: catch', err)
+                        // console.log('client web: download: catch', err)
                     })
 
                 // console.log('ms', ms)
@@ -122,7 +139,7 @@ describe('uploadLargeFile', function() {
             core()
         }
 
-        uploadLargeFile()
+        downloadLargeFile()
 
     }
 
@@ -132,13 +149,13 @@ describe('uploadLargeFile', function() {
         runClient()
         setTimeout(() => {
             // console.log('msAll', msAll)
-            // fs.writeFileSync('./test_uploadLargeFile.json', JSON.stringify(msAll), 'utf8')
+            // fs.writeFileSync('./test_downloadLargeFile.json', JSON.stringify(msAll), 'utf8')
             pm.resolve(msAll)
         }, 4000)
         return pm
     }
 
-    let res = `[{"client":[{"upload u8a.length":[55,122,188]},{"upload output":{"filename":"./1mb.7z"}}]},{"server":[{"receive and return":[55,122,188]}]}]`
+    let res = `[{"server":[{"download":{"fileId":"id-for-file"}}]},{"client":[{"download output":"1mb.7z"}]}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

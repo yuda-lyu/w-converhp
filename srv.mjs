@@ -74,6 +74,44 @@ wo.on('upload', (input, pm) => {
     }
 
 })
+wo.on('download', (input, pm) => {
+    console.log(`Server[port:${opt.port}]: download`, input)
+
+    try {
+        ms.push({ 'download': input })
+
+        //fp
+        let fp = `./test/1mb.7z`
+
+        //streamRead
+        let streamRead = fs.createReadStream(fp)
+
+        //fileName
+        let fileName = `1mb.7z`
+
+        //fileSize
+        let stats = fs.statSync(fp)
+        let fileSize = stats.size
+
+        //fileType
+        let fileType = 'application/x-7z-compressed'
+
+        //output
+        let output = {
+            streamRead,
+            fileName,
+            fileSize,
+            fileType,
+        }
+
+        pm.resolve(output)
+    }
+    catch (err) {
+        console.log('download error', err)
+        pm.reject('download error')
+    }
+
+})
 wo.on('error', (err) => {
     console.log(`Server[port:${opt.port}]: error`, err)
 })
@@ -85,7 +123,7 @@ setTimeout(() => {
     console.log('ms', ms)
     // console.log('ms', JSON.stringify(ms))
     wo.stop()
-}, 3000)
+}, 1003000)
 
 
 //node --experimental-modules srv.mjs
