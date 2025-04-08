@@ -1,5 +1,3 @@
-import path from 'path'
-import fs from 'fs'
 import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
@@ -437,7 +435,7 @@ function WConverhpClient(opt) {
         }
 
         //downloadStream
-        let downloadStream = (res) => {
+        let downloadStream = async (res) => {
             // console.log('res.headers', res.headers)
 
             //pm
@@ -471,45 +469,62 @@ function WConverhpClient(opt) {
             if (env === 'browser') {
 
                 //通過createObjectURL與a元素下載
-                let url = URL.createObjectURL(streamRecv)
-                let a = document.createElement('a')
-                a.href = url
-                a.download = filename // 動態設置檔名
-                document.body.appendChild(a)
-                a.click()
-                a.remove()
-                URL.revokeObjectURL(url)
+                try {
+                    let url = URL.createObjectURL(streamRecv)
+                    let a = document.createElement('a')
+                    a.href = url
+                    a.download = filename // 動態設置檔名
+                    document.body.appendChild(a)
+                    a.click()
+                    a.remove()
+                    URL.revokeObjectURL(url)
+                    pm.resolve(filename)
+                }
+                catch (err) {
+                    console.log(err)
+                    pm.reject(err)
+                }
 
-                pm.resolve(filename)
             }
             else {
 
-                //fdDownload, 只有後端下載才使用fdDownload
-                let fdDownload = get(opt, 'fdDownload', '')
-                if (!fsIsFolder(fdDownload)) {
-                    fsCreateFolder(fdDownload)
+                try {
+
+                    //path, fs
+                    let path = await import('path')
+                    let fs = await import('fs')
+
+                    //fdDownload, 只有後端下載才使用fdDownload
+                    let fdDownload = get(opt, 'fdDownload', '')
+                    if (!fsIsFolder(fdDownload)) {
+                        fsCreateFolder(fdDownload)
+                    }
+                    // console.log('fdDownload', fdDownload)
+
+                    //fp
+                    let fp = path.resolve(fdDownload, filename)
+                    // console.log('fp', fp)
+
+                    //streamWriter
+                    let streamWriter = fs.createWriteStream(fp)
+
+                    //pipe
+                    streamRecv.pipe(streamWriter)
+
+                    //finish
+                    streamWriter.on('finish', () => {
+                        pm.resolve(fp)
+                    })
+
+                    //error
+                    streamWriter.on('error', (err) => {
+                        pm.reject(err)
+                    })
+
                 }
-                // console.log('fdDownload', fdDownload)
-
-                //fp
-                let fp = path.resolve(fdDownload, filename)
-                // console.log('fp', fp)
-
-                //streamWriter
-                let streamWriter = fs.createWriteStream(fp)
-
-                //pipe
-                streamRecv.pipe(streamWriter)
-
-                //finish
-                streamWriter.on('finish', () => {
-                    pm.resolve(fp)
-                })
-
-                //error
-                streamWriter.on('error', (err) => {
+                catch (err) {
                     pm.reject(err)
-                })
+                }
 
             }
 

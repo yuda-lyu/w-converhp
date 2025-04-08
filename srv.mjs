@@ -123,7 +123,7 @@ setTimeout(() => {
     console.log('ms', ms)
     // console.log('ms', JSON.stringify(ms))
     wo.stop()
-}, 1003000)
+}, 3000)
 
 
 //node --experimental-modules srv.mjs
