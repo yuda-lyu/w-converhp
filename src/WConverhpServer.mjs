@@ -3,6 +3,7 @@ import stream from 'stream'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
+import isNumber from 'lodash-es/isNumber.js'
 import genPm from 'wsemi/src/genPm.mjs'
 import evem from 'wsemi/src/evem.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
@@ -12,9 +13,10 @@ import ispint from 'wsemi/src/ispint.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
-import isnum from 'wsemi/src/isnum.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
+import cstr from 'wsemi/src/cstr.mjs'
+import str2b64 from 'wsemi/src/str2b64.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
@@ -387,11 +389,21 @@ function WConverhpServer(opt = {}) {
     //responseU8aStreamWithError
     function responseU8aStreamWithError(res, msg) {
 
+        //check
+        if (!isestr(msg)) {
+            console.log('msg', msg)
+            console.log(`msg is not an effective string, set msg=''`)
+            msg = ''
+        }
+
         //u8aOut
         let u8aOut = obj2u8arr({
             error: msg,
         })
         // console.log('download u8aOut', u8aOut)
+
+        //str2b64
+        // msg = str2b64(msg) //預期程式內調用皆為英文, 不須轉base64來支援中文
 
         return responseU8aStream(res, u8aOut, { returnType: 'error', returnMsg: msg })
     }
@@ -891,24 +903,35 @@ function WConverhpServer(opt = {}) {
             //return
             if (haskey(out, 'error')) {
                 // console.log('out.error', out.error)
-                return responseU8aStreamWithError(res, `can not get file from fileId[${fileId}]`)
+                return responseU8aStreamWithError(res, `can not get file from fileId`)
             }
 
-            //streamRead, fileName, fileSize, fileType
+            //r
             let r = get(out, 'success')
+
+            //streamRead
             let streamRead = get(r, 'streamRead')
+
+            //fileName
             let fileName = get(r, 'fileName')
             if (!isestr(fileName)) {
-                return res.response({ error: `invalid fileName` }).code(400)
+                return responseU8aStreamWithError(res, 'invalid fileName')
             }
+            fileName = str2b64(fileName) //headers內對中文支援度不佳須用base64傳
+
+            //fileSize
             let fileSize = get(r, 'fileSize')
-            if (!isnum(fileSize)) {
-                return res.response({ error: `invalid fileSize` }).code(400)
+            if (!isNumber(fileSize)) {
+                return responseU8aStreamWithError(res, 'invalid fileSize')
             }
+            // fileSize = cstr(fileSize)
+
+            //fileType
             let fileType = get(r, 'fileType')
             if (!isestr(fileType)) {
-                return res.response({ error: `invalid fileType` }).code(400)
+                return responseU8aStreamWithError(res, 'invalid fileType')
             }
+            fileType = cstr(fileType)
 
             return res.response(streamRead)
                 .type(fileType)

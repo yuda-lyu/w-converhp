@@ -1,6 +1,7 @@
 import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
+import evem from 'wsemi/src/evem.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import genID from 'wsemi/src/genID.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
@@ -13,7 +14,7 @@ import iseobj from 'wsemi/src/iseobj.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import strright from 'wsemi/src/strright.mjs'
-import evem from 'wsemi/src/evem.mjs'
+import b642str from 'wsemi/src/b642str.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
@@ -459,6 +460,7 @@ function WConverhpClient(opt) {
 
             //filename
             let filename = getFilenameByHeader(contentDisposition)
+            filename = b642str(filename) //headers內對中文支援度不佳須用base64傳, 此處解析提取後須反轉
             // console.log('filename', filename)
 
             //streamRecv

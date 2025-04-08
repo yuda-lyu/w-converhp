@@ -35,7 +35,7 @@ function downloadLargeFile() {
                 }
             },
             {
-                fdDownload: './',
+                fdDownload: './', //於後端nodejs環境才能提供
             })
             .then(function(res) {
                 console.log('client web: download: then', res)

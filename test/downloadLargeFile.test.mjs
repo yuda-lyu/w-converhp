@@ -47,7 +47,7 @@ describe('downloadLargeFile', function() {
                 let streamRead = fs.createReadStream(fp) //createReadStream得指定使用test內檔案
 
                 //fileName
-                let fileName = `1mb.7z`
+                let fileName = `1mb.7z` //測試支援中文
 
                 //fileSize
                 let stats = fs.statSync(fp)

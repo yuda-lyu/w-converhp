@@ -87,7 +87,7 @@ wo.on('download', (input, pm) => {
         let streamRead = fs.createReadStream(fp)
 
         //fileName
-        let fileName = `1mb.7z`
+        let fileName = `1mb中文.7z` //測試支援中文
 
         //fileSize
         let stats = fs.statSync(fp)
