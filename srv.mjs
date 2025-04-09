@@ -3,6 +3,7 @@ import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from './src/WConverhpServer.mjs'
 
+
 let ms = []
 
 let opt = {
@@ -74,6 +75,28 @@ wo.on('upload', (input, pm) => {
     }
 
 })
+wo.on('download-get-filename', (input, pm) => {
+    console.log(`Server[port:${opt.port}]: download-get-filename`, input)
+
+    try {
+        ms.push({ 'download': input })
+
+        //filename
+        let filename = `1mb中文.7z` //測試支援中文
+
+        //output
+        let output = {
+            filename
+        }
+
+        pm.resolve(output)
+    }
+    catch (err) {
+        console.log('download error', err)
+        pm.reject('download error')
+    }
+
+})
 wo.on('download', (input, pm) => {
     console.log(`Server[port:${opt.port}]: download`, input)
 
@@ -123,7 +146,7 @@ setTimeout(() => {
     console.log('ms', ms)
     // console.log('ms', JSON.stringify(ms))
     wo.stop()
-}, 1113000)
+}, 3000)
 
 
 //node --experimental-modules srv.mjs

@@ -1,6 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
-// import _ from 'lodash-es'
+import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
@@ -8,11 +8,11 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 
 describe('uploadLargeFile', function() {
 
-    let msAll = []
+    let ms = []
 
     let runServer = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             port: 8082, //同時test故得要不同port
@@ -41,7 +41,7 @@ describe('uploadLargeFile', function() {
                 let u8a = new Uint8Array(b)
                 let t = u8a
                 let ts = [t[0], t[1], t[2]]
-                ms.push({ 'receive and return': ts })
+                ms.push({ 'server receive': ts })
 
                 fs.unlinkSync(`./${input.path}`) //測試完刪除臨時檔
 
@@ -63,15 +63,12 @@ describe('uploadLargeFile', function() {
 
         setTimeout(() => {
             // console.log('ms', ms)
-            msAll.push({ server: ms })
             wo.stop()
         }, 2000)
 
     }
 
     let runClient = () => {
-
-        let ms = []
 
         let opt = {
             FormData,
@@ -98,7 +95,7 @@ describe('uploadLargeFile', function() {
                 // console.log('uploadLargeFile u8a', u8a)
                 let t = u8a
                 let ts = [t[0], t[1], t[2]]
-                ms.push({ 'upload u8a.length': ts })
+                ms.push({ 'client upload start': `u8a.length[${ts}]` })
 
                 await wo.upload('./1mb.7z', u8a,
                     function ({ prog, p, m }) {
@@ -109,14 +106,13 @@ describe('uploadLargeFile', function() {
                     })
                     .then(function(res) {
                         // console.log('client web: upload: then', res)
-                        ms.push({ 'upload output': { filename: res.filename } })
+                        ms.push({ 'client upload done': { filename: res.filename } })
                     })
                     .catch(function () {
                         // console.log('client web: upload: catch', err)
                     })
 
                 // console.log('ms', ms)
-                msAll.push({ client: ms })
 
             }
             core()
@@ -131,14 +127,14 @@ describe('uploadLargeFile', function() {
         runServer()
         runClient()
         setTimeout(() => {
-            // console.log('msAll', msAll)
-            // fs.writeFileSync('./test_uploadLargeFile.json', JSON.stringify(msAll), 'utf8')
-            pm.resolve(msAll)
+            // console.log('ms', ms)
+            // fs.writeFileSync('./test_uploadLargeFile.json', JSON.stringify(ms), 'utf8')
+            pm.resolve(ms)
         }, 4000)
         return pm
     }
 
-    let res = `[{"client":[{"upload u8a.length":[55,122,188]},{"upload output":{"filename":"./1mb.7z"}}]},{"server":[{"receive and return":[55,122,188]}]}]`
+    let res = `[{"client upload start":"u8a.length[55,122,188]"},{"server receive":[55,122,188]},{"client upload done":{"filename":"./1mb.7z"}}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

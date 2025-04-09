@@ -21,16 +21,28 @@ To view documentation or get support, visit [docs](https://yuda-lyu.github.io/w-
 ```alias
 npm i w-converhp
 ```
-#### Example for w-converhp-server:
+
+#### Example for w-converhp-server in nodejs:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/srv.mjs)]
 ```alias
-import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'
+import fs from 'fs'
+import _ from 'lodash-es'
+import w from 'wsemi'
+import WConverhpServer from './src/WConverhpServer.mjs'
+
+let ms = []
 
 let opt = {
     port: 8080,
     apiName: 'api',
     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
-    verifyConn: () => {
+    verifyConn: async ({ apiType, authorization, headers, query }) => {
+        console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
+        let token = w.strdelleft(authorization, 7) //刪除Bearer
+        if (!w.isestr(token)) {
+            return false
+        }
+        // await w.delay(3000)
         return true
     },
 }
@@ -48,6 +60,7 @@ wo.on('execute', (func, input, pm) => {
 
             if (_.get(input, 'p.d.u8a', null)) {
                 console.log('input.p.d.u8a', input.p.d.u8a)
+                ms.push({ 'input.p.d.u8a': input.p.d.u8a })
             }
 
             let r = {
@@ -55,13 +68,7 @@ wo.on('execute', (func, input, pm) => {
                 _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
                 _bin: {
                     name: 'zdata.b2',
-                    u8a: new Uint8Array([66, 97, 115]),
-                    // name: '100mb.7z',
-                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\100mb.7z')),
-                    // name: '500mb.7z',
-                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\500mb.7z')),
-                    // name: '1000mb.7z',
-                    // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\1000mb.7z')),
+                    u8a: new Uint8Array([52, 66, 97, 115]),
                 },
             }
 
@@ -84,12 +91,35 @@ wo.on('upload', (input, pm) => {
     console.log(`Server[port:${opt.port}]: upload`, input)
 
     try {
+        ms.push({ 'receive and return': input })
         let output = input
         pm.resolve(output)
     }
     catch (err) {
         console.log('upload error', err)
         pm.reject('upload error')
+    }
+
+})
+wo.on('download-get-filename', (input, pm) => {
+    console.log(`Server[port:${opt.port}]: download-get-filename`, input)
+
+    try {
+        ms.push({ 'download': input })
+
+        //filename
+        let filename = `1mb中文.7z` //測試支援中文
+
+        //output
+        let output = {
+            filename
+        }
+
+        pm.resolve(output)
+    }
+    catch (err) {
+        console.log('download error', err)
+        pm.reject('download error')
     }
 
 })
@@ -106,7 +136,7 @@ wo.on('download', (input, pm) => {
         let streamRead = fs.createReadStream(fp)
 
         //fileName
-        let fileName = `1mb.7z`
+        let fileName = `1mb中文.7z` //測試支援中文
 
         //fileSize
         let stats = fs.statSync(fp)
@@ -131,108 +161,44 @@ wo.on('download', (input, pm) => {
     }
 
 })
+wo.on('error', (err) => {
+    console.log(`Server[port:${opt.port}]: error`, err)
+})
 wo.on('handler', (data) => {
     // console.log(`Server[port:${opt.port}]: handler`, data)
 })
 
+setTimeout(() => {
+    console.log('ms', ms)
+    // console.log('ms', JSON.stringify(ms))
+    wo.stop()
+}, 3000)
+
 ```
-#### Example for w-converhp-client:
+
+#### Example for w-converhp-client in nodejs:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/scla.mjs)]
 ```alias
-import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'
+import FormData from 'form-data'
+import WConverhpClient from './src/WConverhpClient.mjs'
+
+let ms = []
 
 let opt = {
     FormData,
     url: 'http://localhost:8080',
     apiName: 'api',
+    getToken: () => {
+        return 'token-for-test'
+    },
 }
 
 //new
 let wo = new WConverhpClient(opt)
 
-async function execute(name, u8a) {
-
-    //p
-    let p = {
-        a: 12,
-        b: 34.56,
-        c: 'test中文',
-        d: {
-            name,
-            u8a,
-        },
-    }
-    console.log('p', p)
-
-    //execute
-    await wo.execute('add', { p },
-        function ({ prog, p, m }) {
-            console.log('client web: execute: prog', prog, p, m)
-        })
-        .then(function(r) {
-            console.log('client web: execute: add', r)
-            console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
-            // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
-        })
-        .catch(function (err) {
-            console.log('client web: execute: catch', err)
-        })
-
-}
-
-function executeWithU8a() {
-    let core = async() => {
-
-        //u8a
-        let u8a = new Uint8Array([66, 97, 115])
-        console.log('executeWithU8a u8a', u8a)
-
-        //execute
-        await execute('zdata.b1', u8a)
-
-    }
-    core()
-}
-executeWithU8a()
-
-function executeWithFile() {
-    let core = async() => {
-
-        //u8a
-        let u8a = new Uint8Array(fs.readFileSync('../_data/10mb.7z'))
-        console.log('executeWithFile u8a', u8a)
-
-        //execute
-        await execute('10mb.7z', u8a)
-
-    }
-    core()
-}
-executeWithFile()
-
-function uploadLargeFile() {
-    let core = async() => {
-
-        //u8a
-        let u8a = new Uint8Array(fs.readFileSync('../_data/1000mb.7z'))
-        console.log('u8a.length', u8a.length)
-        console.log('uploadLargeFile u8a', u8a)
-
-        await wo.upload('1000mb.7z', u8a,
-            function ({ prog, p, m }) {
-                console.log('client web: upload: prog', prog, p, m)
-            })
-            .then(function(res) {
-                console.log('client web: upload: then', res)
-            })
-            .catch(function (err) {
-                console.log('client web: upload: catch', err)
-            })
-
-    }
-    core()
-}
-uploadLargeFile()
+wo.on('error', (err) => {
+    console.log(`error`, err)
+})
 
 function downloadLargeFile() {
     let core = async() => {
@@ -245,7 +211,7 @@ function downloadLargeFile() {
                 }
             },
             {
-                fdDownload: './',
+                fdDownload: './', //於後端nodejs環境才能提供
             })
             .then(function(res) {
                 console.log('client web: download: then', res)
@@ -260,7 +226,9 @@ function downloadLargeFile() {
     }
     core()
 }
+
 downloadLargeFile()
+
 ```
 
 ### In a browser(UMD module):
@@ -268,9 +236,10 @@ downloadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.14/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.15/dist/w-converhp-client.umd.js"></script>
 ```
-#### Example for w-converhp-client:
+
+#### Example for w-converhp-client in browser:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/web.html)]
 ```alias
 

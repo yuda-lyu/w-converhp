@@ -8,11 +8,11 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 
 describe('executeWithFile', function() {
 
-    let msAll = []
+    let ms = []
 
     let runServer = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             port: 8081, //同時test故得要不同port
@@ -44,7 +44,7 @@ describe('executeWithFile', function() {
                         // console.log('input.p.d.u8a', input.p.d.u8a)
                         let t = input.p.d.u8a
                         let ts = [t[0], t[1], t[2]]
-                        ms.push({ 'input.p.d.u8a': ts })
+                        ms.push({ 'server receive input.p.d.u8a': ts })
                     }
 
                     let r = {
@@ -80,7 +80,6 @@ describe('executeWithFile', function() {
 
         setTimeout(() => {
             // console.log('ms', JSON.stringify(ms))
-            msAll.push({ server: ms })
             wo.stop()
         }, 2000)
 
@@ -88,7 +87,7 @@ describe('executeWithFile', function() {
 
     let runClient = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             FormData,
@@ -121,7 +120,7 @@ describe('executeWithFile', function() {
             // console.log('p', p)
             let t = p.d.u8a
             let ts = [t[0], t[1], t[2]]
-            ms.push({ 'execute input': ts })
+            ms.push({ 'client execute input': ts })
 
             //execute
             await wo.execute('add', { p },
@@ -139,7 +138,7 @@ describe('executeWithFile', function() {
                     // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
                     let t = r._bin.u8a
                     let ts = [t[0], t[1], t[2]]
-                    ms.push({ 'execute output': ts })
+                    ms.push({ 'client execute done': ts })
                 })
                 .catch(function () {
                     // console.log('client web: execute: catch', err)
@@ -158,7 +157,6 @@ describe('executeWithFile', function() {
                 await execute('1mb.7z', u8a)
 
                 // console.log('ms', ms)
-                msAll.push({ client: ms })
 
             }
             core()
@@ -173,14 +171,14 @@ describe('executeWithFile', function() {
         runServer()
         runClient()
         setTimeout(() => {
-            // console.log('msAll', JSON.stringify(msAll))
-            // fs.writeFileSync('./test_executeWithFile.json', JSON.stringify(msAll), 'utf8')
-            pm.resolve(msAll)
+            // console.log('ms', JSON.stringify(ms))
+            // fs.writeFileSync('./test_executeWithFile.json', JSON.stringify(ms), 'utf8')
+            pm.resolve(ms)
         }, 4000)
         return pm
     }
 
-    let res = `[{"client":[{"execute input":[55,122,188]},{"execute output":[52,66,97]}]},{"server":[{"input.p.d.u8a":[55,122,188]}]}]`
+    let res = `[{"client execute input":[55,122,188]},{"server receive input.p.d.u8a":[55,122,188]},{"client execute done":[52,66,97]}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

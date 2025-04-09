@@ -83,100 +83,30 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  * @returns {Object} 回傳事件物件，可使用函數execute、upload
  * @example
  *
- * import WConverhpClient from 'w-converhp/dist/w-converhp-client.umd.js'
+ * import path from 'path'
+ * import fs from 'fs'
+ * import _ from 'lodash-es'
+ * import w from 'wsemi'
+ * import FormData from 'form-data'
+ * import WConverhpClient from './src/WConverhpClient.mjs'
+ *
+ * let ms = []
  *
  * let opt = {
  *     FormData,
  *     url: 'http://localhost:8080',
  *     apiName: 'api',
+ *     getToken: () => {
+ *         return 'token-for-test'
+ *     },
  * }
  *
  * //new
  * let wo = new WConverhpClient(opt)
  *
- * async function execute(name, u8a) {
- *
- *     //p
- *     let p = {
- *         a: 12,
- *         b: 34.56,
- *         c: 'test中文',
- *         d: {
- *             name,
- *             u8a,
- *         },
- *     }
- *     console.log('p', p)
- *
- *     //execute
- *     await wo.execute('add', { p },
- *         function ({ prog, p, m }) {
- *             console.log('client web: execute: prog', prog, p, m)
- *         })
- *         .then(function(r) {
- *             console.log('client web: execute: add', r)
- *             console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
- *             // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
- *         })
- *         .catch(function (err) {
- *             console.log('client web: execute: catch', err)
- *         })
- *
- * }
- *
- * function executeWithU8a() {
- *     let core = async() => {
- *
- *         //u8a
- *         let u8a = new Uint8Array([66, 97, 115])
- *         console.log('executeWithU8a u8a', u8a)
- *
- *         //execute
- *         await execute('zdata.b1', u8a)
- *
- *     }
- *     core()
- * }
- * executeWithU8a()
- *
- * function executeWithFile() {
- *     let core = async() => {
- *
- *         //u8a
- *         let u8a = new Uint8Array(fs.readFileSync('../_data/10mb.7z'))
- *         console.log('executeWithFile u8a', u8a)
- *
- *         //execute
- *         await execute('10mb.7z', u8a)
- *
- *     }
- *     core()
- * }
- * executeWithFile()
- *
- * function uploadLargeFile() {
- *     let core = async() => {
- *
- *         //u8a
- *         let u8a = new Uint8Array(fs.readFileSync('../_data/1000mb.7z'))
- *         console.log('u8a.length', u8a.length)
- *         console.log('uploadLargeFile u8a', u8a)
- *
- *         await wo.upload('1000mb.7z', u8a,
- *             function ({ prog, p, m }) {
- *                 console.log('client web: upload: prog', prog, p, m)
- *             })
- *             .then(function(res) {
- *                 console.log('client web: upload: then', res)
- *             })
- *             .catch(function (err) {
- *                 console.log('client web: upload: catch', err)
- *             })
- *
- *     }
- *     core()
- * }
- * uploadLargeFile()
+ * wo.on('error', (err) => {
+ *     console.log(`error`, err)
+ * })
  *
  * function downloadLargeFile() {
  *     let core = async() => {
@@ -189,7 +119,7 @@ import now2strp from 'wsemi/src/now2strp.mjs'
  *                 }
  *             },
  *             {
- *                 fdDownload: './',
+ *                 fdDownload: './', //於後端nodejs環境才能提供
  *             })
  *             .then(function(res) {
  *                 console.log('client web: download: then', res)
@@ -271,6 +201,36 @@ function WConverhpClient(opt) {
         }, 1)
     }
 
+    //getUrlUse
+    let getUrlUse = (type) => {
+
+        //urlUse
+        let urlUse = ''
+        if (type === 'basic') {
+            urlUse = url
+        }
+        else if (type === 'slice') {
+            urlUse = `${url}slc`
+        }
+        else if (type === 'slice-merge') {
+            urlUse = `${url}slcm`
+        }
+        else if (type === 'download-get-filename') {
+            urlUse = `${url}dwgfn`
+        }
+        else if (type === 'download-get') {
+            urlUse = `${url}dwgf`
+        }
+        else if (type === 'download') {
+            urlUse = `${url}dw`
+        }
+        else {
+            throw new Error(`invalid type[${type}]`)
+        }
+
+        return urlUse
+    }
+
     //res2u8arr
     async function res2u8arr(bb) {
         //blob(in browser) or buffer(in nodejs) to u8a
@@ -321,22 +281,7 @@ function WConverhpClient(opt) {
         }
 
         //urlUse
-        let urlUse = ''
-        if (type === 'basic') {
-            urlUse = url
-        }
-        else if (type === 'slice') {
-            urlUse = `${url}slc`
-        }
-        else if (type === 'slicemerge') {
-            urlUse = `${url}slcm`
-        }
-        else if (type === 'download') {
-            urlUse = `${url}dw`
-        }
-        else {
-            throw new Error(`invalid type[${type}]`)
-        }
+        let urlUse = getUrlUse(type)
 
         //pm
         let pm = genPm()
@@ -515,7 +460,7 @@ function WConverhpClient(opt) {
 
             if (env === 'browser') {
 
-                //通過createObjectURL與a元素下載
+                //browser通過createObjectURL接收stream與a.href+a.click()接收檔案
                 try {
                     let url = URL.createObjectURL(streamRecv)
                     let a = document.createElement('a')
@@ -535,6 +480,7 @@ function WConverhpClient(opt) {
             }
             else {
 
+                //nodejs通過fs與stream接收檔案, stream出錯只會觸發error事件, 此處try catch為攔截其他非stream程式碼錯誤
                 try {
 
                     //path, fs
@@ -692,9 +638,7 @@ function WConverhpClient(opt) {
         }
 
         //send
-        // console.log('send bb...')
         let res = await send(type, bb, { dataType: 'blob', cbProgress })
-        // console.log('send done', res)
 
         return res
     }
@@ -799,29 +743,23 @@ function WConverhpClient(opt) {
             //chunk
             let chunk = bb.slice(start, end)
 
-            //hd
+            //send slice
             let hd = {
                 'chunk-index': i,
                 'chunk-total': chunkTotal,
                 'package-id': packageId,
             }
-
-            //send slice
-            // console.log(`uploading chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}]...`)
             await send('slice', chunk, { headers: hd, dataType: 'blob', cbProgress: cbProgressSlice })
-            // console.log(`upload chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}] done`, res)
 
         }
 
-        //send merge
-        // console.log(`merging tempId[${tempId}]...`)
+        //send slice-merge
         let msg = {
             'filename': tempId,
             'chunk-total': chunkTotal,
             'package-id': packageId,
         }
-        let resMg = await send('slicemerge', msg, { dataType: 'json', cbProgress: cbProgressMerge })
-        // console.log(`merge tempId[${tempId}] done`, resMg)
+        let resMg = await send('slice-merge', msg, { dataType: 'json', cbProgress: cbProgressMerge })
 
         return resMg
     }
@@ -901,17 +839,61 @@ function WConverhpClient(opt) {
         return sendDataSlice(tempId, bb, cbProgress)
     }
 
-    //download
-    async function download(fileId, cbProgress, opt = {}) {
-
-        //msg
-        let msg = { fileId }
+    //downloadNodejs
+    async function downloadNodejs(fileId, cbProgress, opt = {}) {
 
         //send download
+        let msg = { fileId }
         let resMg = await send('download', msg, { ...opt, dataType: 'json', cbProgress })
         // console.log('resMg', resMg)
 
         return resMg
+    }
+
+    //downloadBrowser
+    async function downloadBrowser(fileId, cbProgress, opt = {}) {
+        //交由瀏覽器下載與管理故無法監聽進度, 不使用cbProgress
+
+        //token
+        let token = getToken()
+        if (ispm(token)) {
+            token = await token
+        }
+
+        //send download-get-filename
+        let msg = { fileId }
+        let resMg = await send('download-get-filename', msg, { dataType: 'json' })
+        // console.log('resMg', resMg)
+
+        //filename
+        let filename = get(resMg, 'filename', '')
+        // console.log('filename', filename)
+
+        //urlUse
+        let urlUse = getUrlUse('download-get')
+        // console.log('urlUse', urlUse)
+
+        //url
+        let url = `${urlUse}?fileId=${fileId}&amp;token=${token}`
+        // console.log('url', url)
+
+        //透過a元素打url下載, 讓瀏覽器認定為直接下載模式, 由瀏覽器展示下載進度與排入正在下載清單
+        let a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+
+        return filename
+    }
+
+    //download
+    async function download(fileId, cbProgress, opt = {}) {
+        if (env === 'browser') {
+            return downloadBrowser(fileId, cbProgress, opt)
+        }
+        else {
+            return downloadNodejs(fileId, cbProgress, opt)
+        }
     }
 
     //save
@@ -938,7 +920,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Tue Apr 08 2025 14:22:58 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Wed Apr 09 2025 13:07:53 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

@@ -1,6 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
-// import _ from 'lodash-es'
+import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
@@ -8,11 +8,11 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 
 describe('downloadLargeFile', function() {
 
-    let msAll = []
+    let ms = []
 
     let runServer = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             port: 8083, //同時test故得要不同port
@@ -36,9 +36,8 @@ describe('downloadLargeFile', function() {
             // console.log(`Server[port:${opt.port}]: download`, input)
 
             try {
-                ms.push({ 'download': input })
+                ms.push({ 'server receive input': input })
                 // console.log('ms', ms)
-                msAll.push({ server: ms })
 
                 //fp
                 let fp = `./test/1mb.7z`
@@ -87,7 +86,7 @@ describe('downloadLargeFile', function() {
 
     let runClient = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             FormData,
@@ -108,6 +107,7 @@ describe('downloadLargeFile', function() {
         function downloadLargeFile() {
             let core = async() => {
 
+                ms.push({ 'client download input': 'id-for-file' })
                 await wo.download('id-for-file',
                     function ({ prog, p, m }) {
                         // console.log('client web: download: prog', prog, p, m)
@@ -123,7 +123,7 @@ describe('downloadLargeFile', function() {
 
                         //getFileName
                         res = w.getFileName(res)
-                        ms.push({ 'download output': res })
+                        ms.push({ 'client download done': res })
 
                         fs.unlinkSync(res) //測試完刪除臨時檔
 
@@ -133,7 +133,6 @@ describe('downloadLargeFile', function() {
                     })
 
                 // console.log('ms', ms)
-                msAll.push({ client: ms })
 
             }
             core()
@@ -148,14 +147,14 @@ describe('downloadLargeFile', function() {
         runServer()
         runClient()
         setTimeout(() => {
-            // console.log('msAll', msAll)
-            // fs.writeFileSync('./test_downloadLargeFile.json', JSON.stringify(msAll), 'utf8')
-            pm.resolve(msAll)
+            // console.log('ms', ms)
+            // fs.writeFileSync('./test_downloadLargeFile.json', JSON.stringify(ms), 'utf8')
+            pm.resolve(ms)
         }, 4000)
         return pm
     }
 
-    let res = `[{"server":[{"download":{"fileId":"id-for-file"}}]},{"client":[{"download output":"1mb.7z"}]}]`
+    let res = `[{"client download input":"id-for-file"},{"server receive input":{"fileId":"id-for-file"}},{"client download done":"1mb.7z"}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

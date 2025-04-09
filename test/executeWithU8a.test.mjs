@@ -1,5 +1,5 @@
 import assert from 'assert'
-// import fs from 'fs'
+import fs from 'fs'
 import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
@@ -8,11 +8,11 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 
 describe('executeWithU8a', function() {
 
-    let msAll = []
+    let ms = []
 
     let runServer = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             port: 8080,
@@ -42,7 +42,7 @@ describe('executeWithU8a', function() {
 
                     if (_.get(input, 'p.d.u8a', null)) {
                         // console.log('input.p.d.u8a', input.p.d.u8a)
-                        ms.push({ 'input.p.d.u8a': input.p.d.u8a })
+                        ms.push({ 'server receive input.p.d.u8a': input.p.d.u8a })
                     }
 
                     let r = {
@@ -78,7 +78,6 @@ describe('executeWithU8a', function() {
 
         setTimeout(() => {
             // console.log('ms', JSON.stringify(ms))
-            msAll.push({ server: ms })
             wo.stop()
         }, 2000)
 
@@ -86,7 +85,7 @@ describe('executeWithU8a', function() {
 
     let runClient = () => {
 
-        let ms = []
+        // let ms = []
 
         let opt = {
             FormData,
@@ -117,7 +116,7 @@ describe('executeWithU8a', function() {
                 },
             }
             // console.log('p', p)
-            ms.push({ 'execute input': p })
+            ms.push({ 'client execute input': p })
 
             //execute
             await wo.execute('add', { p },
@@ -133,7 +132,7 @@ describe('executeWithU8a', function() {
                     // console.log('client web: execute: add', r)
                     // console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
                     // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
-                    ms.push({ 'execute output': r })
+                    ms.push({ 'client execute done': r })
                 })
                 .catch(function () {
                     // console.log('client web: execute: catch', err)
@@ -152,7 +151,6 @@ describe('executeWithU8a', function() {
                 await execute('zdata.b1', u8a)
 
                 // console.log('ms', JSON.stringify(ms))
-                msAll.push({ client: ms })
 
             }
             core()
@@ -167,14 +165,14 @@ describe('executeWithU8a', function() {
         runServer()
         runClient()
         setTimeout(() => {
-            // console.log('msAll', JSON.stringify(msAll))
-            // fs.writeFileSync('./test_executeWithU8a.json', JSON.stringify(msAll), 'utf8')
-            pm.resolve(msAll)
+            // console.log('ms', JSON.stringify(ms))
+            // fs.writeFileSync('./test_executeWithU8a.json', JSON.stringify(ms), 'utf8')
+            pm.resolve(ms)
         }, 4000)
         return pm
     }
 
-    let res = `[{"client":[{"execute input":{"a":12,"b":34.56,"c":"test中文","d":{"name":"zdata.b1","u8a":{"0":66,"1":97,"2":115}}}},{"execute output":{"_add":46.56,"_data":[11,22.22,"abc",{"x":"21","y":65.43,"z":"test中文"}],"_bin":{"name":"zdata.b2","u8a":{"0":52,"1":66,"2":97,"3":115}}}}]},{"server":[{"input.p.d.u8a":{"0":66,"1":97,"2":115}}]}]`
+    let res = `[{"client execute input":{"a":12,"b":34.56,"c":"test中文","d":{"name":"zdata.b1","u8a":{"0":66,"1":97,"2":115}}}},{"server receive input.p.d.u8a":{"0":66,"1":97,"2":115}},{"client execute done":{"_add":46.56,"_data":[11,22.22,"abc",{"x":"21","y":65.43,"z":"test中文"}],"_bin":{"name":"zdata.b2","u8a":{"0":52,"1":66,"2":97,"3":115}}}}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

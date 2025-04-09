@@ -26,6 +26,11 @@ import mergeFiles from './mergeFiles.wk.umd.js'
 // import mergeFiles from './mergeFiles.mjs'
 
 
+//回傳前端stream時(POST或GET皆可), 前端會須等stream傳完才能判斷是否為大檔或錯誤訊息, 此會導致若回傳超大檔, 會需要對超大檔進行解析會有記憶體上限問題, 故需要通過header提供基本成功或失敗訊息, 讓前端能進行解析判斷
+//回傳前端(nodejs)時, 針對超大檔, 只能用POST並用stream回傳
+//回傳前端(browser)時, 針對超大檔, 可用POST並用stream回傳但還要處理進度條, 若要交由瀏覽器下載器處理, 只能用GET並用stream回傳, 且前端只能用window.location.href或a.href+a.click()下載
+
+
 /**
  * 建立Hapi伺服器
  *
@@ -36,6 +41,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
+ * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
  * @param {Integer} [opt.delayForBasic=0] 輸入基本API用延遲響應時間，單位ms，預設0
@@ -44,14 +50,24 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  * @returns {Object} 回傳事件物件，可監聽事件execute、upload、handler
  * @example
  *
+ * import fs from 'fs'
  * import _ from 'lodash-es'
- * import WConverhpServer from 'w-converhp/dist/w-converhp-server.umd.js'
+ * import w from 'wsemi'
+ * import WConverhpServer from './src/WConverhpServer.mjs'
+ *
+ * let ms = []
  *
  * let opt = {
  *     port: 8080,
  *     apiName: 'api',
  *     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
- *     verifyConn: () => {
+ *     verifyConn: async ({ apiType, authorization, headers, query }) => {
+ *         console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
+ *         let token = w.strdelleft(authorization, 7) //刪除Bearer
+ *         if (!w.isestr(token)) {
+ *             return false
+ *         }
+ *         // await w.delay(3000)
  *         return true
  *     },
  * }
@@ -69,6 +85,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *
  *             if (_.get(input, 'p.d.u8a', null)) {
  *                 console.log('input.p.d.u8a', input.p.d.u8a)
+ *                 ms.push({ 'input.p.d.u8a': input.p.d.u8a })
  *             }
  *
  *             let r = {
@@ -76,13 +93,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *                 _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
  *                 _bin: {
  *                     name: 'zdata.b2',
- *                     u8a: new Uint8Array([66, 97, 115]),
- *                     // name: '100mb.7z',
- *                     // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\100mb.7z')),
- *                     // name: '500mb.7z',
- *                     // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\500mb.7z')),
- *                     // name: '1000mb.7z',
- *                     // u8a: new Uint8Array(fs.readFileSync('D:\\開源-JS-006-2-w-converhp\\_temp\\1000mb.7z')),
+ *                     u8a: new Uint8Array([52, 66, 97, 115]),
  *                 },
  *             }
  *
@@ -105,12 +116,35 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *     console.log(`Server[port:${opt.port}]: upload`, input)
  *
  *     try {
+ *         ms.push({ 'receive and return': input })
  *         let output = input
  *         pm.resolve(output)
  *     }
  *     catch (err) {
  *         console.log('upload error', err)
  *         pm.reject('upload error')
+ *     }
+ *
+ * })
+ * wo.on('download-get-filename', (input, pm) => {
+ *     console.log(`Server[port:${opt.port}]: download-get-filename`, input)
+ *
+ *     try {
+ *         ms.push({ 'download': input })
+ *
+ *         //filename
+ *         let filename = `1mb中文.7z` //測試支援中文
+ *
+ *         //output
+ *         let output = {
+ *             filename
+ *         }
+ *
+ *         pm.resolve(output)
+ *     }
+ *     catch (err) {
+ *         console.log('download error', err)
+ *         pm.reject('download error')
  *     }
  *
  * })
@@ -127,7 +161,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *         let streamRead = fs.createReadStream(fp)
  *
  *         //fileName
- *         let fileName = `1mb.7z`
+ *         let fileName = `1mb中文.7z` //測試支援中文
  *
  *         //fileSize
  *         let stats = fs.statSync(fp)
@@ -152,9 +186,18 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *     }
  *
  * })
+ * wo.on('error', (err) => {
+ *     console.log(`Server[port:${opt.port}]: error`, err)
+ * })
  * wo.on('handler', (data) => {
  *     // console.log(`Server[port:${opt.port}]: handler`, data)
  * })
+ *
+ * setTimeout(() => {
+ *     console.log('ms', ms)
+ *     // console.log('ms', JSON.stringify(ms))
+ *     wo.stop()
+ * }, 3000)
  *
  */
 function WConverhpServer(opt = {}) {
@@ -183,12 +226,6 @@ function WConverhpServer(opt = {}) {
         apiName = 'api'
     }
 
-    //apiUploadSliceName
-    let apiUploadSliceName = `${apiName}slc`
-
-    //apiDownloadName
-    let apiDownloadName = `${apiName}dw`
-
     //pathUploadTemp
     let pathUploadTemp = get(opt, 'pathUploadTemp')
     if (!isestr(pathUploadTemp)) {
@@ -196,6 +233,12 @@ function WConverhpServer(opt = {}) {
     }
     if (!fsIsFolder(pathUploadTemp)) {
         fsCreateFolder(pathUploadTemp)
+    }
+
+    //tokenType
+    let tokenType = get(opt, 'tokenType')
+    if (!isestr(tokenType)) {
+        tokenType = 'Bearer'
     }
 
     //verifyConn
@@ -327,6 +370,36 @@ function WConverhpServer(opt = {}) {
 
             //upload, 上傳檔案
             eeEmit('upload', input, pmm)
+
+        }
+
+        return pm
+    }
+
+    //procDownloadGetFilename
+    async function procDownloadGetFilename(input) {
+        // console.log('procDownloadGetFilename', input)
+
+        //pm, pmm
+        let pm = genPm()
+        let pmm = genPm()
+
+        //重新處理回傳結果
+        pmm
+            .then((output) => {
+
+                //resolve
+                pm.resolve(output)
+
+            })
+            .catch((err) => {
+                pm.reject(err)
+            })
+
+        if (true) {
+
+            //download, 下載檔案
+            eeEmit('download-get-filename', input, pmm)
 
         }
 
@@ -558,7 +631,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadSlice
     let apiUploadSlice = {
-        path: `/${apiUploadSliceName}`,
+        path: `/${apiName}slc`,
         method: 'POST',
         options: {
             payload: {
@@ -700,7 +773,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadSliceMerge
     let apiUploadSliceMerge = {
-        path: `/${apiUploadSliceName}m`,
+        path: `/${apiName}slcm`,
         method: 'POST',
         options: {
             payload: {
@@ -708,7 +781,7 @@ function WConverhpServer(opt = {}) {
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
-                parse: true, //前端送obj過來
+                parse: true, //前端送obj過來須自動解析
             },
             timeout: {
                 server: false, //關閉伺服器超時
@@ -818,9 +891,9 @@ function WConverhpServer(opt = {}) {
         },
     }
 
-    //apiDownload
-    let apiDownload = {
-        path: `/${apiDownloadName}`,
+    //apiDownloadGetFilename
+    let apiDownloadGetFilename = {
+        path: `/${apiName}dwgfn`,
         method: 'POST',
         options: {
             payload: {
@@ -828,7 +901,227 @@ function WConverhpServer(opt = {}) {
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
-                parse: true, //前端送obj過來
+                parse: true, //前端送obj過來須自動解析
+            },
+            timeout: {
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
+            },
+        },
+        handler: async function (req, res) {
+            // console.log(req, res)
+            // console.log('payload', req.payload)
+
+            //headers
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
+
+            //query
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            // console.log('query', query)
+
+            //authorization
+            let authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
+
+            //check
+            if (true) {
+
+                //verifyConn
+                let m = verifyConn({ apiType: 'download-get-filename', authorization, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
+
+                //check
+                if (m !== true) {
+                    return responseU8aStreamWithError(res, 'permission denied')
+                }
+
+            }
+
+            //eeEmit
+            eeEmit('handler', {
+                api: 'apiDownloadGetFilename',
+                headers,
+                query,
+            })
+
+            //fileId, 從payload接收
+            let fileId = get(req, 'payload.fileId', '')
+            // console.log('fileId', fileId)
+
+            //check
+            if (!isestr(fileId)) {
+                // console.log('invalid fileId in payload')
+                return responseU8aStreamWithError(res, 'invalid fileId in payload')
+            }
+
+            //inp
+            let inp = { fileId }
+
+            //procDownloadGetFilename
+            let out = {}
+            let returnType = ''
+            let returnMsg = ''
+            await procDownloadGetFilename(inp)
+                .then(function(msg) {
+                    out.success = msg
+                    returnType = 'success'
+                    returnMsg = 'need to parse'
+                })
+                .catch(function(msg) {
+                    out.error = msg
+                    returnType = 'error'
+                    returnMsg = 'need to parse'
+                })
+            // console.log('out', out)
+
+            //u8aOut
+            let u8aOut = obj2u8arr(out)
+            // console.log('u8aOut', u8aOut)
+
+            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
+        },
+    }
+
+    //apiDownloadGetFile
+    let apiDownloadGetFile = {
+        path: `/${apiName}dwgf`,
+        method: 'GET',
+        options: {
+            timeout: {
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
+            },
+        },
+        handler: async function (req, res) {
+            // console.log(req, res)
+            // console.log('payload', req.payload)
+
+            //headers
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
+
+            //query
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            console.log('query', query)
+
+            //token
+            let token = get(query, 'token', '')
+            token = isestr(token) ? token : ''
+            console.log('token', token)
+
+            //authorization
+            let authorization = ''
+            if (isestr(token)) {
+                authorization = `${tokenType} ${token}`
+            }
+
+            //check
+            if (true) {
+
+                //verifyConn
+                let m = verifyConn({ apiType: 'download-get-file', authorization, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
+
+                //check
+                if (m !== true) {
+                    return responseU8aStreamWithError(res, 'permission denied')
+                }
+
+            }
+
+            //eeEmit
+            eeEmit('handler', {
+                api: 'apiDownloadGetFilename',
+                headers,
+                query,
+            })
+
+            //fileId
+            let fileId = get(query, 'fileId', '')
+            fileId = isestr(fileId) ? fileId : ''
+            console.log('fileId', fileId)
+
+            //check
+            if (!isestr(fileId)) {
+                // console.log('invalid fileId in query')
+                return responseU8aStreamWithError(res, 'invalid fileId in query')
+            }
+
+            //inp
+            let inp = { fileId }
+
+            //procDownload
+            let out = {}
+            await procDownload(inp)
+                .then(function(msg) {
+                    out.success = msg
+                })
+                .catch(function(msg) {
+                    out.error = msg
+                })
+            // console.log('out', out)
+
+            //return
+            if (haskey(out, 'error')) {
+                // console.log('out.error', out.error)
+                return responseU8aStreamWithError(res, `can not get file from fileId`)
+            }
+
+            //r
+            let r = get(out, 'success')
+
+            //streamRead
+            let streamRead = get(r, 'streamRead')
+
+            // //fileName
+            // let fileName = get(r, 'fileName')
+            // if (!isestr(fileName)) {
+            //     return responseU8aStreamWithError(res, 'invalid fileName')
+            // }
+            // fileName = str2b64(fileName) //headers內對中文支援度不佳須用base64傳
+            // console.log('fileName', fileName)
+
+            //fileSize
+            let fileSize = get(r, 'fileSize')
+            if (!isNumber(fileSize)) {
+                return responseU8aStreamWithError(res, 'invalid fileSize')
+            }
+            // fileSize = cstr(fileSize)
+
+            //fileType
+            let fileType = get(r, 'fileType')
+            if (!isestr(fileType)) {
+                return responseU8aStreamWithError(res, 'invalid fileType')
+            }
+            fileType = cstr(fileType)
+
+            return res.response(streamRead)
+                .type(fileType)
+                // .header('Content-Disposition', `attachment; filename="${fileName}"`) //chrome會優先使用header內filename, 但header內支援中文度很差須用base64, 此導致chrome下載檔名只能為base64, 故一律改由前端(browser)先取得真實檔名後直接給予下載檔名, 避免用header提供真實檔名
+                .header('Content-Length', fileSize)
+        },
+    }
+
+    //apiDownload
+    let apiDownload = {
+        path: `/${apiName}dw`,
+        method: 'POST',
+        options: {
+            payload: {
+                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
+                timeout: false, //避免請求未完成時中斷
+                // output: 'stream',
+                parse: true, //前端送obj過來須自動解析
             },
             timeout: {
                 server: false, //關閉伺服器超時
@@ -935,7 +1228,7 @@ function WConverhpServer(opt = {}) {
 
             return res.response(streamRead)
                 .type(fileType)
-                .header('Content-Disposition', `attachment; filename="${fileName}"`)
+                .header('Content-Disposition', `attachment; filename="${fileName}"`) //前端(nodejs)用POST下載代表, 可基於header內base64檔名解析出並直接給予檔名, 不用預先取得檔名
                 .header('Content-Length', fileSize)
         },
     }
@@ -971,6 +1264,8 @@ function WConverhpServer(opt = {}) {
                 apiMain,
                 apiUploadSlice,
                 apiUploadSliceMerge,
+                apiDownloadGetFilename,
+                apiDownloadGetFile,
                 apiDownload,
             ]
         }
@@ -987,8 +1282,7 @@ function WConverhpServer(opt = {}) {
 
     //start
     if (get(opt, 'serverHapi')) {
-        // opt.serverHapi.route([apiMain, apiUploadSlice, apiUploadSliceMerge, apiDownload])
-        server.route([apiMain, apiUploadSlice, apiUploadSliceMerge, apiDownload])
+        server.route([apiMain, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
     }
     else {
         startServer()
