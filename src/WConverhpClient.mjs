@@ -812,23 +812,24 @@ function WConverhpClient(opt) {
         if (ispm(token)) {
             token = await token
         }
+        console.log('token', token)
 
         //send download-get-filename
         let msg = { fileId }
         let resMg = await send('download-get-filename', msg, { dataType: 'json' })
-        // console.log('resMg', resMg)
+        console.log('resMg', resMg)
 
         //filename
         let filename = get(resMg, 'filename', '')
-        // console.log('filename', filename)
+        console.log('filename', filename)
 
         //urlUse
         let urlUse = getUrlUse('download-get')
-        // console.log('urlUse', urlUse)
+        console.log('urlUse', urlUse)
 
         //url
         let url = `${urlUse}?fileId=${fileId}&token=${token}`
-        // console.log('url', url)
+        console.log('url', url)
 
         //透過a元素打url下載, 讓瀏覽器認定為直接下載模式, 由瀏覽器展示下載進度與排入正在下載清單
         let a = document.createElement('a')

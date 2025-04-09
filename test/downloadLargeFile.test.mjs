@@ -35,22 +35,24 @@ describe('downloadLargeFile', function() {
         wo.on('download', (input, pm) => {
             // console.log(`Server[port:${opt.port}]: download`, input)
 
+            let streamRead = null
             try {
                 ms.push({ 'server receive input': input })
-                // console.log('ms', ms)
 
                 //fp
                 let fp = `./test/1mb.7z`
 
-                //streamRead
-                let streamRead = fs.createReadStream(fp) //createReadStream得指定使用test內檔案
-
-                //fileName
-                let fileName = `1mb.7z` //測試支援中文
+                //check, 檔案存在才往下
 
                 //fileSize
                 let stats = fs.statSync(fp)
                 let fileSize = stats.size
+
+                //streamRead
+                streamRead = fs.createReadStream(fp)
+
+                //filename
+                let filename = `1mb中文.7z` //測試支援中文
 
                 //fileType
                 let fileType = 'application/x-7z-compressed'
@@ -58,7 +60,7 @@ describe('downloadLargeFile', function() {
                 //output
                 let output = {
                     streamRead,
-                    fileName,
+                    filename,
                     fileSize,
                     fileType,
                 }
@@ -67,6 +69,10 @@ describe('downloadLargeFile', function() {
             }
             catch (err) {
                 // console.log('download error', err)
+                // try {
+                //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy
+                // }
+                // catch (err) {}
                 pm.reject('download error')
             }
 
@@ -154,7 +160,7 @@ describe('downloadLargeFile', function() {
         return pm
     }
 
-    let res = `[{"client download input":"id-for-file"},{"server receive input":{"fileId":"id-for-file"}},{"client download done":"1mb.7z"}]`
+    let res = `[{"client download input":"id-for-file"},{"server receive input":{"fileId":"id-for-file"}},{"client download done":"1mb中文.7z"}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

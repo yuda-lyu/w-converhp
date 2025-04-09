@@ -101,46 +101,27 @@ wo.on('upload', (input, pm) => {
     }
 
 })
-wo.on('download-get-filename', (input, pm) => {
-    console.log(`Server[port:${opt.port}]: download-get-filename`, input)
-
-    try {
-        ms.push({ 'download': input })
-
-        //filename
-        let filename = `1mb中文.7z` //測試支援中文
-
-        //output
-        let output = {
-            filename
-        }
-
-        pm.resolve(output)
-    }
-    catch (err) {
-        console.log('download error', err)
-        pm.reject('download error')
-    }
-
-})
 wo.on('download', (input, pm) => {
     console.log(`Server[port:${opt.port}]: download`, input)
 
+    let streamRead = null
     try {
         ms.push({ 'download': input })
 
         //fp
         let fp = `./test/1mb.7z`
 
-        //streamRead
-        let streamRead = fs.createReadStream(fp)
-
-        //fileName
-        let fileName = `1mb中文.7z` //測試支援中文
+        //check, 檔案存在才往下
 
         //fileSize
         let stats = fs.statSync(fp)
         let fileSize = stats.size
+
+        //streamRead
+        streamRead = fs.createReadStream(fp)
+
+        //filename
+        let filename = `1mb中文.7z` //測試支援中文
 
         //fileType
         let fileType = 'application/x-7z-compressed'
@@ -148,7 +129,7 @@ wo.on('download', (input, pm) => {
         //output
         let output = {
             streamRead,
-            fileName,
+            filename,
             fileSize,
             fileType,
         }
@@ -157,6 +138,10 @@ wo.on('download', (input, pm) => {
     }
     catch (err) {
         console.log('download error', err)
+        // try {
+        //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy
+        // }
+        // catch (err) {}
         pm.reject('download error')
     }
 
@@ -236,7 +221,7 @@ downloadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.15/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.16/dist/w-converhp-client.umd.js"></script>
 ```
 
 #### Example for w-converhp-client in browser:

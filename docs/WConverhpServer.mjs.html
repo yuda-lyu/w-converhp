@@ -173,46 +173,27 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *     }
  *
  * })
- * wo.on('download-get-filename', (input, pm) => {
- *     console.log(`Server[port:${opt.port}]: download-get-filename`, input)
- *
- *     try {
- *         ms.push({ 'download': input })
- *
- *         //filename
- *         let filename = `1mb中文.7z` //測試支援中文
- *
- *         //output
- *         let output = {
- *             filename
- *         }
- *
- *         pm.resolve(output)
- *     }
- *     catch (err) {
- *         console.log('download error', err)
- *         pm.reject('download error')
- *     }
- *
- * })
  * wo.on('download', (input, pm) => {
  *     console.log(`Server[port:${opt.port}]: download`, input)
  *
+ *     let streamRead = null
  *     try {
  *         ms.push({ 'download': input })
  *
  *         //fp
  *         let fp = `./test/1mb.7z`
  *
- *         //streamRead
- *         let streamRead = fs.createReadStream(fp)
- *
- *         //fileName
- *         let fileName = `1mb中文.7z` //測試支援中文
+ *         //check, 檔案存在才往下
  *
  *         //fileSize
  *         let stats = fs.statSync(fp)
  *         let fileSize = stats.size
+ *
+ *         //streamRead
+ *         streamRead = fs.createReadStream(fp)
+ *
+ *         //filename
+ *         let filename = `1mb中文.7z` //測試支援中文
  *
  *         //fileType
  *         let fileType = 'application/x-7z-compressed'
@@ -220,7 +201,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *         //output
  *         let output = {
  *             streamRead,
- *             fileName,
+ *             filename,
  *             fileSize,
  *             fileType,
  *         }
@@ -229,6 +210,10 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  *     }
  *     catch (err) {
  *         console.log('download error', err)
+ *         // try {
+ *         //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy
+ *         // }
+ *         // catch (err) {}
  *         pm.reject('download error')
  *     }
  *
@@ -417,36 +402,6 @@ function WConverhpServer(opt = {}) {
 
             //upload, 上傳檔案
             eeEmit('upload', input, pmm)
-
-        }
-
-        return pm
-    }
-
-    //procDownloadGetFilename
-    async function procDownloadGetFilename(input) {
-        // console.log('procDownloadGetFilename', input)
-
-        //pm, pmm
-        let pm = genPm()
-        let pmm = genPm()
-
-        //重新處理回傳結果
-        pmm
-            .then((output) => {
-
-                //resolve
-                pm.resolve(output)
-
-            })
-            .catch((err) => {
-                pm.reject(err)
-            })
-
-        if (true) {
-
-            //download, 下載檔案
-            eeEmit('download-get-filename', input, pmm)
 
         }
 
@@ -1013,7 +968,7 @@ function WConverhpServer(opt = {}) {
             let out = {}
             let returnType = ''
             let returnMsg = ''
-            await procDownloadGetFilename(inp)
+            await procDownload(inp)
                 .then(function(msg) {
                     out.success = msg
                     returnType = 'success'
@@ -1025,6 +980,32 @@ function WConverhpServer(opt = {}) {
                     returnMsg = 'need to parse'
                 })
             // console.log('out', out)
+
+            //r
+            let r = get(out, 'success')
+
+            //streamRead
+            let streamRead = get(r, 'streamRead')
+
+            //destroy, 不提供stream故須預先destroy
+            try {
+                streamRead.destroy()
+            }
+            catch (err) {}
+
+            //filename
+            let filename = get(r, 'filename')
+            if (!isestr(filename)) {
+                //已於前面destroy
+                return responseU8aStreamWithError(res, 'invalid filename')
+            }
+
+            //重新提供out
+            out = {
+                success: {
+                    filename,
+                },
+            }
 
             //u8aOut
             let u8aOut = obj2u8arr(out)
@@ -1056,12 +1037,12 @@ function WConverhpServer(opt = {}) {
             //query
             let query = get(req, 'query')
             query = iseobj(query) ? query : ''
-            console.log('query', query)
+            // console.log('query', query)
 
             //token
             let token = get(query, 'token', '')
             token = isestr(token) ? token : ''
-            console.log('token', token)
+            // console.log('token', token)
 
             //authorization
             let authorization = ''
@@ -1095,7 +1076,7 @@ function WConverhpServer(opt = {}) {
             //fileId
             let fileId = get(query, 'fileId', '')
             fileId = isestr(fileId) ? fileId : ''
-            console.log('fileId', fileId)
+            // console.log('fileId', fileId)
 
             //check
             if (!isestr(fileId)) {
@@ -1129,17 +1110,21 @@ function WConverhpServer(opt = {}) {
             //streamRead
             let streamRead = get(r, 'streamRead')
 
-            // //fileName
-            // let fileName = get(r, 'fileName')
-            // if (!isestr(fileName)) {
-            //     return responseU8aStreamWithError(res, 'invalid fileName')
+            // //filename
+            // let filename = get(r, 'filename')
+            // if (!isestr(filename)) {
+            //     return responseU8aStreamWithError(res, 'invalid filename')
             // }
-            // fileName = str2b64(fileName) //headers內對中文支援度不佳須用base64傳
-            // console.log('fileName', fileName)
+            // filename = str2b64(filename) //headers內對中文支援度不佳須用base64傳
+            // console.log('filename', filename)
 
             //fileSize
             let fileSize = get(r, 'fileSize')
             if (!isNumber(fileSize)) {
+                try {
+                    streamRead.destroy() //提供stream前發生錯誤, 得強制destroy
+                }
+                catch (err) {}
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
             // fileSize = cstr(fileSize)
@@ -1147,13 +1132,17 @@ function WConverhpServer(opt = {}) {
             //fileType
             let fileType = get(r, 'fileType')
             if (!isestr(fileType)) {
+                try {
+                    streamRead.destroy() //提供stream前發生錯誤, 得強制destroy
+                }
+                catch (err) {}
                 return responseU8aStreamWithError(res, 'invalid fileType')
             }
             fileType = cstr(fileType)
 
             return res.response(streamRead)
                 .type(fileType)
-                // .header('Content-Disposition', `attachment; filename="${fileName}"`) //chrome會優先使用header內filename, 但header內支援中文度很差須用base64, 此導致chrome下載檔名只能為base64, 故一律改由前端(browser)先取得真實檔名後直接給予下載檔名, 避免用header提供真實檔名
+                // .header('Content-Disposition', `attachment; filename="${filename}"`) //chrome會優先使用header內filename, 但header內支援中文度很差須用base64, 此導致chrome下載檔名只能為base64, 故一律改由前端(browser)先取得真實檔名後直接給予下載檔名, 避免用header提供真實檔名
                 .header('Content-Length', fileSize)
         },
     }
@@ -1252,16 +1241,24 @@ function WConverhpServer(opt = {}) {
             //streamRead
             let streamRead = get(r, 'streamRead')
 
-            //fileName
-            let fileName = get(r, 'fileName')
-            if (!isestr(fileName)) {
-                return responseU8aStreamWithError(res, 'invalid fileName')
+            //filename
+            let filename = get(r, 'filename')
+            if (!isestr(filename)) {
+                try {
+                    streamRead.destroy() //提供stream前發生錯誤, 得強制destroy
+                }
+                catch (err) {}
+                return responseU8aStreamWithError(res, 'invalid filename')
             }
-            fileName = str2b64(fileName) //headers內對中文支援度不佳須用base64傳
+            filename = str2b64(filename) //headers內對中文支援度不佳須用base64傳
 
             //fileSize
             let fileSize = get(r, 'fileSize')
             if (!isNumber(fileSize)) {
+                try {
+                    streamRead.destroy() //提供stream前發生錯誤, 得強制destroy
+                }
+                catch (err) {}
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
             // fileSize = cstr(fileSize)
@@ -1269,13 +1266,17 @@ function WConverhpServer(opt = {}) {
             //fileType
             let fileType = get(r, 'fileType')
             if (!isestr(fileType)) {
+                try {
+                    streamRead.destroy() //提供stream前發生錯誤, 得強制destroy
+                }
+                catch (err) {}
                 return responseU8aStreamWithError(res, 'invalid fileType')
             }
             fileType = cstr(fileType)
 
             return res.response(streamRead)
                 .type(fileType)
-                .header('Content-Disposition', `attachment; filename="${fileName}"`) //前端(nodejs)用POST下載代表, 可基於header內base64檔名解析出並直接給予檔名, 不用預先取得檔名
+                .header('Content-Disposition', `attachment; filename="${filename}"`) //針對前端(nodejs)用POST下載, 可基於header內base64檔名解析出並直接給予檔名, 不用預先取得檔名
                 .header('Content-Length', fileSize)
         },
     }
@@ -1362,7 +1363,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Wed Apr 09 2025 13:07:53 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Wed Apr 09 2025 14:36:52 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
