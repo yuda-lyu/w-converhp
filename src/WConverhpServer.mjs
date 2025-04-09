@@ -333,7 +333,7 @@ function WConverhpServer(opt = {}) {
 
     //procUpload
     async function procUpload(input) {
-        //console.log('procUpload', input)
+        // console.log('procUpload', input)
 
         //pm, pmm
         let pm = genPm()
@@ -809,7 +809,6 @@ function WConverhpServer(opt = {}) {
 
                 //merge
                 // console.log('merge start')
-                // let r = await merge()
                 let r = await mergeFiles(pathUploadTemp, packageId, chunkTotal, filename)
                 // console.log('merge done', r)
 

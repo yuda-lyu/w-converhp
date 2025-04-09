@@ -16,6 +16,9 @@ let opt = {
         if (!w.isestr(token)) {
             return false
         }
+        if (token !== 'token-for-test') {
+            return false
+        }
         // await w.delay(3000)
         return true
     },
