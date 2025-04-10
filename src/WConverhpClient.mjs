@@ -1,4 +1,3 @@
-import crypto from 'crypto'
 import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
@@ -74,7 +73,7 @@ import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
  *                 }
  *             },
  *             {
- *                 fdDownload: './', //於後端nodejs環境才能提供
+ *                 fdDownload: './', //於nodejs環境才能提供
  *             })
  *             .then(function(res) {
  *                 console.log('client web: download: then', res)
@@ -441,11 +440,11 @@ function WConverhpClient(opt) {
                 //nodejs通過fs與stream接收檔案, stream出錯只會觸發error事件, 此處try catch為攔截其他非stream程式碼錯誤
                 try {
 
-                    //path, fs
+                    //path, fs, 使用動態import供nodejs使用, 否則會被webpack偵測報錯
                     let path = await import('path')
                     let fs = await import('fs')
 
-                    //fdDownload, 只有後端下載才使用fdDownload
+                    //fdDownload, 只有nodejs下載才使用fdDownload
                     let fdDownload = get(opt, 'fdDownload', '')
                     fs.mkdirSync(fdDownload, { recursive: true }) //須使用mkdirSync, 不要用fsIsFolder與fsCreateFolder避免編譯
                     // console.log('fdDownload', fdDownload)
@@ -632,18 +631,25 @@ function WConverhpClient(opt) {
     async function calcHash(inp) {
         let pm = genPm()
         if (env === 'browser') {
-            //前端browser時, 因是給予blob或file上傳, 且使用非同步async版計算hash, 可支援大檔
+            //於browser時, 因是給予blob或file上傳, 且使用非同步async版計算hash, 可支援大檔
+
             let ab = await inp.arrayBuffer()
             let hashBuffer = await crypto.subtle.digest('SHA-256', ab)
             let hashArray = Array.from(new Uint8Array(hashBuffer))
             let hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+
             pm.resolve(hashHex)
         }
         else {
-            //前端nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 同步sync版無法支援大檔
+            //於nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 同步sync版無法支援大檔
+
+            //crypto, 使用動態import供nodejs使用, 否則會被webpack偵測報錯
+            let crypto = await import('crypto')
+
             let hash = crypto.createHash('sha256')
             hash.update(inp, 'utf8')
             let hashHex = hash.digest('hex')
+
             pm.resolve(hashHex)
         }
         return pm
@@ -663,7 +669,7 @@ function WConverhpClient(opt) {
         }
         if (n === 0) {
             try {
-                n = bb.length //for Uint8Array //後端用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
+                n = bb.length //for Uint8Array //nodejs用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
                 n = cint(n)
             }
             catch (err) {}
