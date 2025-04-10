@@ -525,15 +525,15 @@ function WConverhpServer(opt = {}) {
                 req.payload.on('end', () => {
                     // console.log(`receive payload done`)
 
-                    //fileBuffer
-                    let fileBuffer = Buffer.concat(chunks)
-                    // console.log('fileBuffer', fileBuffer, fileBuffer.length)
+                    //bb
+                    let bb = Buffer.concat(chunks)
+                    // console.log('bb', bb, bb.length)
 
                     //clear, 釋放記憶體
                     chunks = []
 
                     //resolve
-                    pm.resolve(fileBuffer)
+                    pm.resolve(bb)
 
                 })
 
@@ -564,13 +564,13 @@ function WConverhpServer(opt = {}) {
             let returnType = ''
             let returnMsg = ''
             await procDeal(inp)
-                .then(function(msg) {
-                    out.success = msg
+                .then((res) => {
+                    out.success = res
                     returnType = 'success'
                     returnMsg = 'need to parse'
                 })
-                .catch(function(msg) {
-                    out.error = msg
+                .catch((err) => {
+                    out.error = err
                     returnType = 'error'
                     returnMsg = 'need to parse'
                 })
@@ -692,10 +692,10 @@ function WConverhpServer(opt = {}) {
                 })
 
                 //error
-                req.payload.on('error', () => {
-                    // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] err`, err)
-                    eeEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] err`)
-                    pm.reject(`chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] err`)
+                req.payload.on('error', (err) => {
+                    // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err)
+                    eeEmit('error', `receive chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] err`)
+                    pm.reject(`apiUploadSlice receive error: ${err.message}`)
                 })
 
                 return pm
@@ -706,15 +706,16 @@ function WConverhpServer(opt = {}) {
             let returnType = ''
             let returnMsg = ''
             await receive()
-                .then(function(msg) {
-                    out.success = msg
+                .then((res) => {
+                    out.success = res
                     returnType = 'success'
                     returnMsg = 'need to parse'
                 })
-                .catch(function(msg) {
-                    out.error = msg
+                .catch((err) => {
+                    out.error = err
                     returnType = 'error'
                     returnMsg = 'need to parse'
+                    eeEmit('error', err)
                 })
             // console.log('out', out)
 
@@ -804,8 +805,8 @@ function WConverhpServer(opt = {}) {
                 return res.response({ error: 'invalid packageId in payload' }).code(400)
             }
 
-            //core
-            let core = async() => {
+            //mergeAndPorc
+            let mergeAndPorc = async() => {
 
                 //merge
                 // console.log('merge start')
@@ -820,20 +821,21 @@ function WConverhpServer(opt = {}) {
                 return rr
             }
 
-            //core
+            //mergeAndPorc
             let out = {}
             let returnType = ''
             let returnMsg = ''
-            await core()
-                .then(function(msg) {
-                    out.success = msg
+            await mergeAndPorc()
+                .then((res) => {
+                    out.success = res
                     returnType = 'success'
                     returnMsg = 'need to parse'
                 })
-                .catch(function(msg) {
-                    out.error = msg
+                .catch((err) => {
+                    out.error = err
                     returnType = 'error'
                     returnMsg = 'need to parse'
+                    eeEmit('error', `${err.message}`)
                 })
             // console.log('out', out)
 
@@ -916,18 +918,18 @@ function WConverhpServer(opt = {}) {
             //inp
             let inp = { fileId }
 
-            //procDownloadGetFilename
+            //procDownload
             let out = {}
             let returnType = ''
             let returnMsg = ''
             await procDownload(inp)
-                .then(function(msg) {
-                    out.success = msg
+                .then((res) => {
+                    out.success = res
                     returnType = 'success'
                     returnMsg = 'need to parse'
                 })
-                .catch(function(msg) {
-                    out.error = msg
+                .catch((err) => {
+                    out.error = err
                     returnType = 'error'
                     returnMsg = 'need to parse'
                 })
@@ -1042,11 +1044,11 @@ function WConverhpServer(opt = {}) {
             //procDownload
             let out = {}
             await procDownload(inp)
-                .then(function(msg) {
-                    out.success = msg
+                .then((res) => {
+                    out.success = res
                 })
-                .catch(function(msg) {
-                    out.error = msg
+                .catch((err) => {
+                    out.error = err
                 })
             // console.log('out', out)
 
@@ -1173,11 +1175,11 @@ function WConverhpServer(opt = {}) {
             //procDownload
             let out = {}
             await procDownload(inp)
-                .then(function(msg) {
-                    out.success = msg
+                .then((res) => {
+                    out.success = res
                 })
-                .catch(function(msg) {
-                    out.error = msg
+                .catch((err) => {
+                    out.error = err
                 })
             // console.log('out', out)
 
