@@ -45,7 +45,8 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import fs from 'fs'
+            <pre class="prettyprint source linenums"><code>import path from 'path'
+import fs from 'fs'
 import stream from 'stream'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
@@ -67,8 +68,10 @@ import str2b64 from 'wsemi/src/str2b64.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
+import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
+import fsGetFileHash from 'wsemi/src/fsGetFileHash.mjs'
 import mergeFiles from './mergeFiles.wk.umd.js'
 // import mergeFiles from './mergeFiles.mjs'
 
@@ -453,12 +456,25 @@ function WConverhpServer(opt = {}) {
         //returnMsg
         let returnMsg = get(opt, 'returnMsg', '')
 
-        return res.response(smr)
-            .header('Return-Type', returnType)
-            .header('Return-Msg', returnMsg)
+        //r
+        let r = res.response(smr)
             .header('Cache-Control', 'no-cache, no-store, must-revalidate')
             .header('Content-Type', 'application/octet-stream')
             .header('Content-Length', smr.readableLength)
+        if (isestr(returnType)) {
+            r.header('Return-Type', returnType)
+        }
+        if (isestr(returnMsg)) {
+            r.header('Return-Msg', returnMsg)
+        }
+
+        return r
+        // return res.response(smr)
+        //     .header('Return-Type', returnType)
+        //     .header('Return-Msg', returnMsg)
+        //     .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        //     .header('Content-Type', 'application/octet-stream')
+        //     .header('Content-Length', smr.readableLength)
     }
 
     //responseU8aStreamWithError
@@ -631,6 +647,132 @@ function WConverhpServer(opt = {}) {
         },
     }
 
+    //apiUploadCheckHash
+    let apiUploadCheckHash = {
+        path: `/${apiName}ulckh`,
+        method: 'POST',
+        options: {
+            payload: {
+                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
+                timeout: false, //避免請求未完成時中斷
+                // output: 'stream',
+                parse: true, //前端送obj過來須自動解析
+            },
+            timeout: {
+                server: false, //關閉伺服器超時
+                socket: false, //關閉socket超時
+            },
+        },
+        handler: async function (req, res) {
+            // console.log(req, res)
+            // console.log('payload', req.payload)
+
+            //headers
+            let headers = get(req, 'headers')
+            headers = iseobj(headers) ? headers : ''
+            // console.log('headers', headers)
+
+            //query
+            let query = get(req, 'query')
+            query = iseobj(query) ? query : ''
+            // console.log('query', query)
+
+            //authorization
+            let authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
+
+            //check
+            if (true) {
+
+                //verifyConn
+                let m = verifyConn({ apiType: 'upload-check-slice-hash', authorization, headers, query })
+                if (ispm(m)) {
+                    m = await m
+                }
+
+                //check
+                if (m !== true) {
+                    return responseU8aStreamWithError(res, 'permission denied')
+                }
+
+            }
+
+            //eeEmit
+            eeEmit('handler', {
+                api: 'apiUploadCheckHash',
+                headers,
+                query,
+            })
+
+            //filename, fileHash, 從payload接收
+            let filename = get(req, 'payload.filename', '')
+            let fileHash = get(req, 'payload.fileHash', '')
+            // console.log('filename', filename)
+            // console.log('fileHash', fileHash)
+
+            //check
+            if (!isestr(filename)) {
+                // console.log('invalid filename in payload')
+                return responseU8aStreamWithError(res, 'invalid filename in payload')
+            }
+
+            //check
+            if (!isestr(fileHash)) {
+                // console.log('invalid fileHash in payload')
+                return responseU8aStreamWithError(res, 'invalid fileHash in payload')
+            }
+
+            //pathFile
+            let pathFile = path.join(pathUploadTemp, filename)
+            // console.log('pathFile', pathFile)
+
+            //check
+            if (!fsIsFile(pathFile)) {
+                let out = {
+                    success: {
+                        existed: false,
+                        msg: 'not exist',
+                    },
+                }
+                let u8aOut = obj2u8arr(out)
+                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
+            }
+
+            //hash, fsGetFileHash要用非同步stream模式才能支援大檔
+            let hash = await fsGetFileHash(pathFile, { useSync: false, type: 'sha256' })
+            // console.log('path', pathFile)
+            // console.log('hash(front)', fileHash)
+            // console.log('hash(backend)', hash)
+            // console.log('')
+
+            //check
+            if (fileHash !== hash) {
+                let out = {
+                    success: {
+                        existed: false,
+                        msg: 'not equal',
+                    },
+                }
+                let u8aOut = obj2u8arr(out)
+                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
+            }
+
+            if (true) {
+                let out = {
+                    success: {
+                        existed: true,
+                        msg: 'equal',
+                        path: pathFile,
+                    },
+                }
+                let u8aOut = obj2u8arr(out)
+                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
+            }
+
+        },
+    }
+
     //apiUploadSlice
     let apiUploadSlice = {
         path: `/${apiName}slc`,
@@ -711,7 +853,7 @@ function WConverhpServer(opt = {}) {
             }
 
             //pathFileChunk
-            let pathFileChunk = `${pathUploadTemp}/${packageId}_${chunkIndex}` //path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
+            let pathFileChunk = path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
             // console.log('pathFileChunk', pathFileChunk)
 
             //streamWrite
@@ -1311,6 +1453,7 @@ function WConverhpServer(opt = {}) {
             apiRoutes = [
                 ...apiRoutes,
                 apiMain,
+                apiUploadCheckHash,
                 apiUploadSlice,
                 apiUploadSliceMerge,
                 apiDownloadGetFilename,
@@ -1331,7 +1474,7 @@ function WConverhpServer(opt = {}) {
 
     //start
     if (get(opt, 'serverHapi')) {
-        server.route([apiMain, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+        server.route([apiMain, apiUploadCheckHash, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
     }
     else {
         startServer()
@@ -1364,7 +1507,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Thu Apr 10 2025 15:40:07 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Thu Apr 10 2025 22:27:22 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

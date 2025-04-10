@@ -1,3 +1,4 @@
+import path from 'path'
 import fs from 'fs'
 import _ from 'lodash-es'
 import w from 'wsemi'
@@ -134,7 +135,7 @@ setTimeout(() => {
     console.log('ms', ms)
     // console.log('ms', JSON.stringify(ms))
     wo.stop()
-}, 3000)
+}, 1113000) //bbb
 
 
 //node --experimental-modules srv.mjs

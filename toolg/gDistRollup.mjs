@@ -21,10 +21,12 @@ async function core() {
         globals: {
             'path': 'path',
             'fs': 'fs',
+            'crypto': 'crypto',
         },
         external: [
             'path',
             'fs',
+            'crypto',
         ],
     })
         .catch((err) => {

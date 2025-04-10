@@ -1,9 +1,11 @@
+import crypto from 'crypto'
 import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
 import evem from 'wsemi/src/evem.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
-import genID from 'wsemi/src/genID.mjs'
+// import genID from 'wsemi/src/genID.mjs'
+// import now2strp from 'wsemi/src/now2strp.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
@@ -19,7 +21,7 @@ import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
-import now2strp from 'wsemi/src/now2strp.mjs'
+// import getFileHash from 'wsemi/src/getFileHash.mjs'
 
 
 /**
@@ -164,6 +166,9 @@ function WConverhpClient(opt) {
         }
         else if (type === 'slice') {
             urlUse = `${url}slc`
+        }
+        else if (type === 'upload-check-slice-hash') {
+            urlUse = `${url}ulckh`
         }
         else if (type === 'slice-merge') {
             urlUse = `${url}slcm`
@@ -623,8 +628,29 @@ function WConverhpClient(opt) {
         }
     }
 
+    //calcHash
+    async function calcHash(inp) {
+        let pm = genPm()
+        if (env === 'browser') {
+            //前端browser時, 因是給予blob或file上傳, 且使用非同步async版計算hash, 可支援大檔
+            let ab = await inp.arrayBuffer()
+            let hashBuffer = await crypto.subtle.digest('SHA-256', ab)
+            let hashArray = Array.from(new Uint8Array(hashBuffer))
+            let hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+            pm.resolve(hashHex)
+        }
+        else {
+            //前端nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 同步sync版無法支援大檔
+            let hash = crypto.createHash('sha256')
+            hash.update(inp, 'utf8')
+            let hashHex = hash.digest('hex')
+            pm.resolve(hashHex)
+        }
+        return pm
+    }
+
     //sendDataSlice
-    async function sendDataSlice(tempId, bb, cbProgress) {
+    async function sendDataSlice(fileTotalName, bb, cbProgress) {
 
         //n
         let n = 0
@@ -649,12 +675,40 @@ function WConverhpClient(opt) {
         }
         // console.log('n', n)
 
+        //getFileHash
+        let fileTotalHash = await calcHash(bb)
+        // console.log('fileTotalHash', fileTotalHash)
+
+        //ckh
+        let ckh = async({ filename, fileHash }) => {
+
+            //send upload-check-slice-hash
+            let resCk = await send('upload-check-slice-hash', { filename, fileHash }, { dataType: 'json' })
+            // console.log('resCk', resCk)
+
+            return resCk
+        }
+
+        //rAll
+        let rAll = await ckh({ filename: fileTotalHash, fileHash: fileTotalHash })
+        // console.log('rAll', rAll)
+
+        //check
+        if (rAll.existed) {
+            //已有上傳大檔
+            let resMg = {
+                filename: fileTotalName,
+                path: rAll.path,
+            }
+            return resMg
+        }
+
         //chunkTotal
         let chunkTotal = Math.ceil(n / sizeSlice)
         // console.log('chunkTotal', chunkTotal)
 
         //packageId
-        let packageId = `${now2strp()}-${genID()}`
+        let packageId = fileTotalHash
         // console.log('packageId', packageId)
 
         //progCount, progWeightSlice
@@ -687,6 +741,10 @@ function WConverhpClient(opt) {
         //upload slice
         for (let i = 0; i < chunkTotal; i++) {
 
+            //fileSliceName
+            let fileSliceName = `${fileTotalHash}_${i}`
+            // console.log('fileSliceName', fileSliceName)
+
             //start
             let start = i * sizeSlice
 
@@ -696,6 +754,23 @@ function WConverhpClient(opt) {
             //chunk
             let chunk = bb.slice(start, end)
 
+            //fileSliceHash
+            let fileSliceHash = await calcHash(chunk)
+            // console.log('fileSliceHash', fileSliceHash)
+
+            //rChunk
+            let rChunk = await ckh({ filename: fileSliceName, fileHash: fileSliceHash })
+            // console.log('fileSliceName', fileSliceName)
+            // console.log('fileSliceHash', fileSliceHash)
+            // console.log('rChunk', rChunk)
+            // console.log('')
+
+            //check
+            if (rChunk.existed) {
+                //已有上傳切片檔
+                continue
+            }
+
             //send slice
             let hd = {
                 'chunk-index': i,
@@ -703,12 +778,13 @@ function WConverhpClient(opt) {
                 'package-id': packageId,
             }
             await send('slice', chunk, { headers: hd, dataType: 'blob', cbProgress: cbProgressSlice })
+            // console.log('resSl', resSl)
 
         }
 
         //send slice-merge
         let msg = {
-            'filename': tempId,
+            'filename': fileTotalName,
             'chunk-total': chunkTotal,
             'package-id': packageId,
         }
@@ -784,12 +860,12 @@ function WConverhpClient(opt) {
     }
 
     //upload
-    async function upload(tempId, input, cbProgress) {
+    async function upload(filename, input, cbProgress) {
 
         //bb
         let bb = input
 
-        return sendDataSlice(tempId, bb, cbProgress)
+        return sendDataSlice(filename, bb, cbProgress)
     }
 
     //downloadNodejs
