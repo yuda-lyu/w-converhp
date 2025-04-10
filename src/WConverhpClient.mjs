@@ -1,10 +1,9 @@
 import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
+import getGlobal from 'wsemi/src/getGlobal.mjs'
 import evem from 'wsemi/src/evem.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
-// import genID from 'wsemi/src/genID.mjs'
-// import now2strp from 'wsemi/src/now2strp.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
@@ -633,6 +632,11 @@ function WConverhpClient(opt) {
         if (env === 'browser') {
             //於browser時, 因是給予blob或file上傳, 且使用非同步async版計算hash, 可支援大檔
 
+            //crypto, 須通過global取得crypto, 否則會被舊版webpack偵測報錯
+            let g = getGlobal()
+            let crypto = get(g, 'crypto')
+
+            //hashHex
             let ab = await inp.arrayBuffer()
             let hashBuffer = await crypto.subtle.digest('SHA-256', ab)
             let hashArray = Array.from(new Uint8Array(hashBuffer))
@@ -643,9 +647,11 @@ function WConverhpClient(opt) {
         else {
             //於nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 同步sync版無法支援大檔
 
-            //crypto, 使用動態import供nodejs使用, 否則會被webpack偵測報錯
-            let crypto = await import('crypto')
+            //crypto, 使用動態import供nodejs使用, 且須用變數給予crypto, 否則會被舊版webpack偵測報錯
+            let key = 'crypto'
+            let crypto = await import(key)
 
+            //hashHex
             let hash = crypto.createHash('sha256')
             hash.update(inp, 'utf8')
             let hashHex = hash.digest('hex')
