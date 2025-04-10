@@ -1,5 +1,5 @@
 # w-converhp
-An operator for hapi in nodejs and browser. bbb2
+An operator for hapi in nodejs and browser.
 
 ![language](https://img.shields.io/badge/language-JavaScript-orange.svg) 
 [![npm version](http://img.shields.io/npm/v/w-converhp.svg?style=flat)](https://npmjs.org/package/w-converhp) 
@@ -221,7 +221,7 @@ downloadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.18/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.19/dist/w-converhp-client.umd.js"></script>
 ```
 
 #### Example for w-converhp-client in browser:
