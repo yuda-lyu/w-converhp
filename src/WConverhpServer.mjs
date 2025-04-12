@@ -13,6 +13,7 @@ import isp0int from 'wsemi/src/isp0int.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
+import isnum from 'wsemi/src/isnum.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
@@ -24,7 +25,7 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-import fsGetFileHash from 'wsemi/src/fsGetFileHash.mjs'
+import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
 import mergeFiles from './mergeFiles.wk.umd.js'
 // import mergeFiles from './mergeFiles.mjs'
 
@@ -600,9 +601,9 @@ function WConverhpServer(opt = {}) {
         },
     }
 
-    //apiUploadCheckHash
-    let apiUploadCheckHash = {
-        path: `/${apiName}ulckh`,
+    //apiUploadCheck
+    let apiUploadCheck = {
+        path: `/${apiName}ulck`,
         method: 'POST',
         options: {
             payload: {
@@ -639,7 +640,7 @@ function WConverhpServer(opt = {}) {
             if (true) {
 
                 //verifyConn
-                let m = verifyConn({ apiType: 'upload-check-slice-hash', authorization, headers, query })
+                let m = verifyConn({ apiType: 'upload-check', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
@@ -653,21 +654,29 @@ function WConverhpServer(opt = {}) {
 
             //eeEmit
             eeEmit('handler', {
-                api: 'apiUploadCheckHash',
+                api: 'apiUploadCheck',
                 headers,
                 query,
             })
 
-            //filename, fileHash, 從payload接收
+            //filename, fileSize, fileHash, 從payload接收
             let filename = get(req, 'payload.filename', '')
+            let fileSize = get(req, 'payload.fileSize', '')
             let fileHash = get(req, 'payload.fileHash', '')
             // console.log('filename', filename)
+            // console.log('fileSize', fileSize)
             // console.log('fileHash', fileHash)
 
             //check
             if (!isestr(filename)) {
                 // console.log('invalid filename in payload')
                 return responseU8aStreamWithError(res, 'invalid filename in payload')
+            }
+
+            //check
+            if (!isnum(fileSize)) {
+                // console.log('invalid fileSize in payload')
+                return responseU8aStreamWithError(res, 'invalid fileSize in payload')
             }
 
             //check
@@ -692,19 +701,35 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
             }
 
-            //hash, fsGetFileHash要用非同步stream模式才能支援大檔
-            let hash = await fsGetFileHash(pathFile, { useSync: false, type: 'sha256' })
-            // console.log('path', pathFile)
-            // console.log('hash(front)', fileHash)
-            // console.log('hash(backend)', hash)
-            // console.log('')
+            //_fileSize
+            let stats = fs.statSync(pathFile)
+            let _fileSize = stats.size
 
             //check
-            if (fileHash !== hash) {
+            if (fileSize !== _fileSize) {
                 let out = {
                     success: {
                         existed: false,
-                        msg: 'not equal',
+                        msg: 'not equal size',
+                    },
+                }
+                let u8aOut = obj2u8arr(out)
+                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
+            }
+
+            //_fileHash
+            let _fileHash = await fsGetFileXxHash(pathFile)
+            // console.log('path', pathFile)
+            // console.log('hash(front)', fileHash)
+            // console.log('hash(backend)', _fileHash)
+            // console.log('')
+
+            //check
+            if (fileHash !== _fileHash) {
+                let out = {
+                    success: {
+                        existed: false,
+                        msg: 'not equal hash',
                     },
                 }
                 let u8aOut = obj2u8arr(out)
@@ -1406,7 +1431,7 @@ function WConverhpServer(opt = {}) {
             apiRoutes = [
                 ...apiRoutes,
                 apiMain,
-                apiUploadCheckHash,
+                apiUploadCheck,
                 apiUploadSlice,
                 apiUploadSliceMerge,
                 apiDownloadGetFilename,
@@ -1427,7 +1452,7 @@ function WConverhpServer(opt = {}) {
 
     //start
     if (get(opt, 'serverHapi')) {
-        server.route([apiMain, apiUploadCheckHash, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+        server.route([apiMain, apiUploadCheck, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
     }
     else {
         startServer()

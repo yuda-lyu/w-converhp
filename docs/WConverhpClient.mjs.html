@@ -48,7 +48,6 @@
             <pre class="prettyprint source linenums"><code>import axios from 'axios'
 import get from 'lodash-es/get.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
-import getGlobal from 'wsemi/src/getGlobal.mjs'
 import evem from 'wsemi/src/evem.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
@@ -66,7 +65,7 @@ import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
-// import getFileHash from 'wsemi/src/getFileHash.mjs'
+import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 
 
 /**
@@ -212,8 +211,8 @@ function WConverhpClient(opt) {
         else if (type === 'slice') {
             urlUse = `${url}slc`
         }
-        else if (type === 'upload-check-slice-hash') {
-            urlUse = `${url}ulckh`
+        else if (type === 'upload-check') {
+            urlUse = `${url}ulck`
         }
         else if (type === 'slice-merge') {
             urlUse = `${url}slcm`
@@ -675,37 +674,21 @@ function WConverhpClient(opt) {
 
     //calcHash
     async function calcHash(inp) {
-        let pm = genPm()
+
+        //bb
+        let bb = null
         if (env === 'browser') {
-            //於browser時, 因是給予blob或file上傳, 且使用非同步async版計算hash, 可支援大檔
-
-            //crypto, 須通過global取得crypto, 否則會被舊版webpack偵測報錯
-            let g = getGlobal()
-            let crypto = get(g, 'crypto')
-
-            //hashHex
-            let ab = await inp.arrayBuffer()
-            let hashBuffer = await crypto.subtle.digest('SHA-256', ab)
-            let hashArray = Array.from(new Uint8Array(hashBuffer))
-            let hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-
-            pm.resolve(hashHex)
+            bb = inp
         }
         else {
-            //於nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 同步sync版無法支援大檔
-
-            //crypto, 使用動態import供nodejs使用, 且須用變數給予crypto, 否則會被舊版webpack偵測報錯
-            let key = 'crypto'
-            let crypto = await import(key)
-
-            //hashHex
-            let hash = crypto.createHash('sha256')
-            hash.update(inp, 'utf8')
-            let hashHex = hash.digest('hex')
-
-            pm.resolve(hashHex)
+            //於nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 再轉成new Blob([buffer]), 供getFileXxHash使用
+            bb = new Blob([inp])
         }
-        return pm
+
+        //hash
+        let hash = await getFileXxHash(bb)
+
+        return hash
     }
 
     //sendDataSlice
@@ -722,7 +705,7 @@ function WConverhpClient(opt) {
         }
         if (n === 0) {
             try {
-                n = bb.length //for Uint8Array //nodejs用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
+                n = bb.length //for ArrayBuffer //nodejs用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
                 n = cint(n)
             }
             catch (err) {}
@@ -734,27 +717,30 @@ function WConverhpClient(opt) {
         }
         // console.log('n', n)
 
-        //getFileHash
+        //fileTotalSize
+        let fileTotalSize = n
+
+        //fileTotalHash
         let fileTotalHash = await calcHash(bb)
         // console.log('fileTotalHash', fileTotalHash)
 
         //ckh
-        let ckh = async({ filename, fileHash }) => {
+        let ckh = async({ filename, fileSize, fileHash }) => {
 
-            //send upload-check-slice-hash
-            let resCk = await send('upload-check-slice-hash', { filename, fileHash }, { dataType: 'json' })
+            //send upload-check
+            let resCk = await send('upload-check', { filename, fileSize, fileHash }, { dataType: 'json' })
             // console.log('resCk', resCk)
 
             return resCk
         }
 
         //rAll
-        let rAll = await ckh({ filename: fileTotalHash, fileHash: fileTotalHash })
+        let rAll = await ckh({ filename: fileTotalHash, fileSize: fileTotalSize, fileHash: fileTotalHash })
         // console.log('rAll', rAll)
 
         //check
         if (rAll.existed) {
-            //已有上傳大檔
+            // console.log('已有上傳大檔')
             let resMg = {
                 filename: fileTotalName,
                 path: rAll.path,
@@ -818,7 +804,7 @@ function WConverhpClient(opt) {
             // console.log('fileSliceHash', fileSliceHash)
 
             //rChunk
-            let rChunk = await ckh({ filename: fileSliceName, fileHash: fileSliceHash })
+            let rChunk = await ckh({ filename: fileSliceName, fileSize: sizeSlice, fileHash: fileSliceHash })
             // console.log('fileSliceName', fileSliceName)
             // console.log('fileSliceHash', fileSliceHash)
             // console.log('rChunk', rChunk)
@@ -826,7 +812,8 @@ function WConverhpClient(opt) {
 
             //check
             if (rChunk.existed) {
-                //已有上傳切片檔
+                // console.log('已有上傳切片檔')
+                cbProgressSlice({ prog: 100, m: 'upload' }) //直接觸發更新進度
                 continue
             }
 
@@ -1009,7 +996,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Fri Apr 11 2025 14:09:29 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Sat Apr 12 2025 22:14:41 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
