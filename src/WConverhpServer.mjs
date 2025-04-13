@@ -25,9 +25,10 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
-import mergeFiles from './mergeFiles.wk.umd.js'
+// import calcFileHash from './calcFileHash.mjs'
+import calcFileHash from './calcFileHash.wk.umd.js'
 // import mergeFiles from './mergeFiles.mjs'
+import mergeFiles from './mergeFiles.wk.umd.js'
 
 
 //回傳前端stream時(POST或GET皆可), 前端會須等stream傳完才能判斷是否為大檔或錯誤訊息, 此會導致若回傳超大檔, 會需要對超大檔進行解析會有記憶體上限問題, 故需要通過header提供基本成功或失敗訊息, 讓前端能進行解析判斷
@@ -718,7 +719,7 @@ function WConverhpServer(opt = {}) {
             }
 
             //_fileHash
-            let _fileHash = await fsGetFileXxHash(pathFile)
+            let _fileHash = await calcFileHash(pathFile)
             // console.log('path', pathFile)
             // console.log('hash(front)', fileHash)
             // console.log('hash(backend)', _fileHash)
