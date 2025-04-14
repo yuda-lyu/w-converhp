@@ -718,7 +718,7 @@ function WConverhpClient(opt) {
             //fileSliceHashs
             let fileSliceHashs = []
             // let n = Math.max(resCk.slks.length, 1)
-            // let nr = Math.floor(n / 200)
+            // let nr = Math.floor(n / 100)
             for (let k = 0; k < resCk.slks.length; k++) {
                 // if (k % nr === 0) {
                 //     console.log(`calc hash for slices`, round(k / resCk.slks.length * 100, 1), '%')

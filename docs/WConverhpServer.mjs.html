@@ -51,8 +51,6 @@ import stream from 'stream'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
-import each from 'lodash-es/each.js'
-import size from 'lodash-es/size.js'
 import isNumber from 'lodash-es/isNumber.js'
 import genPm from 'wsemi/src/genPm.mjs'
 import evem from 'wsemi/src/evem.mjs'
@@ -62,7 +60,6 @@ import isp0int from 'wsemi/src/isp0int.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
-import isnum from 'wsemi/src/isnum.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
@@ -71,15 +68,14 @@ import str2b64 from 'wsemi/src/str2b64.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
-import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-import fsGetFilesInFolder from 'wsemi/src/fsGetFilesInFolder.mjs'
-import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
-// import calcFileHash from './calcFileHash.mjs'
-import calcFileHash from './calcFileHash.wk.umd.js'
 // import mergeFiles from './mergeFiles.mjs'
 import mergeFiles from './mergeFiles.wk.umd.js'
+// import checkTotalHash from './checkTotalHash.mjs'
+import checkTotalHash from './checkTotalHash.wk.umd.js'
+// import checkSlicesHash from './checkSlicesHash.mjs'
+import checkSlicesHash from './checkSlicesHash.wk.umd.js'
 
 
 //回傳前端stream時(POST或GET皆可), 前端會須等stream傳完才能判斷是否為大檔或錯誤訊息, 此會導致若回傳超大檔, 會需要對超大檔進行解析會有記憶體上限問題, 故需要通過header提供基本成功或失敗訊息, 讓前端能進行解析判斷
@@ -730,181 +726,28 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileHash in payload')
             }
 
-            //checkTotalHash
-            let checkTotalHash = async () => {
-
-                //pathFile
-                let pathFile = path.join(pathUploadTemp, fileHash)
-                // console.log('pathFile', pathFile)
-
-                //bAllExist
-                let bAllExist = false
-                if (true) {
-                    // console.log(`check exist for pathFile[${pathFile}]...`)
-
-                    bAllExist = fsIsFile(pathFile)
-
-                    // console.log(`check exist for pathFile[${pathFile}] done`, bAllExist)
-                }
+            //out
+            let out = null
+            if (mode === 'check-total-hash') {
 
                 //fileSize, 從payload接收
                 let fileSize = get(req, 'payload.fileSize', '')
 
-                //check
-                if (!isnum(fileSize)) {
-                    // console.log('invalid fileSize in payload')
-                    let r = {
-                        error: 'invalid fileSize in payload',
-                    }
-                    return r
-                }
+                //checkTotalHash
+                out = await checkTotalHash(fileSize, sizeSlice, fileHash, pathUploadTemp)
 
-                //bAllSize
-                let bAllSize = false
-                if (bAllExist) {
-                    // console.log(`check size for pathFile[${pathFile}]...`)
-
-                    //_fileSize
-                    let stats = fs.statSync(pathFile)
-                    let _fileSize = stats.size
-
-                    //bAllSize
-                    bAllSize = fileSize === _fileSize
-
-                    // console.log(`check size for pathFile[${pathFile}] done`, bAllSize)
-                }
-
-                //bAllHash
-                let bAllHash = false
-                if (bAllExist &amp;&amp; bAllSize) {
-                    // console.log(`check hash for pathFile[${pathFile}]...`)
-
-                    //bAllHash
-                    await calcFileHash(pathFile)
-                        .then((_fileHash) => {
-                            bAllHash = fileHash === _fileHash
-                        })
-                        .catch((err) => {
-                            console.log(err)
-                            console.log(`fsIsFile(pathFile)`, pathFile, fsIsFile(pathFile))
-                            bAllHash = false
-                        })
-
-                    // console.log(`check hash for pathFile[${pathFile}] done`, bAllHash)
-                }
-
-                //vfps
-                let vfps = fsGetFilesInFolder(pathUploadTemp)
-                // console.log('vfps', vfps)
-
-                //slks
-                let slks = []
-                if (true) {
-                    each(vfps, (v, k) => {
-                        let b1 = (v.name).indexOf(`${fileHash}_`) >= 0
-                        let stats = fs.statSync(v.path)
-                        let b2 = stats.size === sizeSlice
-                        let b = b1 &amp;&amp; b2
-                        if (b) {
-                            slks.push(k)
-                        }
-                    })
-                }
-                // console.log('slks', slks)
-
-                //bSls
-                let bSls = size(slks) > 0
-                // console.log('bSls', bSls)
-
-                //r
-                let r = {
-                    success: {
-                        path: pathFile,
-                        bAllExist,
-                        bAllSize,
-                        bAllHash,
-                        bSls,
-                        slks,
-                    },
-                }
-
-                return r
             }
-
-            //checkSlicesHash
-            let checkSlicesHash = async() => {
+            else if (mode === 'check-slices-hash') {
 
                 //fileSliceHashs, 從payload接收
                 let fileSliceHashs = get(req, 'payload.fileSliceHashs', [])
                 // console.log('fileSliceHashs', fileSliceHashs)
 
-                //check, 前端須檢核, 若之前已回應無切片, 就不能再調用檢測切片hash的API
-                if (size(fileSliceHashs) === 0) {
-                    let r = {
-                        error: 'no fileSliceHashs',
-                    }
-                    return r
-                }
+                //checkSlicesHash
+                out = await checkSlicesHash(fileSliceHashs, fileHash, pathUploadTemp)
 
-                //slksCfm, 已確定hash值一致的切片
-                // console.log(`check hash for slices fileHash[${fileHash}]...`, fileSliceHashs[0], size(fileSliceHashs))
-                let slksCfm = []
-                // let n = Math.max(fileSliceHashs.length, 1)
-                // let nr = Math.floor(n / 200)
-                for (let k = 0; k &lt; fileSliceHashs.length; k++) {
-                    // if (k % nr === 0) {
-                    //     console.log(`calc hash for slices`, round(k / fileSliceHashs.length * 100, 1), '%')
-                    // }
-
-                    //v
-                    let v = fileSliceHashs[k]
-
-                    //_pathFile
-                    let _pathFile = path.join(pathUploadTemp, `${fileHash}_${v.i}`)
-                    // console.log('_pathFile', _pathFile)
-
-                    //_fileHash
-                    let _fileHash = ''
-                    // await calcFileHash(_pathFile)
-                    await getFileXxHash(new Blob([fs.readFileSync(_pathFile)])) //計算切片因檔案很小, 直接用getFileXxHash速度比較快
-                        .then((res) => {
-                            _fileHash = res
-                        })
-                        .catch((err) => {
-                            console.log(err)
-                            console.log(`fsIsFile(_pathFile)`, _pathFile, fsIsFile(_pathFile))
-                        })
-                    // console.log('_fileHash', _fileHash)
-
-                    //check
-                    if (v.h === _fileHash) {
-                        slksCfm.push(v.i)
-                    }
-                    // else {
-                    //     console.log(`hash is not equal`, `hash(front)`, v.h, `hash(backend)`, _fileHash)
-                    // }
-
-                }
-                // console.log(`check hash for slices fileHash[${fileHash}] done`, slksCfm[0], size(slksCfm))
-
-                //r
-                let r = {
-                    success: {
-                        slks: slksCfm,
-                    },
-                }
-
-                return r
             }
-
-            //out
-            let out = null
-            if (mode === 'check-total-hash') {
-                out = await checkTotalHash()
-            }
-            else if (mode === 'check-slices-hash') {
-                out = await checkSlicesHash()
-            }
+            // console.log('out', out)
 
             if (out.error) {
                 return responseU8aStreamWithError(res, out.error)
@@ -1142,15 +985,15 @@ function WConverhpServer(opt = {}) {
 
                 //merge
                 // console.log('merge start')
-                let r = await mergeFiles(pathUploadTemp, packageId, chunkTotal, filename)
-                // console.log('merge done', r)
+                let rMerg = await mergeFiles(pathUploadTemp, packageId, chunkTotal, filename)
+                // console.log('merge done', rMerg)
 
                 //procUpload
                 // console.log('procUpload start')
-                let rr = await procUpload(r)
-                // console.log('procUpload done', rr)
+                let rProc = await procUpload(rMerg)
+                // console.log('procUpload done', rProc)
 
-                return rr
+                return rProc
             }
 
             //mergeAndPorc
@@ -1395,14 +1238,6 @@ function WConverhpServer(opt = {}) {
 
             //streamRead
             let streamRead = get(r, 'streamRead')
-
-            // //filename
-            // let filename = get(r, 'filename')
-            // if (!isestr(filename)) {
-            //     return responseU8aStreamWithError(res, 'invalid filename')
-            // }
-            // filename = str2b64(filename) //headers內對中文支援度不佳須用base64傳
-            // console.log('filename', filename)
 
             //fileSize
             let fileSize = get(r, 'fileSize')
@@ -1650,7 +1485,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Mon Apr 14 2025 15:34:24 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Mon Apr 14 2025 17:07:31 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

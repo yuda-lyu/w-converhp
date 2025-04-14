@@ -9,13 +9,35 @@ let fdTar = './dist'
 
 async function core() {
 
-    //因為WConverhpServer會import calcFileHash.wk.umd.js故得先編譯
+    //因為WConverhpServer會import checkTotalHash.wk.umd.js故得先編譯
     await rollupWorker({
-        name: 'calcFileHash', //原模組名稱, 將來會掛於winodw下或於node引入使用
+        name: 'checkTotalHash', //原模組名稱, 將來會掛於winodw下或於node引入使用
         type: 'function', //原模組輸出為函數, 可傳入參數初始化
         // execFunctionByInstance: true, //default, 原模組為計算函數回傳結果
-        fpSrc: path.resolve(fdSrc, 'calcFileHash.mjs'), //原始檔案路徑
-        fpTar: path.resolve(fdSrc, 'calcFileHash.wk.umd.js'), //檔案輸出路徑
+        fpSrc: path.resolve(fdSrc, 'checkTotalHash.mjs'), //原始檔案路徑
+        fpTar: path.resolve(fdSrc, 'checkTotalHash.wk.umd.js'), //檔案輸出路徑
+        formatOut: 'umd',
+        // bMinify: false,
+        globals: {
+            'path': 'path',
+            'fs': 'fs',
+        },
+        external: [
+            'path',
+            'fs',
+        ],
+    })
+        .catch((err) => {
+            console.log(err)
+        })
+
+    //因為WConverhpServer會import checkSlicesHash.wk.umd.js故得先編譯
+    await rollupWorker({
+        name: 'checkSlicesHash', //原模組名稱, 將來會掛於winodw下或於node引入使用
+        type: 'function', //原模組輸出為函數, 可傳入參數初始化
+        // execFunctionByInstance: true, //default, 原模組為計算函數回傳結果
+        fpSrc: path.resolve(fdSrc, 'checkSlicesHash.mjs'), //原始檔案路徑
+        fpTar: path.resolve(fdSrc, 'checkSlicesHash.wk.umd.js'), //檔案輸出路徑
         formatOut: 'umd',
         // bMinify: false,
         globals: {
