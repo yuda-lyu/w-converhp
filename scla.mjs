@@ -79,4 +79,4 @@ function executeWithU8a() {
 executeWithU8a()
 
 
-//node --experimental-modules scla.mjs
+//node scla.mjs

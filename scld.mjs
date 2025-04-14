@@ -54,4 +54,4 @@ function downloadLargeFile() {
 downloadLargeFile()
 
 
-//node --experimental-modules scld.mjs
+//node scld.mjs

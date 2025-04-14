@@ -16,7 +16,7 @@
   "scripts": {
     "@hapi/hapi": "^20.2.1",
     "@hapi/inert": "^6.0.5",
-    "test": "mocha --parallel --timeout 60000 --experimental-modules",
+    "test": "mocha --parallel --timeout 60000",
     "deploy": "gh-pages -d docs"
   },
   "repository": {

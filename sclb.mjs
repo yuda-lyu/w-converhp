@@ -80,4 +80,4 @@ function executeWithFile() {
 executeWithFile()
 
 
-//node --experimental-modules sclb.mjs
+//node sclb.mjs

@@ -59,4 +59,4 @@ function uploadLargeFile() {
 uploadLargeFile()
 
 
-//node --experimental-modules sclc.mjs
+//node sclc.mjs
