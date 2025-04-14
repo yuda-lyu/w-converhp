@@ -720,37 +720,100 @@ function WConverhpClient(opt) {
         //fileTotalSize
         let fileTotalSize = n
 
+        //chunkTotal
+        let chunkTotal = Math.ceil(fileTotalSize / sizeSlice)
+        // console.log('chunkTotal', chunkTotal)
+
         //fileTotalHash
+        // console.log(`calc hash for fileTotalSize[${fileTotalSize}]...`)
         let fileTotalHash = await calcHash(bb)
-        // console.log('fileTotalHash', fileTotalHash)
+        // console.log(`calc hash for fileTotalSize[${fileTotalSize}] done`, fileTotalHash)
 
-        //ckh
-        let ckh = async({ filename, fileSize, fileHash }) => {
-
-            //send upload-check
-            let resCk = await send('upload-check', { filename, fileSize, fileHash }, { dataType: 'json' })
-            // console.log('resCk', resCk)
-
-            return resCk
-        }
-
-        //rAll
-        let rAll = await ckh({ filename: fileTotalHash, fileSize: fileTotalSize, fileHash: fileTotalHash })
-        // console.log('rAll', rAll)
+        //send upload-check
+        // console.log(`send check-total-hash...`)
+        let resCk = await send('upload-check', { mode: 'check-total-hash', fileHash: fileTotalHash, fileSize: fileTotalSize }, { dataType: 'json' })
+        // console.log('resCk', resCk)
+        // resCk {
+        //   path: 'uploadTemp\\2429b7ef08ce6ba9',
+        //   bAllExist: false,
+        //   bAllSize: false,
+        //   bAllHash: false,
+        //   bSls: true,
+        //   slks: [
+        //      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
+        //     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        //     24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+        //     36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+        //     48, 49, 50, 51, 52, 53
+        //   ]
+        // }
 
         //check
-        if (rAll.existed) {
+        if (resCk.bAllHash) {
             // console.log('已有上傳大檔')
             let resMg = {
                 filename: fileTotalName,
-                path: rAll.path,
+                path: resCk.path,
             }
             return resMg
         }
 
-        //chunkTotal
-        let chunkTotal = Math.ceil(n / sizeSlice)
-        // console.log('chunkTotal', chunkTotal)
+        //針對伺服器上已有切片檔案計算hash與比對
+        if (resCk.slks.length > 0) {
+            // console.log('receive slks...', resCk.slks[0], size(resCk.slks))
+
+            //fileSliceHashs
+            let fileSliceHashs = []
+            // let n = Math.max(resCk.slks.length, 1)
+            // let nr = Math.floor(n / 200)
+            for (let k = 0; k &lt; resCk.slks.length; k++) {
+                // if (k % nr === 0) {
+                //     console.log(`calc hash for slices`, round(k / resCk.slks.length * 100, 1), '%')
+                // }
+
+                //i
+                let i = resCk.slks[k]
+
+                //start
+                let start = i * sizeSlice
+
+                //end
+                let end = Math.min(start + sizeSlice, fileTotalSize)
+
+                //chunk
+                let chunk = bb.slice(start, end)
+
+                //fileSliceHash
+                let fileSliceHash = await calcHash(chunk)
+                // console.log('fileSliceHash', fileSliceHash)
+
+                //push
+                fileSliceHashs.push({
+                    i,
+                    h: fileSliceHash,
+                })
+
+            }
+            // console.log('fileSliceHashs', fileSliceHashs)
+
+            //send upload-check
+            // console.log(`send check-slices-hash...`)
+            let resCks = await send('upload-check', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json' })
+            // console.log('resCks', resCks)
+            // resCks {
+            //   slks: [
+            //      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
+            //     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            //     24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+            //     36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+            //     48, 49, 50, 51, 52, 53
+            //   ]
+            // }
+
+            //update
+            resCk.slks = resCks.slks
+
+        }
 
         //packageId
         let packageId = fileTotalHash
@@ -769,7 +832,7 @@ function WConverhpClient(opt) {
                 progCount++
                 let r = progCount / chunkTotal
                 let prog = r * progWeightSlice * 100
-                let psiz = r * n
+                let psiz = r * fileTotalSize
                 cbProgress({ prog, p: psiz, m: 'upload' })
             }
         }
@@ -779,43 +842,29 @@ function WConverhpClient(opt) {
             let perc = msg.prog
             let dir = msg.m
             if (dir === 'download' &amp;&amp; perc === 100) {
-                cbProgress({ prog: 100, p: n, m: 'upload' })
+                cbProgress({ prog: 100, p: fileTotalSize, m: 'upload' })
             }
         }
 
         //upload slice
+        // console.log(`upload slice...`)
         for (let i = 0; i &lt; chunkTotal; i++) {
 
-            //fileSliceName
-            let fileSliceName = `${fileTotalHash}_${i}`
-            // console.log('fileSliceName', fileSliceName)
+            //check
+            if (resCk.slks.indexOf(i) >= 0) {
+                // console.log('已有上傳切片檔')
+                cbProgressSlice({ prog: 100, m: 'upload' }) //直接觸發更新進度
+                continue
+            }
 
             //start
             let start = i * sizeSlice
 
             //end
-            let end = Math.min(start + sizeSlice, n)
+            let end = Math.min(start + sizeSlice, fileTotalSize)
 
             //chunk
             let chunk = bb.slice(start, end)
-
-            //fileSliceHash
-            let fileSliceHash = await calcHash(chunk)
-            // console.log('fileSliceHash', fileSliceHash)
-
-            //rChunk
-            let rChunk = await ckh({ filename: fileSliceName, fileSize: sizeSlice, fileHash: fileSliceHash })
-            // console.log('fileSliceName', fileSliceName)
-            // console.log('fileSliceHash', fileSliceHash)
-            // console.log('rChunk', rChunk)
-            // console.log('')
-
-            //check
-            if (rChunk.existed) {
-                // console.log('已有上傳切片檔')
-                cbProgressSlice({ prog: 100, m: 'upload' }) //直接觸發更新進度
-                continue
-            }
 
             //send slice
             let hd = {
@@ -836,6 +885,7 @@ function WConverhpClient(opt) {
         }
         let resMg = await send('slice-merge', msg, { dataType: 'json', cbProgress: cbProgressMerge })
 
+        // console.log(`upload slice done`)
         return resMg
     }
 
@@ -996,7 +1046,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Sun Apr 13 2025 11:30:23 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Mon Apr 14 2025 14:46:09 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
