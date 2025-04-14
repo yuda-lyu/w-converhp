@@ -4,6 +4,8 @@ import stream from 'stream'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
+import each from 'lodash-es/each.js'
+import size from 'lodash-es/size.js'
 import isNumber from 'lodash-es/isNumber.js'
 import genPm from 'wsemi/src/genPm.mjs'
 import evem from 'wsemi/src/evem.mjs'
@@ -25,6 +27,8 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
+import fsGetFilesInFolder from 'wsemi/src/fsGetFilesInFolder.mjs'
+import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 // import calcFileHash from './calcFileHash.mjs'
 import calcFileHash from './calcFileHash.wk.umd.js'
 // import mergeFiles from './mergeFiles.mjs'
@@ -47,6 +51,7 @@ import mergeFiles from './mergeFiles.wk.umd.js'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
+ * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
  * @param {Integer} [opt.delayForBasic=0] 輸入基本API用延遲響應時間，單位ms，預設0
@@ -229,6 +234,12 @@ function WConverhpServer(opt = {}) {
     let tokenType = get(opt, 'tokenType')
     if (!isestr(tokenType)) {
         tokenType = 'Bearer'
+    }
+
+    //sizeSlice
+    let sizeSlice = get(opt, 'sizeSlice')
+    if (!ispint(sizeSlice)) {
+        sizeSlice = 1024 * 1024 //1m
     }
 
     //verifyConn
@@ -424,12 +435,6 @@ function WConverhpServer(opt = {}) {
         }
 
         return r
-        // return res.response(smr)
-        //     .header('Return-Type', returnType)
-        //     .header('Return-Msg', returnMsg)
-        //     .header('Cache-Control', 'no-cache, no-store, must-revalidate')
-        //     .header('Content-Type', 'application/octet-stream')
-        //     .header('Content-Length', smr.readableLength)
     }
 
     //responseU8aStreamWithError
@@ -660,25 +665,17 @@ function WConverhpServer(opt = {}) {
                 query,
             })
 
-            //filename, fileSize, fileHash, 從payload接收
-            let filename = get(req, 'payload.filename', '')
-            let fileSize = get(req, 'payload.fileSize', '')
+            //mode, 從payload接收
+            let mode = get(req, 'payload.mode', '')
+
+            //check
+            if (mode !== 'check-total-hash' && mode !== 'check-slices-hash') {
+                // console.log('invalid mode in payload')
+                return responseU8aStreamWithError(res, `invalid mode[${mode}] in payload`)
+            }
+
+            //fileHash, 從payload接收
             let fileHash = get(req, 'payload.fileHash', '')
-            // console.log('filename', filename)
-            // console.log('fileSize', fileSize)
-            // console.log('fileHash', fileHash)
-
-            //check
-            if (!isestr(filename)) {
-                // console.log('invalid filename in payload')
-                return responseU8aStreamWithError(res, 'invalid filename in payload')
-            }
-
-            //check
-            if (!isnum(fileSize)) {
-                // console.log('invalid fileSize in payload')
-                return responseU8aStreamWithError(res, 'invalid fileSize in payload')
-            }
 
             //check
             if (!isestr(fileHash)) {
@@ -686,69 +683,189 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileHash in payload')
             }
 
-            //pathFile
-            let pathFile = path.join(pathUploadTemp, filename)
-            // console.log('pathFile', pathFile)
+            //checkTotalHash
+            let checkTotalHash = async () => {
 
-            //check
-            if (!fsIsFile(pathFile)) {
-                let out = {
-                    success: {
-                        existed: false,
-                        msg: 'not exist',
-                    },
+                //pathFile
+                let pathFile = path.join(pathUploadTemp, fileHash)
+                // console.log('pathFile', pathFile)
+
+                //bAllExist
+                let bAllExist = false
+                if (true) {
+                    // console.log(`check exist for pathFile[${pathFile}]...`)
+
+                    bAllExist = fsIsFile(pathFile)
+
+                    // console.log(`check exist for pathFile[${pathFile}] done`, bAllExist)
                 }
-                let u8aOut = obj2u8arr(out)
-                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
-            }
 
-            //_fileSize
-            let stats = fs.statSync(pathFile)
-            let _fileSize = stats.size
+                //fileSize, 從payload接收
+                let fileSize = get(req, 'payload.fileSize', '')
 
-            //check
-            if (fileSize !== _fileSize) {
-                let out = {
-                    success: {
-                        existed: false,
-                        msg: 'not equal size',
-                    },
+                //check
+                if (!isnum(fileSize)) {
+                    // console.log('invalid fileSize in payload')
+                    let r = {
+                        error: 'invalid fileSize in payload',
+                    }
+                    return r
                 }
-                let u8aOut = obj2u8arr(out)
-                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
-            }
 
-            //_fileHash
-            let _fileHash = await calcFileHash(pathFile)
-            // console.log('path', pathFile)
-            // console.log('hash(front)', fileHash)
-            // console.log('hash(backend)', _fileHash)
-            // console.log('')
+                //bAllSize
+                let bAllSize = false
+                if (bAllExist) {
+                    // console.log(`check size for pathFile[${pathFile}]...`)
 
-            //check
-            if (fileHash !== _fileHash) {
-                let out = {
-                    success: {
-                        existed: false,
-                        msg: 'not equal hash',
-                    },
+                    //_fileSize
+                    let stats = fs.statSync(pathFile)
+                    let _fileSize = stats.size
+
+                    //bAllSize
+                    bAllSize = fileSize === _fileSize
+
+                    // console.log(`check size for pathFile[${pathFile}] done`, bAllSize)
                 }
-                let u8aOut = obj2u8arr(out)
-                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
-            }
 
-            if (true) {
-                let out = {
+                //bAllHash
+                let bAllHash = false
+                if (bAllExist && bAllSize) {
+                    // console.log(`check hash for pathFile[${pathFile}]...`)
+
+                    //bAllHash
+                    await calcFileHash(pathFile)
+                        .then((_fileHash) => {
+                            bAllHash = fileHash === _fileHash
+                        })
+                        .catch((err) => {
+                            console.log(err)
+                            console.log(`fsIsFile(pathFile)`, pathFile, fsIsFile(pathFile))
+                            bAllHash = false
+                        })
+
+                    // console.log(`check hash for pathFile[${pathFile}] done`, bAllHash)
+                }
+
+                //vfps
+                let vfps = fsGetFilesInFolder(pathUploadTemp)
+                // console.log('vfps', vfps)
+
+                //slks
+                let slks = []
+                if (true) {
+                    each(vfps, (v, k) => {
+                        let b1 = (v.name).indexOf(`${fileHash}_`) >= 0
+                        let stats = fs.statSync(v.path)
+                        let b2 = stats.size === sizeSlice
+                        let b = b1 && b2
+                        if (b) {
+                            slks.push(k)
+                        }
+                    })
+                }
+                // console.log('slks', slks)
+
+                //bSls
+                let bSls = size(slks) > 0
+                // console.log('bSls', bSls)
+
+                //r
+                let r = {
                     success: {
-                        existed: true,
-                        msg: 'equal',
                         path: pathFile,
+                        bAllExist,
+                        bAllSize,
+                        bAllHash,
+                        bSls,
+                        slks,
                     },
                 }
+
+                return r
+            }
+
+            //checkSlicesHash
+            let checkSlicesHash = async() => {
+
+                //fileSliceHashs, 從payload接收
+                let fileSliceHashs = get(req, 'payload.fileSliceHashs', [])
+                // console.log('fileSliceHashs', fileSliceHashs)
+
+                //check, 前端須檢核, 若之前已回應無切片, 就不能再調用檢測切片hash的API
+                if (size(fileSliceHashs) === 0) {
+                    let r = {
+                        error: 'no fileSliceHashs',
+                    }
+                    return r
+                }
+
+                //slksCfm, 已確定hash值一致的切片
+                // console.log(`check hash for slices fileHash[${fileHash}]...`, fileSliceHashs[0], size(fileSliceHashs))
+                let slksCfm = []
+                // let n = Math.max(fileSliceHashs.length, 1)
+                // let nr = Math.floor(n / 200)
+                for (let k = 0; k < fileSliceHashs.length; k++) {
+                    // if (k % nr === 0) {
+                    //     console.log(`calc hash for slices`, round(k / fileSliceHashs.length * 100, 1), '%')
+                    // }
+
+                    //v
+                    let v = fileSliceHashs[k]
+
+                    //_pathFile
+                    let _pathFile = path.join(pathUploadTemp, `${fileHash}_${v.i}`)
+                    // console.log('_pathFile', _pathFile)
+
+                    //_fileHash
+                    let _fileHash = ''
+                    // await calcFileHash(_pathFile)
+                    await getFileXxHash(new Blob([fs.readFileSync(_pathFile)])) //計算切片因檔案很小, 直接用getFileXxHash速度比較快
+                        .then((res) => {
+                            _fileHash = res
+                        })
+                        .catch((err) => {
+                            console.log(err)
+                            console.log(`fsIsFile(_pathFile)`, _pathFile, fsIsFile(_pathFile))
+                        })
+                    // console.log('_fileHash', _fileHash)
+
+                    //check
+                    if (v.h === _fileHash) {
+                        slksCfm.push(v.i)
+                    }
+                    // else {
+                    //     console.log(`hash is not equal`, `hash(front)`, v.h, `hash(backend)`, _fileHash)
+                    // }
+
+                }
+                // console.log(`check hash for slices fileHash[${fileHash}] done`, slksCfm[0], size(slksCfm))
+
+                //r
+                let r = {
+                    success: {
+                        slks: slksCfm,
+                    },
+                }
+
+                return r
+            }
+
+            //out
+            let out = null
+            if (mode === 'check-total-hash') {
+                out = await checkTotalHash()
+            }
+            else if (mode === 'check-slices-hash') {
+                out = await checkSlicesHash()
+            }
+
+            if (out.error) {
+                return responseU8aStreamWithError(res, out.error)
+            }
+            else {
                 let u8aOut = obj2u8arr(out)
                 return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
             }
-
         },
     }
 
