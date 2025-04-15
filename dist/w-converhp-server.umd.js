@@ -1,5 +1,5 @@
 /*!
- * w-converhp-server v2.0.37
+ * w-converhp-server v2.0.38
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */

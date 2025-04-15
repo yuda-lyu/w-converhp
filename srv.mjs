@@ -137,4 +137,4 @@ setTimeout(() => {
     wo.stop()
 }, 3000)
 
-//node --max-old-space-size=120000 srv.mjs
+//node srv.mjs

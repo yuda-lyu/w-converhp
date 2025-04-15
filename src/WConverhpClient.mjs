@@ -864,12 +864,9 @@ function WConverhpClient(opt) {
                             //cbProgressMerge
                             cbProgressMerge({ prog: 100, m: 'download' })
 
-                            //resUpMgr
-                            let resUpMgr = {
-                                ...res.msg,
-                            }
+                            //resolve, 前端偵測state為'done'時提取msg顯示
+                            pm.resolve(res.msg)
 
-                            pm.resolve(resUpMgr)
                         }
 
                     })
@@ -887,6 +884,7 @@ function WConverhpClient(opt) {
 
         //checkMerging
         let resUpMgr = await checkMerging()
+        // console.log('resUpMgr', resUpMgr)
 
         // console.log(`upload slice done`)
         return resUpMgr
