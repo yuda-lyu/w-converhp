@@ -49,6 +49,9 @@ function downloadLargeFile() {
 
     }
     core()
+        .catch((err) => {
+            console.log(err)
+        })
 }
 
 downloadLargeFile()

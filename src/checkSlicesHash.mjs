@@ -58,9 +58,7 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
 
     //r
     let r = {
-        success: {
-            slks: slksCfm,
-        },
+        slks: slksCfm,
     }
 
     return r

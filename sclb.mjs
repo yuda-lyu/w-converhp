@@ -75,6 +75,9 @@ function executeWithFile() {
 
     }
     core()
+        .catch((err) => {
+            console.log(err)
+        })
 }
 
 executeWithFile()

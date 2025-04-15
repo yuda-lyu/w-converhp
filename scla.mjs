@@ -74,6 +74,9 @@ function executeWithU8a() {
 
     }
     core()
+        .catch((err) => {
+            console.log(err)
+        })
 }
 
 executeWithU8a()

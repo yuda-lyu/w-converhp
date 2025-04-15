@@ -92,14 +92,12 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
 
     //r
     let r = {
-        success: {
-            path: pathFile,
-            bAllExist,
-            bAllSize,
-            bAllHash,
-            bSls,
-            slks,
-        },
+        path: pathFile,
+        bAllExist,
+        bAllSize,
+        bAllHash,
+        bSls,
+        slks,
     }
 
     return r

@@ -70,8 +70,7 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-// import mergeFiles from './mergeFiles.mjs'
-import mergeFiles from './mergeFiles.wk.umd.js'
+import managerMergeSlices from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
 // import checkSlicesHash from './checkSlicesHash.mjs'
@@ -81,6 +80,10 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
 //回傳前端stream時(POST或GET皆可), 前端會須等stream傳完才能判斷是否為大檔或錯誤訊息, 此會導致若回傳超大檔, 會需要對超大檔進行解析會有記憶體上限問題, 故需要通過header提供基本成功或失敗訊息, 讓前端能進行解析判斷
 //回傳前端(nodejs)時, 針對超大檔, 只能用POST並用stream回傳
 //回傳前端(browser)時, 針對超大檔, 可用POST並用stream回傳但還要處理進度條, 若要交由瀏覽器下載器處理, 只能用GET並用stream回傳, 且前端只能用window.location.href或a.href+a.click()下載
+
+
+//mmg
+let mmg = managerMergeSlices()
 
 
 /**
@@ -652,7 +655,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadCheck
     let apiUploadCheck = {
-        path: `/${apiName}ulck`,
+        path: `/${apiName}ulctr`,
         method: 'POST',
         options: {
             payload: {
@@ -689,7 +692,7 @@ function WConverhpServer(opt = {}) {
             if (true) {
 
                 //verifyConn
-                let m = verifyConn({ apiType: 'upload-check', authorization, headers, query })
+                let m = verifyConn({ apiType: 'upload-controller', authorization, headers, query })
                 if (ispm(m)) {
                     m = await m
                 }
@@ -712,13 +715,14 @@ function WConverhpServer(opt = {}) {
             let mode = get(req, 'payload.mode', '')
 
             //check
-            if (mode !== 'check-total-hash' &amp;&amp; mode !== 'check-slices-hash') {
+            if (mode !== 'check-total-hash' &amp;&amp; mode !== 'check-slices-hash' &amp;&amp; mode !== 'merge-slices-push' &amp;&amp; mode !== 'merge-slices-get') {
                 // console.log('invalid mode in payload')
                 return responseU8aStreamWithError(res, `invalid mode[${mode}] in payload`)
             }
 
             //fileHash, 從payload接收
             let fileHash = get(req, 'payload.fileHash', '')
+            // console.log(mode, 'fileHash', fileHash)
 
             //check
             if (!isestr(fileHash)) {
@@ -726,36 +730,143 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileHash in payload')
             }
 
-            //out
-            let out = null
-            if (mode === 'check-total-hash') {
+            //procCore
+            let procCore = async() => {
+                let out = null
+                if (mode === 'check-total-hash') {
 
-                //fileSize, 從payload接收
-                let fileSize = get(req, 'payload.fileSize', '')
+                    //filename, 從payload接收
+                    let filename = get(req, 'payload.filename', '')
+                    // console.log(mode, 'filename', filename)
 
-                //checkTotalHash
-                out = await checkTotalHash(fileSize, sizeSlice, fileHash, pathUploadTemp)
+                    //fileSize, 從payload接收
+                    let fileSize = get(req, 'payload.fileSize', '')
+                    // console.log(mode, 'fileSize', fileSize)
 
+                    //checkTotalHash
+                    out = await checkTotalHash(fileSize, sizeSlice, fileHash, pathUploadTemp)
+                    // console.log(mode, 'out', out)
+
+                    //check, 因合併大檔後可能非預期中斷而重傳, 每次偵測有合併完成大檔, 就得調用procUpload讓伺服器攔截函數處理
+                    if (out.bAllHash) {
+
+                        //ri
+                        let ri = {
+                            filename,
+                            path: out.path,
+                        }
+
+                        //procUpload
+                        // console.log('procUpload start')
+                        let ro = await procUpload(ri)
+                        // console.log('procUpload done', ro)
+
+                        //out merge, 直接添加ro就回傳, 此處不使用msg儲存
+                        out = {
+                            ...out,
+                            ...ro,
+                        }
+
+                    }
+
+                }
+                else if (mode === 'check-slices-hash') {
+
+                    //fileSliceHashs, 從payload接收
+                    let fileSliceHashs = get(req, 'payload.fileSliceHashs', [])
+                    // console.log(mode, 'fileSliceHashs', fileSliceHashs)
+
+                    //checkSlicesHash
+                    out = await checkSlicesHash(fileSliceHashs, fileHash, pathUploadTemp)
+                    // console.log(mode, 'out', out)
+
+                }
+                else if (mode === 'merge-slices-push') {
+
+                    //chunkTotal, 從payload接收
+                    let chunkTotal = get(req, 'payload.chunkTotal', '')
+                    // console.log(mode, 'chunkTotal', chunkTotal)
+
+                    //mmg.push
+                    let queueId = mmg.push(fileHash, chunkTotal, pathUploadTemp)
+
+                    //out
+                    out = {
+                        queueId,
+                    }
+
+                }
+                else if (mode === 'merge-slices-get') {
+
+                    //filename, 從payload接收
+                    let filename = get(req, 'payload.filename', '')
+                    // console.log(mode, 'filename', filename)
+
+                    //queueId, 從payload接收
+                    let queueId = get(req, 'payload.queueId', '')
+                    // console.log(mode, 'queueId', queueId)
+
+                    //mmg.get
+                    let r = mmg.get(queueId, pathUploadTemp)
+
+                    //out
+                    out = {
+                        queueId,
+                        state: r.state,
+                        filename,
+                        path: r.path,
+                    }
+
+                    //check
+                    if (r.state === 'done') {
+
+                        //ri
+                        let ri = {
+                            filename,
+                            path: r.path,
+                        }
+
+                        //procUpload, 偵測有合併完成大檔, 得調用procUpload讓伺服器攔截函數處理
+                        // console.log('procUpload start')
+                        let ro = await procUpload(ri)
+                        // console.log('procUpload done', ro)
+
+                        //out merge, ro須附加至msg, 才供前端偵測state為'done'時提取msg顯示
+                        out = {
+                            ...out,
+                            msg: ro,
+                        }
+
+                    }
+
+                }
+                // console.log('out', out)
+
+                return out
             }
-            else if (mode === 'check-slices-hash') {
 
-                //fileSliceHashs, 從payload接收
-                let fileSliceHashs = get(req, 'payload.fileSliceHashs', [])
-                // console.log('fileSliceHashs', fileSliceHashs)
-
-                //checkSlicesHash
-                out = await checkSlicesHash(fileSliceHashs, fileHash, pathUploadTemp)
-
-            }
+            //procCore
+            let out = {}
+            let returnType = ''
+            let returnMsg = ''
+            await procCore()
+                .then((res) => {
+                    out.success = res
+                    returnType = 'success'
+                    returnMsg = 'need to parse'
+                })
+                .catch((err) => {
+                    out.error = err
+                    returnType = 'error'
+                    returnMsg = 'need to parse'
+                })
             // console.log('out', out)
 
-            if (out.error) {
-                return responseU8aStreamWithError(res, out.error)
-            }
-            else {
-                let u8aOut = obj2u8arr(out)
-                return responseU8aStream(res, u8aOut, { returnType: 'success', returnMsg: 'need to parse' })
-            }
+            //u8aOut
+            let u8aOut = obj2u8arr(out)
+            // console.log('u8aOut', u8aOut)
+
+            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
         },
     }
 
@@ -824,18 +935,18 @@ function WConverhpServer(opt = {}) {
 
             //check
             if (!isp0int(chunkIndex)) {
-                console.log('invalid chunkIndex in headers')
-                return res.response({ error: 'invalid chunkIndex in headers' }).code(400)
+                // console.log('invalid chunkIndex in headers')
+                return responseU8aStreamWithError(res, 'invalid chunkIndex in headers')
             }
             chunkIndex = cint(chunkIndex)
             if (!isp0int(chunkTotal)) {
-                console.log('invalid chunkTotal in headers')
-                return res.response({ error: 'invalid chunkTotal in headers' }).code(400)
+                // console.log('invalid chunkTotal in headers')
+                return responseU8aStreamWithError(res, 'invalid chunkTotal in headers')
             }
             chunkTotal = cint(chunkTotal)
             if (!isestr(packageId)) {
-                console.log('invalid packageId in headers')
-                return res.response({ error: 'invalid packageId in headers' }).code(400)
+                // console.log('invalid packageId in headers')
+                return responseU8aStreamWithError(res, 'invalid packageId in headers')
             }
 
             //pathFileChunk
@@ -891,126 +1002,6 @@ function WConverhpServer(opt = {}) {
                     returnType = 'error'
                     returnMsg = 'need to parse'
                     eeEmit('error', err)
-                })
-            // console.log('out', out)
-
-            //u8aOut
-            let u8aOut = obj2u8arr(out)
-            // console.log('u8aOut', u8aOut)
-
-            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
-        },
-    }
-
-    //apiUploadSliceMerge
-    let apiUploadSliceMerge = {
-        path: `/${apiName}slcm`,
-        method: 'POST',
-        options: {
-            payload: {
-                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
-                maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
-                timeout: false, //避免請求未完成時中斷
-                // output: 'stream',
-                parse: true, //前端送obj過來須自動解析
-            },
-            timeout: {
-                server: false, //關閉伺服器超時
-                socket: false, //關閉socket超時
-            },
-        },
-        handler: async function (req, res) {
-            // console.log(req, res)
-            // console.log('payload', req.payload)
-
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //authorization
-            let authorization = get(headers, 'authorization', '')
-            authorization = isestr(authorization) ? authorization : ''
-
-            //check
-            if (true) {
-
-                //verifyConn
-                let m = verifyConn({ apiType: 'upload-slice-merge', authorization, headers, query })
-                if (ispm(m)) {
-                    m = await m
-                }
-
-                //check
-                if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
-                }
-
-            }
-
-            //eeEmit
-            eeEmit('handler', {
-                api: 'apiUploadSliceMerge',
-                headers,
-                query,
-            })
-
-            //filename, chunkTotal, packageId, 從payload接收
-            let filename = get(req, 'payload.filename', '')
-            let chunkTotal = get(req, 'payload.chunk-total', '')
-            let packageId = get(req, 'payload.package-id', '')
-
-            //check
-            if (!isestr(filename)) {
-                console.log('invalid filename in payload')
-                return res.response({ error: 'invalid filename in payload' }).code(400)
-            }
-            if (!isp0int(chunkTotal)) {
-                console.log('invalid chunkTotal in payload')
-                return res.response({ error: 'invalid chunkTotal in payload' }).code(400)
-            }
-            chunkTotal = cint(chunkTotal)
-            if (!isestr(packageId)) {
-                console.log('invalid packageId in payload')
-                return res.response({ error: 'invalid packageId in payload' }).code(400)
-            }
-
-            //mergeAndPorc
-            let mergeAndPorc = async() => {
-
-                //merge
-                // console.log('merge start')
-                let rMerg = await mergeFiles(pathUploadTemp, packageId, chunkTotal, filename)
-                // console.log('merge done', rMerg)
-
-                //procUpload
-                // console.log('procUpload start')
-                let rProc = await procUpload(rMerg)
-                // console.log('procUpload done', rProc)
-
-                return rProc
-            }
-
-            //mergeAndPorc
-            let out = {}
-            let returnType = ''
-            let returnMsg = ''
-            await mergeAndPorc()
-                .then((res) => {
-                    out.success = res
-                    returnType = 'success'
-                    returnMsg = 'need to parse'
-                })
-                .catch((err) => {
-                    out.error = err
-                    returnType = 'error'
-                    returnMsg = 'need to parse'
-                    eeEmit('error', `${err.message}`)
                 })
             // console.log('out', out)
 
@@ -1433,7 +1424,7 @@ function WConverhpServer(opt = {}) {
                 apiMain,
                 apiUploadCheck,
                 apiUploadSlice,
-                apiUploadSliceMerge,
+                // apiUploadSliceMerge,
                 apiDownloadGetFilename,
                 apiDownloadGetFile,
                 apiDownload,
@@ -1452,7 +1443,8 @@ function WConverhpServer(opt = {}) {
 
     //start
     if (get(opt, 'serverHapi')) {
-        server.route([apiMain, apiUploadCheck, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+        // server.route([apiMain, apiUploadCheck, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+        server.route([apiMain, apiUploadCheck, apiUploadSlice, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
     }
     else {
         startServer()
@@ -1485,7 +1477,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Mon Apr 14 2025 17:07:31 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Tue Apr 15 2025 14:44:02 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

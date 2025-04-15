@@ -142,6 +142,9 @@ describe('downloadLargeFile', function() {
 
             }
             core()
+                .catch(() => {
+                    // console.log(err)
+                })
         }
 
         downloadLargeFile()

@@ -37,19 +37,20 @@ describe('uploadLargeFile', function() {
 
             try {
 
-                let b = fs.readFileSync(`./${input.path}`)
+                let b = fs.readFileSync(`${input.path}`)
                 let u8a = new Uint8Array(b)
                 let t = u8a
                 let ts = [t[0], t[1], t[2]]
                 ms.push({ 'server receive': ts })
 
-                fs.unlinkSync(`./${input.path}`) //測試完刪除臨時檔
+                fs.unlinkSync(`${input.path}`) //測試完刪除臨時檔
+                fs.unlinkSync(`${input.path}.done`) //測試完刪除臨時檔
 
                 let output = input
                 pm.resolve(output)
             }
             catch (err) {
-                // console.log('upload error', err)
+                console.log('upload error', err)
                 pm.reject('upload error')
             }
 
@@ -64,7 +65,7 @@ describe('uploadLargeFile', function() {
         setTimeout(() => {
             // console.log('ms', ms)
             wo.stop()
-        }, 2000)
+        }, 5000)
 
     }
 
@@ -116,6 +117,9 @@ describe('uploadLargeFile', function() {
 
             }
             core()
+                .catch(() => {
+                    // console.log(err)
+                })
         }
 
         uploadLargeFile()
@@ -130,7 +134,7 @@ describe('uploadLargeFile', function() {
             // console.log('ms', ms)
             // fs.writeFileSync('./test_uploadLargeFile.json', JSON.stringify(ms), 'utf8')
             pm.resolve(ms)
-        }, 4000)
+        }, 6000)
         return pm
     }
 

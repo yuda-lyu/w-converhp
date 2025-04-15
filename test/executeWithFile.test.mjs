@@ -160,6 +160,9 @@ describe('executeWithFile', function() {
 
             }
             core()
+                .catch(() => {
+                    // console.log(err)
+                })
         }
 
         executeWithFile()

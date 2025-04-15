@@ -164,12 +164,12 @@ function WConverhpClient(opt) {
         else if (type === 'slice') {
             urlUse = `${url}slc`
         }
-        else if (type === 'upload-check') {
-            urlUse = `${url}ulck`
+        else if (type === 'upload-controller') {
+            urlUse = `${url}ulctr`
         }
-        else if (type === 'slice-merge') {
-            urlUse = `${url}slcm`
-        }
+        // else if (type === 'slice-merge') {
+        //     urlUse = `${url}slcm`
+        // }
         else if (type === 'download-get-filename') {
             urlUse = `${url}dwgfn`
         }
@@ -682,11 +682,11 @@ function WConverhpClient(opt) {
         let fileTotalHash = await calcHash(bb)
         // console.log(`calc hash for fileTotalSize[${fileTotalSize}] done`, fileTotalHash)
 
-        //send upload-check
+        //send check-total-hash
         // console.log(`send check-total-hash...`)
-        let resCk = await send('upload-check', { mode: 'check-total-hash', fileHash: fileTotalHash, fileSize: fileTotalSize }, { dataType: 'json' })
-        // console.log('resCk', resCk)
-        // resCk {
+        let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json' })
+        // console.log('resUpCkt', resUpCkt)
+        // resUpCkt {
         //   path: 'uploadTemp\\2429b7ef08ce6ba9',
         //   bAllExist: false,
         //   bAllSize: false,
@@ -702,30 +702,30 @@ function WConverhpClient(opt) {
         // }
 
         //check
-        if (resCk.bAllHash) {
+        if (resUpCkt.bAllHash) {
             // console.log('已有上傳大檔')
             let resMg = {
                 filename: fileTotalName,
-                path: resCk.path,
+                path: resUpCkt.path,
             }
             return resMg
         }
 
         //針對伺服器上已有切片檔案計算hash與比對
-        if (resCk.slks.length > 0) {
-            // console.log('receive slks...', resCk.slks[0], size(resCk.slks))
+        if (resUpCkt.slks.length > 0) {
+            // console.log('receive slks...', resUpCkt.slks[0], size(resUpCkt.slks))
 
             //fileSliceHashs
             let fileSliceHashs = []
-            // let n = Math.max(resCk.slks.length, 1)
+            // let n = Math.max(resUpCkt.slks.length, 1)
             // let nr = Math.floor(n / 100)
-            for (let k = 0; k < resCk.slks.length; k++) {
+            for (let k = 0; k < resUpCkt.slks.length; k++) {
                 // if (k % nr === 0) {
-                //     console.log(`calc hash for slices`, round(k / resCk.slks.length * 100, 1), '%')
+                //     console.log(`calc hash for slices`, round(k / resUpCkt.slks.length * 100, 1), '%')
                 // }
 
                 //i
-                let i = resCk.slks[k]
+                let i = resUpCkt.slks[k]
 
                 //start
                 let start = i * sizeSlice
@@ -749,11 +749,11 @@ function WConverhpClient(opt) {
             }
             // console.log('fileSliceHashs', fileSliceHashs)
 
-            //send upload-check
+            //send check-slices-hash
             // console.log(`send check-slices-hash...`)
-            let resCks = await send('upload-check', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json' })
-            // console.log('resCks', resCks)
-            // resCks {
+            let resUpCks = await send('upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json' })
+            // console.log('resUpCks', resUpCks)
+            // resUpCks {
             //   slks: [
             //      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
             //     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -763,8 +763,8 @@ function WConverhpClient(opt) {
             //   ]
             // }
 
-            //update
-            resCk.slks = resCks.slks
+            //update, 伺服器針對各切片計算hash與比對, 回傳resUpCks.slks代表hash一致的切片編號, 非一致hash的切片則須重傳, 尚未傳切片亦須繼續傳
+            resUpCkt.slks = resUpCks.slks
 
         }
 
@@ -804,7 +804,7 @@ function WConverhpClient(opt) {
         for (let i = 0; i < chunkTotal; i++) {
 
             //check
-            if (resCk.slks.indexOf(i) >= 0) {
+            if (resUpCkt.slks.indexOf(i) >= 0) {
                 // console.log('已有上傳切片檔')
                 cbProgressSlice({ prog: 100, m: 'upload' }) //直接觸發更新進度
                 continue
@@ -820,7 +820,7 @@ function WConverhpClient(opt) {
             let chunk = bb.slice(start, end)
 
             //send slice
-            let hd = {
+            let hd = { //用header傳key與value時, key不分大小寫, 故使用kebabCase
                 'chunk-index': i,
                 'chunk-total': chunkTotal,
                 'package-id': packageId,
@@ -830,16 +830,66 @@ function WConverhpClient(opt) {
 
         }
 
-        //send slice-merge
-        let msg = {
-            'filename': fileTotalName,
-            'chunk-total': chunkTotal,
-            'package-id': packageId,
+        //send merge-slices-push
+        // console.log(`send merge-slices-push...`)
+        let resUpMgp = await send('upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json' })
+        // console.log('resUpMgp', resUpMgp)
+
+        //checkMerging
+        let checkMerging = () => {
+            let pm = genPm()
+
+            //queueId
+            let queueId = resUpMgp.queueId
+            // console.log('queueId', queueId)
+
+            let t = setInterval(() => {
+
+                //send merge-slices-get
+                // console.log(`send merge-slices-get...`)
+                send('upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json' })
+                    .then((res) => {
+                        // console.log('res', res)
+                        // res => {
+                        //   queueId,
+                        //   state,
+                        //   filename,
+                        //   path,
+                        //   msg: ...
+                        // }
+
+                        //check
+                        if (res.state === 'done') {
+
+                            //cbProgressMerge
+                            cbProgressMerge({ prog: 100, m: 'download' })
+
+                            //resUpMgr
+                            let resUpMgr = {
+                                ...res.msg,
+                            }
+
+                            pm.resolve(resUpMgr)
+                        }
+
+                    })
+                    .catch((err) => {
+                        console.log(err)
+                    })
+                    .finally(() => {
+                        clearInterval(t)
+                    })
+
+            }, 2000)
+
+            return pm
         }
-        let resMg = await send('slice-merge', msg, { dataType: 'json', cbProgress: cbProgressMerge })
+
+        //checkMerging
+        let resUpMgr = await checkMerging()
 
         // console.log(`upload slice done`)
-        return resMg
+        return resUpMgr
     }
 
     //execute

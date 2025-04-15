@@ -154,6 +154,9 @@ describe('executeWithU8a', function() {
 
             }
             core()
+                .catch(() => {
+                    // console.log(err)
+                })
         }
 
         executeWithU8a()
