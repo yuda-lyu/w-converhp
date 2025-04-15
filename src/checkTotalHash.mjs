@@ -2,7 +2,11 @@ import path from 'path'
 import fs from 'fs'
 import each from 'lodash-es/each.js'
 import size from 'lodash-es/size.js'
+import last from 'lodash-es/last.js'
+import sep from 'wsemi/src/sep.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
+import isp0int from 'wsemi/src/isp0int.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsGetFilesInFolder from 'wsemi/src/fsGetFilesInFolder.mjs'
 import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
@@ -74,13 +78,19 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
     //slks
     let slks = []
     if (true) {
-        each(vfps, (v, k) => {
+        each(vfps, (v) => {
             let b1 = (v.name).indexOf(`${fileHash}_`) >= 0
             let stats = fs.statSync(v.path)
             let b2 = stats.size === sizeSlice
             let b = b1 && b2
             if (b) {
-                slks.push(k)
+                let s = sep(v.name, `${fileHash}_`)
+                let i = last(s)
+                if (!isp0int(i)) {
+                    throw new Error(`can not parse index in v.name[${v.name}]`)
+                }
+                i = cint(i)
+                slks.push(i)
             }
         })
     }
