@@ -677,6 +677,33 @@ function WConverhpClient(opt) {
         let chunkTotal = Math.ceil(fileTotalSize / sizeSlice)
         // console.log('chunkTotal', chunkTotal)
 
+        //progCount, progWeightSlice
+        let progCount = 0
+        let progWeightSlice = 0.99 //上傳階段進度使用99%
+        // let progWeightMerge = 0.01 //合併階段進度使用1%
+
+        //cbProgressSlice
+        let cbProgressSlice = (msg) => {
+            let perc = msg.prog
+            let dir = msg.m
+            if (dir === 'upload' && perc === 100) {
+                progCount++
+                let r = progCount / chunkTotal
+                let prog = r * progWeightSlice * 100
+                let psiz = r * fileTotalSize
+                cbProgress({ prog, p: psiz, m: 'upload' })
+            }
+        }
+
+        //cbProgressMerge
+        let cbProgressMerge = (msg) => {
+            let perc = msg.prog
+            let dir = msg.m
+            if (dir === 'download' && perc === 100) {
+                cbProgress({ prog: 100, p: fileTotalSize, m: 'upload' })
+            }
+        }
+
         //fileTotalHash
         // console.log(`calc hash for fileTotalSize[${fileTotalSize}]...`)
         let fileTotalHash = await calcHash(bb)
@@ -694,20 +721,22 @@ function WConverhpClient(opt) {
         //   bSls: true,
         //   slks: [
         //      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
-        //     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-        //     24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-        //     36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-        //     48, 49, 50, 51, 52, 53
         //   ]
         // }
 
         //check
         if (resUpCkt.bAllHash) {
             // console.log('已有上傳大檔')
+
+            //cbProgressMerge
+            cbProgressMerge({ prog: 100, m: 'download' }) //觸發上傳完畢後之下載回應, 故m須為download
+
+            //resMg, 直接回傳
             let resMg = {
                 filename: fileTotalName,
                 path: resUpCkt.path,
             }
+
             return resMg
         }
 
@@ -772,33 +801,6 @@ function WConverhpClient(opt) {
         let packageId = fileTotalHash
         // console.log('packageId', packageId)
 
-        //progCount, progWeightSlice
-        let progCount = 0
-        let progWeightSlice = 0.99 //上傳階段進度使用99%
-        // let progWeightMerge = 0.01 //合併階段進度使用1%
-
-        //cbProgressSlice
-        let cbProgressSlice = (msg) => {
-            let perc = msg.prog
-            let dir = msg.m
-            if (dir === 'upload' && perc === 100) {
-                progCount++
-                let r = progCount / chunkTotal
-                let prog = r * progWeightSlice * 100
-                let psiz = r * fileTotalSize
-                cbProgress({ prog, p: psiz, m: 'upload' })
-            }
-        }
-
-        //cbProgressMerge
-        let cbProgressMerge = (msg) => {
-            let perc = msg.prog
-            let dir = msg.m
-            if (dir === 'download' && perc === 100) {
-                cbProgress({ prog: 100, p: fileTotalSize, m: 'upload' })
-            }
-        }
-
         //upload slice
         // console.log(`upload slice...`)
         for (let i = 0; i < chunkTotal; i++) {
@@ -859,22 +861,33 @@ function WConverhpClient(opt) {
                         // }
 
                         //check
-                        if (res.state === 'done') {
+                        if (res.state === 'success') {
+
+                            //clearInterval
+                            clearInterval(t)
 
                             //cbProgressMerge
-                            cbProgressMerge({ prog: 100, m: 'download' })
+                            cbProgressMerge({ prog: 100, m: 'download' }) //觸發上傳完畢後之下載回應, 故m須為download
 
-                            //resolve, 前端偵測state為'done'時提取msg顯示
+                            //resolve, state為'success'時提取msg回傳
+                            pm.resolve(res.msg)
+
+                        }
+                        else if (res.state === 'error') {
+                            console.log('merge-slices-get error', res)
+
+                            //clearInterval
+                            clearInterval(t)
+
+                            //reject, state為'error'時會於msg提供錯誤訊息
                             pm.resolve(res.msg)
 
                         }
 
                     })
                     .catch((err) => {
-                        console.log(err)
-                    })
-                    .finally(() => {
-                        clearInterval(t)
+                        console.log('merge-slices-get catch', err)
+                        //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態
                     })
 
             }, 2000)
@@ -883,11 +896,11 @@ function WConverhpClient(opt) {
         }
 
         //checkMerging
-        let resUpMgr = await checkMerging()
-        // console.log('resUpMgr', resUpMgr)
+        let resMg = await checkMerging()
+        // console.log('resMg', resMg)
 
         // console.log(`upload slice done`)
-        return resUpMgr
+        return resMg
     }
 
     //execute

@@ -40,8 +40,8 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
                 _fileHash = res
             })
             .catch((err) => {
-                console.log(err)
                 console.log(`fsIsFile(_pathFile)`, _pathFile, fsIsFile(_pathFile))
+                console.log(err)
             })
         // console.log('_fileHash', _fileHash)
 

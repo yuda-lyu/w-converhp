@@ -16,8 +16,8 @@ let managerMergeSlices = () => {
     //qPush
     let qPush = (fileHash, chunkTotal, pathUploadTemp) => {
 
-        //id
-        let id = `${now2strp()}:${genID(6)}:${fileHash}`
+        //id, 使用fileHash代表不用佇列儲存, 通過id即可解析反查
+        let id = `${now2strp()}|${genID(6)}|${fileHash}`
 
         //setTimeout, 脫勾觸發
         setTimeout(() => {
@@ -32,12 +32,30 @@ let managerMergeSlices = () => {
 
     //qGet
     let qGet = (id, pathUploadTemp) => {
+        let errTemp = ''
+
+        //check
+        if (!isestr(id)) {
+            errTemp = `invalid id[${id}]`
+            console.log(errTemp)
+            return {
+                state: 'error',
+                msg: errTemp,
+                path: '',
+            }
+        }
 
         //fileHash
-        let s = sep(id, ':')
+        let s = sep(id, '|')
         let fileHash = get(s, 2, '')
         if (!isestr(fileHash)) {
-            throw new Error(`can not find fileHash in id[${id}]`)
+            errTemp = `can not find fileHash in id[${id}]`
+            console.log(errTemp)
+            return {
+                state: 'error',
+                msg: errTemp,
+                path: '',
+            }
         }
 
         //fp
@@ -64,7 +82,8 @@ let managerMergeSlices = () => {
         }
 
         return {
-            state: b ? 'done' : 'merging',
+            state: b ? 'success' : 'merging',
+            msg: '',
             path: fp,
         }
     }

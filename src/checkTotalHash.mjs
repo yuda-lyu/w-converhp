@@ -63,8 +63,8 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
                 bAllHash = fileHash === _fileHash
             })
             .catch((err) => {
-                console.log(err)
                 console.log(`fsIsFile(pathFile)`, pathFile, fsIsFile(pathFile))
+                console.log(err)
                 bAllHash = false
             })
 
@@ -87,6 +87,8 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
                 let s = sep(v.name, `${fileHash}_`)
                 let i = last(s)
                 if (!isp0int(i)) {
+                    console.log('v.name', v.name)
+                    console.log('s', s)
                     throw new Error(`can not parse index in v.name[${v.name}]`)
                 }
                 i = cint(i)

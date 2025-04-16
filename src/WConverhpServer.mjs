@@ -764,14 +764,15 @@ function WConverhpServer(opt = {}) {
 
                     //out
                     out = {
-                        queueId,
                         state: r.state,
+                        msg: r.msg, //state為'error'時會於msg提供錯誤訊息
+                        queueId,
                         filename,
                         path: r.path,
                     }
 
                     //check
-                    if (r.state === 'done') {
+                    if (r.state === 'success') {
 
                         //ri
                         let ri = {
@@ -784,9 +785,9 @@ function WConverhpServer(opt = {}) {
                         let ro = await procUpload(ri)
                         // console.log('procUpload done', ro)
 
-                        //out merge, ro須附加至msg, 才供前端偵測state為'done'時提取msg顯示
+                        //out merge, ro須附加至msg, 才供前端偵測state為'success'時提取msg顯示
                         out = {
-                            ...out,
+                            ...out, //state為'success'時msg為空字串, 直接被ro複寫至msg即可
                             msg: ro,
                         }
 
