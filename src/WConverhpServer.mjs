@@ -514,7 +514,7 @@ function WConverhpServer(opt = {}) {
                 let chunks = []
                 let smw = new stream.Writable({
                     write(chunk, encoding, cb) {
-                        // console.log('receive payload', chunk)
+                        // console.log('smw receive payload', chunk)
 
                         //push
                         chunks.push(chunk)
@@ -528,7 +528,7 @@ function WConverhpServer(opt = {}) {
 
                 //finish
                 smw.on('finish', () => {
-                    console.log('[smw] finished')
+                    // console.log(`smw finish`)
                 })
 
                 //pipe
@@ -536,8 +536,7 @@ function WConverhpServer(opt = {}) {
 
                 //end
                 req.payload.on('end', () => {
-                    // console.log(`receive payload done`)
-                    console.log('[req.payload] end')
+                    // console.log(`req.payload end`)
 
                     //bb
                     let bb = Buffer.concat(chunks)
@@ -553,12 +552,12 @@ function WConverhpServer(opt = {}) {
 
                 //close
                 req.payload.on('close', () => {
-                    console.log('[req.payload] close')
+                    // console.log(`req.payload close`)
                 })
 
                 //error
                 req.payload.on('error', (err) => {
-                    // console.log(`receive payload err`, err)
+                    // console.log(`req.payload error`, err)
                     eeEmit('error', `receive payload err`)
                     pm.reject(err.message)
                 })
