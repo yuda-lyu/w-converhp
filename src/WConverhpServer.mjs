@@ -23,7 +23,7 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-import managerMergeSlices from './managerMergeSlices.mjs'
+import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
 // import checkSlicesHash from './checkSlicesHash.mjs'
@@ -33,10 +33,6 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
 //回傳前端stream時(POST或GET皆可), 前端會須等stream傳完才能判斷是否為大檔或錯誤訊息, 此會導致若回傳超大檔, 會需要對超大檔進行解析會有記憶體上限問題, 故需要通過header提供基本成功或失敗訊息, 讓前端能進行解析判斷
 //回傳前端(nodejs)時, 針對超大檔, 只能用POST並用stream回傳
 //回傳前端(browser)時, 針對超大檔, 可用POST並用stream回傳但還要處理進度條, 若要交由瀏覽器下載器處理, 只能用GET並用stream回傳, 且前端只能用window.location.href或a.href+a.click()下載
-
-
-//mmg
-let mmg = managerMergeSlices()
 
 
 /**
@@ -53,7 +49,6 @@ let mmg = managerMergeSlices()
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
- * @param {Integer} [opt.delayForBasic=0] 輸入基本API用延遲響應時間，單位ms，預設0
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null
  * @returns {Object} 回傳事件物件，可監聽事件execute、upload、handler
@@ -254,13 +249,6 @@ function WConverhpServer(opt = {}) {
     if (!isearr(corsOrigins)) {
         corsOrigins = ['*']
     }
-
-    //delayForBasic
-    let delayForBasic = get(opt, 'delayForBasic', '')
-    if (!isp0int(delayForBasic)) {
-        delayForBasic = 0
-    }
-    delayForBasic = cint(delayForBasic)
 
     //delayForSlice
     let delayForSlice = get(opt, 'delayForSlice', '')
@@ -532,12 +520,15 @@ function WConverhpServer(opt = {}) {
                         chunks.push(chunk)
                         // console.log('chunk.length', chunk.length)
 
-                        //setTimeout, 延遲觸發cb
-                        setTimeout(() => {
-                            cb()
-                        }, delayForBasic)
+                        //cb
+                        cb()
 
                     }
+                })
+
+                //finish
+                smw.on('finish', () => {
+                    console.log('[smw] finished')
                 })
 
                 //pipe
@@ -546,6 +537,7 @@ function WConverhpServer(opt = {}) {
                 //end
                 req.payload.on('end', () => {
                     // console.log(`receive payload done`)
+                    console.log('[req.payload] end')
 
                     //bb
                     let bb = Buffer.concat(chunks)
@@ -557,6 +549,11 @@ function WConverhpServer(opt = {}) {
                     //resolve
                     pm.resolve(bb)
 
+                })
+
+                //close
+                req.payload.on('close', () => {
+                    console.log('[req.payload] close')
                 })
 
                 //error
