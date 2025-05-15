@@ -959,6 +959,17 @@ function WConverhpServer(opt = {}) {
             let u8aOut = obj2u8arr(out)
             // console.log('u8aOut', u8aOut)
 
+            // //測試失敗重傳
+            // if (Math.random() < 0.9) {
+            //     out = {
+            //         error: 'force error'
+            //     }
+            //     returnType = 'error'
+            //     returnMsg = 'force error'
+            //     // console.log('out', out)
+            //     u8aOut = obj2u8arr(out)
+            // }
+
             return responseU8aStream(res, u8aOut, { returnType, returnMsg })
         },
     }

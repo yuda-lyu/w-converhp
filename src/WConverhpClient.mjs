@@ -438,9 +438,11 @@ function WConverhpClient(opt) {
                 //nodejs通過fs與stream接收檔案, stream出錯只會觸發error事件, 此處try catch為攔截其他非stream程式碼錯誤
                 try {
 
-                    //path, fs, 使用動態import供nodejs使用, 否則會被webpack偵測報錯
-                    let path = await import('path')
-                    let fs = await import('fs')
+                    //path, fs, 使用動態import供nodejs使用, 須用變數字串給予載入套件, 否則用於前端時會被webpack偵測而報錯
+                    let cImPath = 'path'
+                    let cImFs = 'fs'
+                    let path = await import(cImPath)
+                    let fs = await import(cImFs)
 
                     //fdDownload, 只有nodejs下載才使用fdDownload
                     let fdDownload = get(opt, 'fdDownload', '')
@@ -682,17 +684,13 @@ function WConverhpClient(opt) {
         let progWeightSlice = 0.99 //上傳階段進度使用99%
         // let progWeightMerge = 0.01 //合併階段進度使用1%
 
-        //cbProgressSlice
-        let cbProgressSlice = (msg) => {
-            let perc = msg.prog
-            let dir = msg.m
-            if (dir === 'upload' && perc === 100) {
-                progCount++
-                let r = progCount / chunkTotal
-                let prog = r * progWeightSlice * 100
-                let psiz = r * fileTotalSize
-                cbProgress({ prog, p: psiz, m: 'upload' })
-            }
+        //cbProgressSlice, 以累積機制計算進度, 累積片數配合總切片數量即可算出進度, 故不須輸入msg
+        let cbProgressSlice = () => {
+            progCount++
+            let r = progCount / chunkTotal
+            let prog = r * progWeightSlice * 100
+            let psiz = r * fileTotalSize
+            cbProgress({ prog, p: psiz, m: 'upload' })
         }
 
         //cbProgressMerge
@@ -808,7 +806,7 @@ function WConverhpClient(opt) {
             //check
             if (resUpCkt.slks.indexOf(i) >= 0) {
                 // console.log('已有上傳切片檔')
-                cbProgressSlice({ prog: 100, m: 'upload' }) //直接觸發更新進度
+                cbProgressSlice() //直接觸發更新進度
                 continue
             }
 
@@ -821,14 +819,65 @@ function WConverhpClient(opt) {
             //chunk
             let chunk = bb.slice(start, end)
 
-            //send slice
-            let hd = { //用header傳key與value時, key不分大小寫, 故使用kebabCase
-                'chunk-index': i,
-                'chunk-total': chunkTotal,
-                'package-id': packageId,
+            //sendDataSlice
+            let sendDataSlice = async() => {
+
+                //hd
+                let hd = { //用header傳key與value時, key不分大小寫, 故使用kebabCase
+                    'chunk-index': i,
+                    'chunk-total': chunkTotal,
+                    'package-id': packageId,
+                }
+
+                //send slice
+                let resSl = await send('slice', chunk, {
+                    headers: hd,
+                    dataType: 'blob',
+                    cbProgress: (msg) => {
+                        // console.log('cbProgress', msg)
+                        // let perc = msg.prog
+                        // let dir = msg.m
+                        // if (dir === 'upload' && perc === 100) {
+                        // }
+                    }
+                })
+                // console.log('resSl', resSl)
+
+                //cbProgressSlice, 因其內有累加progCount, 實際代表是須成功傳輸後才能計算與回應外部進度, 故不能直接用於send的opt.cbProgress
+                cbProgressSlice()
+
+                return resSl
             }
-            await send('slice', chunk, { headers: hd, dataType: 'blob', cbProgress: cbProgressSlice })
-            // console.log('resSl', resSl)
+
+            //sendDataSliceRetry
+            let sendDataSliceRetry = async() => {
+
+                //fun
+                let fun = pmConvertResolve(sendDataSlice)
+
+                //sendPkg
+                let r = await fun()
+
+                let n = 0
+                while (r.state === 'error') {
+                    n += 1
+                    if (n > retry) {
+                        break
+                    }
+                    console.log(`retry n=${n}`)
+                    r = await fun()
+                }
+
+                if (r.state === 'success') {
+                    return r.msg
+                }
+                else {
+                    return Promise.reject(r.msg)
+                }
+            }
+
+            //sendDataSliceRetry
+            await sendDataSliceRetry()
 
         }
 
