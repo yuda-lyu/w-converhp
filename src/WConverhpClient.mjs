@@ -159,25 +159,22 @@ function WConverhpClient(opt) {
         //urlUse
         let urlUse = ''
         if (type === 'basic') {
-            urlUse = url
-        }
-        else if (type === 'slice') {
-            urlUse = `${url}slc`
+            urlUse = `${url}/main` //bbb
         }
         else if (type === 'upload-controller') {
-            urlUse = `${url}ulctr`
+            urlUse = `${url}/ulctr` //bbb
         }
-        // else if (type === 'slice-merge') {
-        //     urlUse = `${url}slcm`
-        // }
+        else if (type === 'slice') {
+            urlUse = `${url}/slc` //bbb
+        }
         else if (type === 'download-get-filename') {
-            urlUse = `${url}dwgfn`
+            urlUse = `${url}/dwgfn` //bbb
         }
         else if (type === 'download-get') {
-            urlUse = `${url}dwgf`
+            urlUse = `${url}/dwgf` //bbb
         }
         else if (type === 'download') {
-            urlUse = `${url}dw`
+            urlUse = `${url}/dw` //bbb
         }
         else {
             throw new Error(`invalid type[${type}]`)

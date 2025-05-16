@@ -448,7 +448,7 @@ function WConverhpServer(opt = {}) {
 
     //apiMain
     let apiMain = {
-        path: `/${apiName}`,
+        path: `/${apiName}/main`, //bbb
         method: 'POST',
         options: {
             payload: {
@@ -604,7 +604,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadCheck
     let apiUploadCheck = {
-        path: `/${apiName}ulctr`,
+        path: `/${apiName}/ulctr`, //bbb
         method: 'POST',
         options: {
             payload: {
@@ -822,7 +822,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadSlice
     let apiUploadSlice = {
-        path: `/${apiName}slc`,
+        path: `/${apiName}/slc`, //bbb
         method: 'POST',
         options: {
             payload: {
@@ -976,7 +976,7 @@ function WConverhpServer(opt = {}) {
 
     //apiDownloadGetFilename
     let apiDownloadGetFilename = {
-        path: `/${apiName}dwgfn`,
+        path: `/${apiName}/dwgfn`, //bbb
         method: 'POST',
         options: {
             payload: {
@@ -1098,7 +1098,7 @@ function WConverhpServer(opt = {}) {
 
     //apiDownloadGetFile
     let apiDownloadGetFile = {
-        path: `/${apiName}dwgf`,
+        path: `/${apiName}/dwgf`, //bbb
         method: 'GET',
         options: {
             timeout: {
@@ -1222,7 +1222,7 @@ function WConverhpServer(opt = {}) {
 
     //apiDownload
     let apiDownload = {
-        path: `/${apiName}dw`,
+        path: `/${apiName}/dw`, //bbb
         method: 'POST',
         options: {
             payload: {
