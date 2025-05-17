@@ -59,12 +59,14 @@ import isobj from 'wsemi/src/isobj.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
+import dig from 'wsemi/src/dig.mjs'
 import strright from 'wsemi/src/strright.mjs'
 import b642str from 'wsemi/src/b642str.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
+import delay from 'wsemi/src/delay.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 
 
@@ -183,7 +185,7 @@ function WConverhpClient(opt) {
     //retry
     let retry = get(opt, 'retry')
     if (!isp0int(retry)) {
-        retry = 3
+        retry = 10
     }
 
     //env
@@ -206,22 +208,22 @@ function WConverhpClient(opt) {
         //urlUse
         let urlUse = ''
         if (type === 'basic') {
-            urlUse = `${url}/main` //bbb
+            urlUse = `${url}/main`
         }
         else if (type === 'upload-controller') {
-            urlUse = `${url}/ulctr` //bbb
+            urlUse = `${url}/ulctr`
         }
         else if (type === 'slice') {
-            urlUse = `${url}/slc` //bbb
+            urlUse = `${url}/slc`
         }
         else if (type === 'download-get-filename') {
-            urlUse = `${url}/dwgfn` //bbb
+            urlUse = `${url}/dwgfn`
         }
         else if (type === 'download-get') {
-            urlUse = `${url}/dwgf` //bbb
+            urlUse = `${url}/dwgf`
         }
         else if (type === 'download') {
-            urlUse = `${url}/dw` //bbb
+            urlUse = `${url}/dw`
         }
         else {
             throw new Error(`invalid type[${type}]`)
@@ -231,7 +233,7 @@ function WConverhpClient(opt) {
     }
 
     //res2u8arr
-    async function res2u8arr(bb) {
+    let res2u8arr = async(bb) => {
         //blob(in browser) or buffer(in nodejs) to u8a
         let u8a
         if (env === 'browser') {
@@ -244,7 +246,7 @@ function WConverhpClient(opt) {
     }
 
     //u8arr2bb
-    function u8arr2bb(u8a) {
+    let u8arr2bb = (u8a) => {
         //u8a to blob(in browser) or buffer(in nodejs)
         let bb
         if (env === 'browser') {
@@ -257,7 +259,7 @@ function WConverhpClient(opt) {
     }
 
     //send
-    async function send(type, pkg, opt = {}) {
+    let send = async(type, pkg, opt = {}) => {
 
         //headers
         let headers = get(opt, 'headers')
@@ -364,54 +366,6 @@ function WConverhpClient(opt) {
             token = await token
         }
 
-        //s
-        let s = {
-            method: 'POST',
-            url: urlUse,
-            data: dd,
-            headers: {
-                Authorization: `${tokenType} ${token}`,
-                ...ct,
-                ...headers,
-            },
-            timeout: 60 * 60 * 1000, //1hr
-            maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
-            maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
-            responseType: rt,
-            onUploadProgress: function(ev) {
-                //console.log('onUploadProgress', ev)
-
-                //r
-                let r = 0
-                let loaded = ev.loaded
-                let total = ev.total
-                if (ispint(total)) {
-                    r = (loaded * 100) / total
-                }
-
-                //cbProgress
-                cbProgress({ prog: Math.floor(r), p: loaded, m: 'upload' })
-
-            },
-            onDownloadProgress: function (ev) {
-                // console.log('onDownloadProgress', ev)
-
-                //r
-                let r = 0
-                let loaded = ev.loaded
-                // let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
-                let total = ev.total
-                if (ispint(total)) {
-                    r = (loaded * 100) / total
-                }
-
-                //cbProgress
-                cbProgress({ prog: Math.floor(r), p: loaded, m: 'download' })
-
-            },
-        }
-        // console.log('s', s)
-
         //getFilenameByHeader
         let getFilenameByHeader = (contentDisposition) => {
             let fn = 'unknow'
@@ -425,7 +379,7 @@ function WConverhpClient(opt) {
         }
 
         //downloadStream
-        let downloadStream = async (res) => {
+        let downloadStream = async(res) => {
             // console.log('res.headers', res.headers)
 
             //pm
@@ -523,61 +477,151 @@ function WConverhpClient(opt) {
             return pm
         }
 
-        //axios
-        axios(s)
-            .then(async (res) => {
-                // console.log('axios then', res)
+        //s
+        let s = {
+            method: 'POST',
+            url: urlUse,
+            data: dd,
+            headers: {
+                Authorization: `${tokenType} ${token}`,
+                ...ct,
+                ...headers,
+            },
+            timeout: 60 * 60 * 1000, //1hr
+            maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
+            maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
+            responseType: rt,
+            onUploadProgress: function(ev) {
+                //console.log('onUploadProgress', ev)
 
-                //check download
-                if (type === 'download') {
-                    await downloadStream(res)
-                        .then((_res) => {
-                            pm.resolve(_res)
-                        })
-                        .catch((_err) => {
-                            pm.reject(_err)
-                        })
-                    return
+                //r
+                let r = 0
+                let loaded = ev.loaded
+                let total = ev.total
+                if (ispint(total)) {
+                    r = (loaded * 100) / total
                 }
 
-                //bb
-                let bb = get(res, 'data')
-                // console.log('bb', bb)
+                //cbProgress
+                cbProgress({ prog: Math.floor(r), p: loaded, m: 'upload' })
 
-                //res2u8arr
-                let u8a = await res2u8arr(bb)
-                // console.log('u8a', u8a)
+            },
+            onDownloadProgress: function (ev) {
+                // console.log('onDownloadProgress', ev)
 
-                //u8arr2obj
-                let data = u8arr2obj(u8a)
-                // console.log('data', data)
+                //r
+                let r = 0
+                let loaded = ev.loaded
+                // let total = ev.srcElement.getResponseHeader('Content-length') //若需要得知下載進度, 需於伺服器回傳時提供Content-length
+                let total = ev.total
+                if (ispint(total)) {
+                    r = (loaded * 100) / total
+                }
+
+                //cbProgress
+                cbProgress({ prog: Math.floor(r), p: loaded, m: 'download' })
+
+            },
+        }
+        // console.log('s', s)
+
+        //callApiCore, 處理axios成功then時訊息, catch時直接向外傳遞
+        let callApiCore = async() => {
+
+            //axios, catch時直接向外傳遞
+            let res = await axios(s)
+
+            //check, download時直接轉由downloadStream處理res, catch時直接向外傳遞
+            if (type === 'download') {
+                return await downloadStream(res)
+            }
+
+            //bb
+            let bb = get(res, 'data')
+            // console.log('bb', bb)
+
+            //res2u8arr, catch時直接向外傳遞
+            let u8a = await res2u8arr(bb)
+            // console.log('u8a', u8a)
+
+            //u8arr2obj
+            let data = u8arr2obj(u8a)
+            // console.log('data', data)
+
+            //check
+            if (!iseobj(data)) {
+                eeEmit('error', `data is not an effective object`)
+                return Promise.reject(`data is not an effective object`)
+            }
+
+            //分離伺服器資料的success或error
+            if (haskey(data, 'success')) {
+                return Promise.resolve(data.success)
+            }
+            else if (haskey(data, 'error')) {
+                eeEmit('error', data.error)
+                return Promise.reject(data.error)
+            }
+            else {
+                eeEmit('error', `data does not contain success or error`)
+                return Promise.reject(`data does not contain success or error`)
+            }
+
+        }
+
+        //callApi, 處理callApiCore失敗catch時retry
+        let callApi = async() => {
+
+            //pmConvertResolve
+            let fun = pmConvertResolve(callApiCore)
+
+            //fun
+            let r = await fun(s)
+            // console.log('r', r)
+
+            //while
+            let maxRetry = 10
+            let baseDelay = 1000 //初始延遲為1秒
+            let ratio = Math.pow(180000 / baseDelay, 1 / (maxRetry - 1)) //1.888
+            let n = 0
+            while (r.state === 'error') {
+
+                //add
+                n += 1
 
                 //check
-                if (!iseobj(data)) {
-                    // console.log('data is not an effective object', data)
-                    eeEmit('error', `data is not an effective object`)
-                    pm.reject(`data is not an effective object`)
-                    return
+                if (n > retry) {
+                    break
                 }
 
-                //分離伺服器資料的success或error
-                if (haskey(data, 'success')) {
-                    pm.resolve(data.success)
-                }
-                else if (haskey(data, 'error')) {
-                    eeEmit('error', data.error)
-                    pm.reject(data.error)
-                }
-                else {
-                    // console.log('invalid data', data)
-                    eeEmit('error', `invalid data`)
-                    pm.reject(`invalid data`)
-                }
+                //delay
+                let t = Math.round(baseDelay * Math.pow(ratio, n - 1))
+                console.log(`wait ${dig(t / 1000, 1)}(second) to retry...`)
+                await delay(t)
 
+                //retry
+                console.log(`retry n=${n}...`)
+                r = await fun(s)
+                // console.log(`retry n=${n} done`)
+
+            }
+
+            if (r.state === 'success') {
+                return r.msg
+            }
+            else {
+                return Promise.reject(r.msg)
+            }
+        }
+
+        //callApi
+        await callApi()
+            .then((res) => {
+                pm.resolve(res)
             })
-            .catch(async (res) => {
+            .catch(async(res) => {
                 // console.log('axios catch', res.toJSON())
-                //Network Error除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足(&lt;4g)無法下載被瀏覽器拒絕
+                //Network Error除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足無法下載被瀏覽器拒絕
 
                 //data
                 let data = null
@@ -619,7 +663,7 @@ function WConverhpClient(opt) {
     }
 
     //sendPkg
-    async function sendPkg(type, data, cbProgress) {
+    let sendPkg = async(type, data, cbProgress) => {
 
         //bb
         let bb = null
@@ -644,35 +688,8 @@ function WConverhpClient(opt) {
         return res
     }
 
-    //sendData
-    async function sendData(type, data, cbProgress) {
-
-        //fun
-        let fun = pmConvertResolve(sendPkg)
-
-        //sendPkg
-        let r = await fun(type, data, cbProgress)
-
-        let n = 0
-        while (r.state === 'error') {
-            n += 1
-            if (n > retry) {
-                break
-            }
-            console.log(`retry n=${n}`)
-            r = await fun(type, data, cbProgress)
-        }
-
-        if (r.state === 'success') {
-            return r.msg
-        }
-        else {
-            return Promise.reject(r.msg)
-        }
-    }
-
     //calcHash
-    async function calcHash(inp) {
+    let calcHash = async(inp) => {
 
         //bb
         let bb = null
@@ -691,7 +708,7 @@ function WConverhpClient(opt) {
     }
 
     //sendDataSlice
-    async function sendDataSlice(fileTotalName, bb, cbProgress) {
+    let sendDataSlice = async(fileTotalName, bb, cbProgress) => {
 
         //n
         let n = 0
@@ -863,65 +880,29 @@ function WConverhpClient(opt) {
             //chunk
             let chunk = bb.slice(start, end)
 
-            //sendDataSlice
-            let sendDataSlice = async() => {
-
-                //hd
-                let hd = { //用header傳key與value時, key不分大小寫, 故使用kebabCase
-                    'chunk-index': i,
-                    'chunk-total': chunkTotal,
-                    'package-id': packageId,
-                }
-
-                //send slice
-                let resSl = await send('slice', chunk, {
-                    headers: hd,
-                    dataType: 'blob',
-                    cbProgress: (msg) => {
-                        // console.log('cbProgress', msg)
-                        // let perc = msg.prog
-                        // let dir = msg.m
-                        // if (dir === 'upload' &amp;&amp; perc === 100) {
-                        // }
-                    }
-                })
-                // console.log('resSl', resSl)
-
-                //cbProgressSlice, 因其內有累加progCount, 實際代表是須成功傳輸後才能計算與回應外部進度, 故不能直接用於send的opt.cbProgress
-                cbProgressSlice()
-
-                return resSl
+            //hd
+            let hd = { //用header傳key與value時, key不分大小寫, 故使用kebabCase
+                'chunk-index': i,
+                'chunk-total': chunkTotal,
+                'package-id': packageId,
             }
 
-            //sendDataSliceRetry
-            let sendDataSliceRetry = async() => {
-
-                //fun
-                let fun = pmConvertResolve(sendDataSlice)
-
-                //sendPkg
-                let r = await fun()
-
-                let n = 0
-                while (r.state === 'error') {
-                    n += 1
-                    if (n > retry) {
-                        break
-                    }
-                    console.log(`retry n=${n}`)
-                    r = await fun()
+            //send slice
+            await send('slice', chunk, {
+                headers: hd,
+                dataType: 'blob',
+                cbProgress: (msg) => {
+                    // console.log('cbProgress', msg)
+                    // let perc = msg.prog
+                    // let dir = msg.m
+                    // if (dir === 'upload' &amp;&amp; perc === 100) {
+                    // }
                 }
+            })
+            // console.log('resSl', resSl)
 
-                if (r.state === 'success') {
-                    return r.msg
-                }
-                else {
-                    return Promise.reject(r.msg)
-                }
-            }
-
-            //sendDataSliceRetry
-            await sendDataSliceRetry()
+            //cbProgressSlice, 因其內有累加progCount, 實際代表是須成功傳輸後才能計算與回應外部進度, 故不能直接用於send的opt.cbProgress
+            cbProgressSlice()
 
         }
 
@@ -997,7 +978,7 @@ function WConverhpClient(opt) {
     }
 
     //execute
-    async function execute(func, input, cbProgress) {
+    let execute = async(func, input, cbProgress) => {
 
         //msg
         let msg = {
@@ -1007,10 +988,10 @@ function WConverhpClient(opt) {
             input,
         }
 
-        //sendData
+        //sendPkg
         let state = ''
         let res = null
-        await sendData('basic', msg, cbProgress)
+        await sendPkg('basic', msg, cbProgress)
             .then((msg) => {
                 // console.log('msg', msg)
 
@@ -1063,7 +1044,7 @@ function WConverhpClient(opt) {
     }
 
     //upload
-    async function upload(filename, input, cbProgress) {
+    let upload = (filename, input, cbProgress) => {
 
         //bb
         let bb = input
@@ -1072,7 +1053,7 @@ function WConverhpClient(opt) {
     }
 
     //downloadNodejs
-    async function downloadNodejs(fileId, cbProgress, opt = {}) {
+    let downloadNodejs = async(fileId, cbProgress, opt = {}) => {
 
         //send download
         let msg = { fileId }
@@ -1083,7 +1064,7 @@ function WConverhpClient(opt) {
     }
 
     //downloadBrowser
-    async function downloadBrowser(fileId, cbProgress, opt = {}) {
+    let downloadBrowser = async(fileId, cbProgress, opt = {}) => {
         //交由瀏覽器下載與管理故無法監聽進度, 不使用cbProgress
 
         //token
@@ -1120,7 +1101,7 @@ function WConverhpClient(opt) {
     }
 
     //download
-    async function download(fileId, cbProgress, opt = {}) {
+    let download = async(fileId, cbProgress, opt = {}) => {
         if (env === 'browser') {
             return downloadBrowser(fileId, cbProgress, opt)
         }
@@ -1153,7 +1134,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Fri May 16 2025 14:05:37 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.2</a> on Sat May 17 2025 20:54:14 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

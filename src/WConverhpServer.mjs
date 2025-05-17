@@ -448,7 +448,7 @@ function WConverhpServer(opt = {}) {
 
     //apiMain
     let apiMain = {
-        path: `/${apiName}/main`, //bbb
+        path: `/${apiName}/main`,
         method: 'POST',
         options: {
             payload: {
@@ -604,7 +604,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadCheck
     let apiUploadCheck = {
-        path: `/${apiName}/ulctr`, //bbb
+        path: `/${apiName}/ulctr`,
         method: 'POST',
         options: {
             payload: {
@@ -822,7 +822,7 @@ function WConverhpServer(opt = {}) {
 
     //apiUploadSlice
     let apiUploadSlice = {
-        path: `/${apiName}/slc`, //bbb
+        path: `/${apiName}/slc`,
         method: 'POST',
         options: {
             payload: {
@@ -960,7 +960,7 @@ function WConverhpServer(opt = {}) {
             // console.log('u8aOut', u8aOut)
 
             // //測試失敗重傳
-            // if (Math.random() < 0.9) {
+            // if (Math.random() < 0.6) {
             //     out = {
             //         error: 'force error'
             //     }
@@ -976,7 +976,7 @@ function WConverhpServer(opt = {}) {
 
     //apiDownloadGetFilename
     let apiDownloadGetFilename = {
-        path: `/${apiName}/dwgfn`, //bbb
+        path: `/${apiName}/dwgfn`,
         method: 'POST',
         options: {
             payload: {
@@ -1098,7 +1098,7 @@ function WConverhpServer(opt = {}) {
 
     //apiDownloadGetFile
     let apiDownloadGetFile = {
-        path: `/${apiName}/dwgf`, //bbb
+        path: `/${apiName}/dwgf`,
         method: 'GET',
         options: {
             timeout: {
@@ -1222,7 +1222,7 @@ function WConverhpServer(opt = {}) {
 
     //apiDownload
     let apiDownload = {
-        path: `/${apiName}/dw`, //bbb
+        path: `/${apiName}/dw`,
         method: 'POST',
         options: {
             payload: {
