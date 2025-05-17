@@ -33,6 +33,7 @@ import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
  * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
+ * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘
  * @param {Integer} [opt.retry=10] 輸入傳輸失敗重試次數整數，預設為10
  * @returns {Object} 回傳事件物件，可使用函數execute、upload
  * @example
@@ -133,6 +134,12 @@ function WConverhpClient(opt) {
     let sizeSlice = get(opt, 'sizeSlice')
     if (!ispint(sizeSlice)) {
         sizeSlice = 1024 * 1024 //1m
+    }
+
+    //timeout
+    let timeout = get(opt, 'timeout')
+    if (!isp0int(timeout)) {
+        timeout = 5 * 60 * 1000 //5min
     }
 
     //retry
@@ -440,7 +447,7 @@ function WConverhpClient(opt) {
                 ...ct,
                 ...headers,
             },
-            timeout: 60 * 60 * 1000, //1hr
+            timeout,
             maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             responseType: rt,
