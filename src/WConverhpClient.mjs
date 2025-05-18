@@ -1,5 +1,6 @@
 import axios from 'axios'
 import get from 'lodash-es/get.js'
+import size from 'lodash-es/size.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
 import evem from 'wsemi/src/evem.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
@@ -760,14 +761,14 @@ function WConverhpClient(opt) {
         }
 
         //針對伺服器上已有切片檔案計算hash與比對
-        if (resUpCkt.bSls > 0) {
+        if (resUpCkt.bSls) {
             // console.log('receive slks...', resUpCkt.slks[0], size(resUpCkt.slks))
 
             //fileSliceHashs
             let fileSliceHashs = []
             // let n = Math.max(resUpCkt.slks.length, 1)
             // let nr = Math.floor(n / 100)
-            for (let k = 0; k < resUpCkt.slks.length; k++) {
+            for (let k = 0; k < size(resUpCkt.slks); k++) {
                 // if (k % nr === 0) {
                 //     console.log(`calc hash for slices`, round(k / resUpCkt.slks.length * 100, 1), '%')
                 // }
