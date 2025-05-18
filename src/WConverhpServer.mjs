@@ -43,8 +43,8 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080
  * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true
  * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
- * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
+ * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
@@ -209,12 +209,6 @@ function WConverhpServer(opt = {}) {
         pathStaticFiles = 'dist'
     }
 
-    //apiName
-    let apiName = get(opt, 'apiName')
-    if (!isestr(apiName)) {
-        apiName = 'api'
-    }
-
     //pathUploadTemp
     let pathUploadTemp = get(opt, 'pathUploadTemp')
     if (!isestr(pathUploadTemp)) {
@@ -222,6 +216,12 @@ function WConverhpServer(opt = {}) {
     }
     if (!fsIsFolder(pathUploadTemp)) {
         fsCreateFolder(pathUploadTemp)
+    }
+
+    //apiName
+    let apiName = get(opt, 'apiName')
+    if (!isestr(apiName)) {
+        apiName = 'api'
     }
 
     //tokenType
@@ -557,9 +557,9 @@ function WConverhpServer(opt = {}) {
 
                 //error
                 req.payload.on('error', (err) => {
-                    // console.log(`req.payload error`, err)
-                    eeEmit('error', `receive payload err`)
-                    pm.reject(err.message)
+                    console.log(`apiMain req.payload err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+                    eeEmit('error', `receive payload error: ${err.message}`)
+                    pm.reject(`receive payload error: ${err.message}`)
                 })
 
                 return pm
@@ -922,16 +922,16 @@ function WConverhpServer(opt = {}) {
 
                     //setTimeout, 切片上傳添加延遲處理, 避免佔滿伺服器CPU與流量
                     setTimeout(() => {
-                        pm.resolve(`chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] done`)
+                        pm.resolve(`chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] done`)
                     }, delayForSlice)
 
                 })
 
                 //error
                 req.payload.on('error', (err) => {
-                    // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err)
-                    eeEmit('error', `receive chunk[${chunkIndex}/${chunkTotal}] of packageId[${packageId}] err`)
-                    pm.reject(`apiUploadSlice receive error: ${err.message}`)
+                    console.log(`apiUploadSlice req.payload chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+                    eeEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${err.message}`)
+                    pm.reject(`receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${err.message}`)
                 })
 
                 return pm

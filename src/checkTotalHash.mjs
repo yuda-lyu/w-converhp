@@ -18,7 +18,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
     let pathFile = path.join(pathUploadTemp, fileHash)
     // console.log('pathFile', pathFile)
 
-    //bAllExist
+    //bAllExist, 確認完整檔是否存在
     let bAllExist = false
     if (true) {
         // console.log(`check exist for pathFile[${pathFile}]...`)
@@ -37,14 +37,20 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         return r
     }
 
-    //bAllSize
+    //bAllSize, 確認完整檔大小是否一致
     let bAllSize = false
     if (bAllExist) {
         // console.log(`check size for pathFile[${pathFile}]...`)
 
         //_fileSize
-        let stats = fs.statSync(pathFile)
-        let _fileSize = stats.size
+        let _fileSize = -1
+        try {
+            let stats = fs.statSync(pathFile)
+            _fileSize = stats.size
+        }
+        catch (err) {
+            // console.log(err)
+        }
 
         //bAllSize
         bAllSize = fileSize === _fileSize
@@ -52,7 +58,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         // console.log(`check size for pathFile[${pathFile}] done`, bAllSize)
     }
 
-    //bAllHash
+    //bAllHash, 確認完整檔hash值是否一致
     let bAllHash = false
     if (bAllExist && bAllSize) {
         // console.log(`check hash for pathFile[${pathFile}]...`)
@@ -71,18 +77,33 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         // console.log(`check hash for pathFile[${pathFile}] done`, bAllHash)
     }
 
-    //vfps
-    let vfps = fsGetFilesInFolder(pathUploadTemp)
-    // console.log('vfps', vfps)
-
-    //slks
+    //slks, 若完整檔hash值不一致, 則紀錄各切片滿足切片大小時之代號(chunkIndex)
     let slks = []
-    if (true) {
+    if (!bAllHash) { //
+
+        //vfps
+        let vfps = fsGetFilesInFolder(pathUploadTemp)
+        // console.log('vfps', vfps)
+
         each(vfps, (v) => {
+
+            //b1
             let b1 = (v.name).indexOf(`${fileHash}_`) >= 0
-            let stats = fs.statSync(v.path)
-            let b2 = stats.size === sizeSlice
+
+            //b2
+            let b2 = false
+            try {
+                let stats = fs.statSync(v.path)
+                b2 = stats.size === sizeSlice
+            }
+            catch (err) {
+                console.log(err)
+            }
+
+            //b
             let b = b1 && b2
+
+            //check
             if (b) {
                 let s = sep(v.name, `${fileHash}_`)
                 let i = last(s)
@@ -94,11 +115,13 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
                 i = cint(i)
                 slks.push(i)
             }
+
         })
+
     }
     // console.log('slks', slks)
 
-    //bSls
+    //bSls, 若完整檔hash值不一致, 則計算是否有任一切片有滿足切片大小
     let bSls = size(slks) > 0
     // console.log('bSls', bSls)
 

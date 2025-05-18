@@ -1,6 +1,6 @@
 {
   "name": "w-converhp",
-  "version": "2.0.49",
+  "version": "2.0.50",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
     "@hapi/hapi": "^21.4.0",
@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "form-data": "^4.0.2",
-    "w-package-tools": "^1.0.90"
+    "w-package-tools": "^1.1.0"
   },
   "scripts": {
     "@hapi/hapi": "^20.2.1",
