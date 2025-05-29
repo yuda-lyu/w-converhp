@@ -35,7 +35,9 @@ import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
  * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘
- * @param {Integer} [opt.retry=10] 輸入傳輸失敗重試次數整數，預設為10
+ * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3
+ * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10
+ * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2
  * @returns {Object} 回傳事件物件，可使用函數execute、upload
  * @example
  *
@@ -143,10 +145,22 @@ function WConverhpClient(opt) {
         timeout = 5 * 60 * 1000 //5min
     }
 
-    //retry
-    let retry = get(opt, 'retry')
-    if (!isp0int(retry)) {
-        retry = 10
+    //retryMain
+    let retryMain = get(opt, 'retryMain')
+    if (!isp0int(retryMain)) {
+        retryMain = 3
+    }
+
+    //retryUpload
+    let retryUpload = get(opt, 'retryUpload')
+    if (!isp0int(retryUpload)) {
+        retryUpload = 10
+    }
+
+    //retryDownload
+    let retryDownload = get(opt, 'retryDownload')
+    if (!isp0int(retryDownload)) {
+        retryDownload = 2
     }
 
     //env
@@ -240,6 +254,12 @@ function WConverhpClient(opt) {
         let cbProgress = get(opt, 'cbProgress')
         if (!isfun(cbProgress)) {
             cbProgress = () => {}
+        }
+
+        //retry
+        let retry = get(opt, 'retry')
+        if (!isp0int(retry)) {
+            retry = 1
         }
 
         //urlUse
@@ -625,6 +645,7 @@ function WConverhpClient(opt) {
 
     //sendPkg
     let sendPkg = async(type, data, cbProgress) => {
+        //主要為中心化控制器使用, 通過execute進行上下傳數據
 
         //bb
         let bb = null
@@ -644,7 +665,7 @@ function WConverhpClient(opt) {
         }
 
         //send
-        let res = await send(type, bb, { dataType: 'blob', cbProgress })
+        let res = await send(type, bb, { dataType: 'blob', retry: retryMain, cbProgress }) //bbb
 
         return res
     }
@@ -731,7 +752,7 @@ function WConverhpClient(opt) {
 
         //send check-total-hash
         // console.log(`send check-total-hash...`)
-        let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json' })
+        let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json', retry: retryUpload }) //bbb
         // console.log('resUpCkt', resUpCkt)
         // resUpCkt {
         //   path: 'uploadTemp\\2429b7ef08ce6ba9',
@@ -800,7 +821,7 @@ function WConverhpClient(opt) {
 
             //send check-slices-hash
             // console.log(`send check-slices-hash...`)
-            let resUpCks = await send('upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json' })
+            let resUpCks = await send('upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json', retry: retryUpload }) //bbb
             // console.log('resUpCks', resUpCks)
             // resUpCks {
             //   slks: [
@@ -858,7 +879,8 @@ function WConverhpClient(opt) {
                     // let dir = msg.m
                     // if (dir === 'upload' && perc === 100) {
                     // }
-                }
+                },
+                retry: retryUpload, //bbb
             })
             // console.log('resSl', resSl)
 
@@ -869,7 +891,7 @@ function WConverhpClient(opt) {
 
         //send merge-slices-push
         // console.log(`send merge-slices-push...`)
-        let resUpMgp = await send('upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json' })
+        let resUpMgp = await send('upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json', retry: retryUpload }) //bbb
         // console.log('resUpMgp', resUpMgp)
 
         //checkMerging
@@ -884,7 +906,7 @@ function WConverhpClient(opt) {
 
                 //send merge-slices-get
                 // console.log(`send merge-slices-get...`)
-                send('upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json' })
+                send('upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json', retry: retryUpload }) //bbb
                     .then((res) => {
                         // console.log('res', res)
                         // res => {
@@ -1018,7 +1040,7 @@ function WConverhpClient(opt) {
 
         //send download
         let msg = { fileId }
-        let resMg = await send('download', msg, { ...opt, dataType: 'json', cbProgress })
+        let resMg = await send('download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress }) //bbb
         // console.log('resMg', resMg)
 
         return resMg
@@ -1037,7 +1059,7 @@ function WConverhpClient(opt) {
 
         //send download-get-filename
         let msg = { fileId }
-        let resMg = await send('download-get-filename', msg, { dataType: 'json' })
+        let resMg = await send('download-get-filename', msg, { dataType: 'json', retry: retryDownload }) //bbb
         // console.log('resMg', resMg)
 
         //filename

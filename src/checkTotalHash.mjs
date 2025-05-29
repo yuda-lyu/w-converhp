@@ -49,7 +49,8 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
             _fileSize = stats.size
         }
         catch (err) {
-            // console.log(err)
+            //若是有檔案被佔用或鎖定、移動、被刪除等, 可能觸發EPERM: operation not permitted
+            console.log(`check total file size: fs.statSync(pathFile)`, pathFile, err)
         }
 
         //bAllSize
@@ -97,7 +98,8 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
                 b2 = stats.size === sizeSlice
             }
             catch (err) {
-                console.log(err)
+                //若是有檔案被佔用或鎖定、移動、被刪除等, 可能觸發EPERM: operation not permitted
+                console.log(`check each file size: fs.statSync(pathFile)`, v.path, err)
             }
 
             //b
