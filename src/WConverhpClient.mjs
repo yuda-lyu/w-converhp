@@ -11,6 +11,7 @@ import isp0int from 'wsemi/src/isp0int.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
+import isbol from 'wsemi/src/isbol.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import dig from 'wsemi/src/dig.mjs'
@@ -332,11 +333,21 @@ function WConverhpClient(opt) {
         // console.log('dd', dd)
 
         //rt
-        let rt = 'blob'
+        let rt = null
         if (env === 'nodejs') {
-            rt = 'arraybuffer' //nodejs下沒有blob, 只能設定'json', 'arraybuffer', 'document', 'json', 'text', 'stream'
             if (type === 'download') {
                 rt = 'stream' //nodejs download模式採用stream接收
+            }
+            else {
+                rt = 'arraybuffer' //nodejs下沒有blob, 只能設定'json', 'arraybuffer', 'document', 'json', 'text', 'stream'
+            }
+        }
+        else {
+            if (type === 'download') {
+                rt = 'blob' //瀏覽器使用blob下載
+            }
+            else {
+                rt = 'blob' //瀏覽器使用blob取得資料
             }
         }
         // console.log('rt', rt)
@@ -391,25 +402,15 @@ function WConverhpClient(opt) {
 
             //streamRecv
             let streamRecv = get(res, 'data')
+            // console.log(env, 'streamRecv', streamRecv)
 
             if (env === 'browser') {
 
-                //browser通過createObjectURL接收stream與a.href+a.click()接收檔案
-                try {
-                    let url = URL.createObjectURL(streamRecv)
-                    let a = document.createElement('a')
-                    a.href = url
-                    a.download = filename // 動態設置檔名
-                    document.body.appendChild(a)
-                    a.click()
-                    a.remove()
-                    URL.revokeObjectURL(url)
-                    pm.resolve(filename)
-                }
-                catch (err) {
-                    console.log(err)
-                    pm.reject(err)
-                }
+                //browser通過axios使用blob接收時會自動把串流接收並組合成blob, 此時streamRecv已是blob
+                pm.resolve({
+                    filename,
+                    bb: streamRecv,
+                })
 
             }
             else {
@@ -665,7 +666,7 @@ function WConverhpClient(opt) {
         }
 
         //send
-        let res = await send(type, bb, { dataType: 'blob', retry: retryMain, cbProgress }) //bbb
+        let res = await send(type, bb, { dataType: 'blob', retry: retryMain, cbProgress })
 
         return res
     }
@@ -752,7 +753,7 @@ function WConverhpClient(opt) {
 
         //send check-total-hash
         // console.log(`send check-total-hash...`)
-        let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json', retry: retryUpload }) //bbb
+        let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json', retry: retryUpload })
         // console.log('resUpCkt', resUpCkt)
         // resUpCkt {
         //   path: 'uploadTemp\\2429b7ef08ce6ba9',
@@ -821,7 +822,7 @@ function WConverhpClient(opt) {
 
             //send check-slices-hash
             // console.log(`send check-slices-hash...`)
-            let resUpCks = await send('upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json', retry: retryUpload }) //bbb
+            let resUpCks = await send('upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json', retry: retryUpload })
             // console.log('resUpCks', resUpCks)
             // resUpCks {
             //   slks: [
@@ -880,7 +881,7 @@ function WConverhpClient(opt) {
                     // if (dir === 'upload' && perc === 100) {
                     // }
                 },
-                retry: retryUpload, //bbb
+                retry: retryUpload,
             })
             // console.log('resSl', resSl)
 
@@ -891,7 +892,7 @@ function WConverhpClient(opt) {
 
         //send merge-slices-push
         // console.log(`send merge-slices-push...`)
-        let resUpMgp = await send('upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json', retry: retryUpload }) //bbb
+        let resUpMgp = await send('upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json', retry: retryUpload })
         // console.log('resUpMgp', resUpMgp)
 
         //checkMerging
@@ -906,7 +907,7 @@ function WConverhpClient(opt) {
 
                 //send merge-slices-get
                 // console.log(`send merge-slices-get...`)
-                send('upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json', retry: retryUpload }) //bbb
+                send('upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json', retry: retryUpload })
                     .then((res) => {
                         // console.log('res', res)
                         // res => {
@@ -1040,7 +1041,7 @@ function WConverhpClient(opt) {
 
         //send download
         let msg = { fileId }
-        let resMg = await send('download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress }) //bbb
+        let resMg = await send('download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress })
         // console.log('resMg', resMg)
 
         return resMg
@@ -1050,37 +1051,59 @@ function WConverhpClient(opt) {
     let downloadBrowser = async(fileId, cbProgress, opt = {}) => {
         //交由瀏覽器下載與管理故無法監聽進度, 不使用cbProgress
 
-        //token
-        let token = getToken()
-        if (ispm(token)) {
-            token = await token
+        //downloadByManager
+        let downloadByManager = get(opt, 'downloadByManager')
+        if (!isbol(downloadByManager)) {
+            downloadByManager = true
         }
-        // console.log('token', token)
+        // console.log('downloadByManager', downloadByManager)
 
-        //send download-get-filename
-        let msg = { fileId }
-        let resMg = await send('download-get-filename', msg, { dataType: 'json', retry: retryDownload }) //bbb
-        // console.log('resMg', resMg)
+        if (downloadByManager) {
+            //由瀏覽器的下載管理器下載, 使用get+stream
 
-        //filename
-        let filename = get(resMg, 'filename', '')
-        // console.log('filename', filename)
+            //token
+            let token = getToken()
+            if (ispm(token)) {
+                token = await token
+            }
+            // console.log('token', token)
 
-        //urlUse
-        let urlUse = getUrlUse('download-get')
-        // console.log('urlUse', urlUse)
+            //send download-get-filename
+            let msg = { fileId }
+            let resMg = await send('download-get-filename', msg, { dataType: 'json', retry: retryDownload })
+            // console.log('resMg', resMg)
 
-        //url
-        let url = `${urlUse}?fileId=${fileId}&token=${token}`
-        // console.log('url', url)
+            //filename
+            let filename = get(resMg, 'filename', '')
+            // console.log('filename', filename)
 
-        //透過a元素打url下載, 讓瀏覽器認定為直接下載模式, 由瀏覽器展示下載進度與排入正在下載清單
-        let a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
+            //urlUse
+            let urlUse = getUrlUse('download-get')
+            // console.log('urlUse', urlUse)
 
-        return filename
+            //url
+            let url = `${urlUse}?fileId=${fileId}&token=${token}`
+            // console.log('url', url)
+
+            //透過a元素打url下載, 讓瀏覽器認定為直接下載模式, 由瀏覽器展示下載進度與排入正在下載清單
+            let a = document.createElement('a')
+            a.href = url
+            a.download = filename
+            a.click()
+
+            return filename
+        }
+        else {
+            //通過axios下載得到blob, 回傳檔案名稱與blob供後續處理
+
+            //send download
+            let msg = { fileId }
+            let resMg = await send('download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress })
+            // console.log('resMg', resMg)
+
+            return resMg
+        }
+
     }
 
     //download

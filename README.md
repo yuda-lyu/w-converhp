@@ -221,7 +221,7 @@ downloadLargeFile()
 
 [Necessary] Add script for w-converhp-client.
 ```alias
-<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.53/dist/w-converhp-client.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.54/dist/w-converhp-client.umd.js"></script>
 ```
 
 #### Example for w-converhp-client in browser:

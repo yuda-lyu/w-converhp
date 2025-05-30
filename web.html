@@ -24,6 +24,8 @@
         
         <script>
 
+            //本機測試時須使用網址測試: http://localhost:8080/web.html, 否則前端下載無法使用變數download指定檔名
+
             let opt = {
                 // FormData, //使用瀏覽器內建FormData, 非後端不須另外提供
                 url: 'http://localhost:8080',
@@ -152,13 +154,21 @@
             function downloadLargeFile(){
                 let core = async()=>{
 
-                    await wo.download('id-for-file',
+                    let downloadByManager = !document.getElementById('returnFile').checked
+                    // console.log('downloadByManager',downloadByManager)
+
+                    await wo.download(
+                        'id-for-file',
                         function ({ prog, p, m }) {
                             // console.log('client web: download: prog', prog, p, m)
                             if (m === 'download') {
                                 console.log('client web: download: prog', prog)
                             }
-                        })
+                        },
+                        { 
+                            downloadByManager 
+                        },
+                    )
                         .then(function(res) {
                             console.log('client web: download: then', res)
                         })
@@ -197,7 +207,12 @@
         <div style="padding:10px;">
     
             <button onclick="downloadLargeFile()">download large file</button>
-        
+
+            <label>
+                <input type="checkbox" id="returnFile">
+                return file
+            </label>
+
         </div>
         
     </body>
