@@ -19,7 +19,7 @@ let mergeSlices = async (fileHash, chunkTotal, pathUploadTemp) => {
     // console.log('fpOut', fpOut)
 
     //mergeSlices
-    let r = await fsMergeFiles(fileHash, fpsIn, fpOut)
+    let r = await fsMergeFiles(fpsIn, fpOut)
     // console.log('r', r)
 
     //writeFileSync, 因可能合併大檔, 故於合併結束後才輸出無內容之.done檔案, 可供外部輪循偵測.done檔是否存在, 藉此判識合併大檔任務是否完成
