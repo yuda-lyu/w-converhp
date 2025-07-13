@@ -65,7 +65,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  *     port: 8080,
  *     apiName: 'api',
  *     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
- *     verifyConn: async ({ apiType, authorization, headers, query }) => {
+ *     verifyConn: async ({ apiType, authorization, query, headers, req }) => {
  *         console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
  *         let token = w.strdelleft(authorization, 7) //刪除Bearer
  *         if (!w.isestr(token)) {
@@ -485,7 +485,7 @@ function WConverhpServer(opt = {}) {
             if (true) {
 
                 //verifyConn
-                let m = verifyConn({ apiType: 'main', authorization, headers, query })
+                let m = verifyConn({ apiType: 'main', authorization, query, headers, req })
                 if (ispm(m)) {
                     m = await m
                 }
