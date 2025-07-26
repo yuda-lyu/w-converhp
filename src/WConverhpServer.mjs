@@ -485,9 +485,20 @@ function WConverhpServer(opt = {}) {
             if (true) {
 
                 //verifyConn
-                let m = verifyConn({ apiType: 'main', authorization, query, headers, req })
-                if (ispm(m)) {
-                    m = await m
+                let m = false
+                try {
+                    m = verifyConn({ apiType: 'main', authorization, query, headers, req })
+                    if (ispm(m)) {
+                        m = await m
+                            .catch((err) => {
+                                console.log(err)
+                                m = false
+                            })
+                    }
+                }
+                catch (err) {
+                    console.log(err)
+                    m = false
                 }
 
                 //check
