@@ -327,7 +327,7 @@ function WConverhpServer(opt = {}) {
             let input = get(data, 'input', null)
 
             //execute 執行
-            eeEmit('execute', func, input, pmm)
+            eeEmit('execute', func, input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
 
         }
 
@@ -357,7 +357,7 @@ function WConverhpServer(opt = {}) {
         if (true) {
 
             //upload, 上傳檔案
-            eeEmit('upload', input, pmm)
+            eeEmit('upload', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
 
         }
 
@@ -387,7 +387,7 @@ function WConverhpServer(opt = {}) {
         if (true) {
 
             //download, 下載檔案
-            eeEmit('download', input, pmm)
+            eeEmit('download', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
 
         }
 
@@ -712,8 +712,9 @@ function WConverhpServer(opt = {}) {
 
                         //ri
                         let ri = {
+                            from: 'check-total-hash',
                             filename,
-                            path: out.path,
+                            path: out.path, //out.path使用path.resolve為絕對路徑
                         }
 
                         //procUpload
@@ -783,8 +784,9 @@ function WConverhpServer(opt = {}) {
 
                         //ri
                         let ri = {
+                            from: 'merge-slices-get',
                             filename,
-                            path: r.path,
+                            path: r.path, //r.path使用path.resolve為絕對路徑
                         }
 
                         //procUpload, 偵測有合併完成大檔, 得調用procUpload讓伺服器攔截函數處理
