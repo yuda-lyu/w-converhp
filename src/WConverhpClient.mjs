@@ -755,16 +755,29 @@ function WConverhpClient(opt) {
         // console.log(`send check-total-hash...`)
         let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json', retry: retryUpload })
         // console.log('resUpCkt', resUpCkt)
-        // resUpCkt {
-        //   path: 'uploadTemp\\2429b7ef08ce6ba9',
-        //   bAllExist: false,
-        //   bAllSize: false,
-        //   bAllHash: false,
-        //   bSls: true,
-        //   slks: [
-        //      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
-        //   ]
-        // }
+        //bAllHash: false:
+        //  resUpCkt {
+        //    path: 'uploadTemp\\2429b7ef08ce6ba9',
+        //    bAllExist: false,
+        //    bAllSize: false,
+        //    bAllHash: false,
+        //    bSls: true,
+        //    slks: [
+        //       0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
+        //    ]
+        //  }
+        //bAllHash: true:
+        //  resUpCkt {
+        //    path: 'uploadTemp\\2429b7ef08ce6ba9',
+        //    bAllExist: false,
+        //    bAllSize: false,
+        //    bAllHash: false,
+        //    bSls: true,
+        //    slks: [
+        //       0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
+        //    ],
+        //    msg: {procUpload處理後的ro}
+        //  }
 
         //check
         if (resUpCkt.bAllHash) {
@@ -773,11 +786,8 @@ function WConverhpClient(opt) {
             //cbProgressMerge
             cbProgressMerge({ prog: 100, m: 'download' }) //觸發上傳完畢後之下載回應, 故m須為download
 
-            //resMg, 直接回傳
-            let resMg = {
-                filename: fileTotalName,
-                path: resUpCkt.path,
-            }
+            //resMg, 須回傳msg(也就是procUpload處理後的ro)
+            let resMg = resUpCkt.msg
 
             return resMg
         }

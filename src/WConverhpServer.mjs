@@ -722,10 +722,10 @@ function WConverhpServer(opt = {}) {
                         let ro = await procUpload(ri)
                         // console.log('procUpload done', ro)
 
-                        //out merge, 直接添加ro就回傳, 此處不使用msg儲存
+                        //out merge, 此處(bAllHash=true時)ro儲存至out.msg, 非此處(bAllHash=false時)回傳原本out, 前端須分開處理
                         out = {
                             ...out,
-                            ...ro,
+                            msg: ro,
                         }
 
                     }
@@ -794,9 +794,9 @@ function WConverhpServer(opt = {}) {
                         let ro = await procUpload(ri)
                         // console.log('procUpload done', ro)
 
-                        //out merge, ro須附加至msg, 才供前端偵測state為'success'時提取msg顯示
+                        //out merge, ro為附加至msg, 前端偵測state為'success'時, 才提取msg使用
                         out = {
-                            ...out, //state為'success'時msg為空字串, 直接被ro複寫至msg即可
+                            ...out, //state為'success'時out.msg為空字串, 故可直接被ro複寫uot.msg
                             msg: ro,
                         }
 
