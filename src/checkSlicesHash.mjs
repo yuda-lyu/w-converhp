@@ -29,7 +29,7 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
         let v = fileSliceHashs[k]
 
         //_pathFile
-        let _pathFile = path.join(pathUploadTemp, `${fileHash}_${v.i}`)
+        let _pathFile = path.resolve(pathUploadTemp, `${fileHash}_${v.i}`)
         // console.log('_pathFile', _pathFile)
 
         //_fileHash

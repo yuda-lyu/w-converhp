@@ -15,7 +15,7 @@ import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
 let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
 
     //pathFile
-    let pathFile = path.join(pathUploadTemp, fileHash)
+    let pathFile = path.resolve(pathUploadTemp, fileHash)
     // console.log('pathFile', pathFile)
 
     //bAllExist, 確認完整檔是否存在
@@ -80,7 +80,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
 
     //slks, 若完整檔hash值不一致, 則紀錄各切片滿足切片大小時之代號(chunkIndex)
     let slks = []
-    if (!bAllHash) { //
+    if (!bAllHash) {
 
         //vfps
         let vfps = fsGetFilesInFolder(pathUploadTemp)

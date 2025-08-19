@@ -911,7 +911,7 @@ function WConverhpServer(opt = {}) {
             }
 
             //pathFileChunk
-            let pathFileChunk = path.join(pathUploadTemp, `${packageId}_${chunkIndex}`)
+            let pathFileChunk = path.resolve(pathUploadTemp, `${packageId}_${chunkIndex}`)
             // console.log('pathFileChunk', pathFileChunk)
 
             //streamWrite

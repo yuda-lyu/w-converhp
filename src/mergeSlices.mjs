@@ -8,14 +8,14 @@ let mergeSlices = async (fileHash, chunkTotal, pathUploadTemp) => {
     //fpsIn
     let fpsIn = []
     for (let i = 0; i < chunkTotal; i++) {
-        let fpIn = path.join(pathUploadTemp, `${fileHash}_${i}`)
+        let fpIn = path.resolve(pathUploadTemp, `${fileHash}_${i}`)
         // console.log('fpIn', fpIn)
         fpsIn.push(fpIn)
     }
     // console.log('fpsIn', fpsIn)
 
     //fpOut
-    let fpOut = path.join(pathUploadTemp, fileHash)
+    let fpOut = path.resolve(pathUploadTemp, fileHash)
     // console.log('fpOut', fpOut)
 
     //mergeSlices
