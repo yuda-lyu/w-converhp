@@ -1,13 +1,13 @@
 {
   "name": "w-converhp",
-  "version": "2.0.67",
+  "version": "2.0.68",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
     "@hapi/hapi": "^21.4.3",
     "@hapi/inert": "^7.1.0",
     "axios": "^1.11.0",
     "lodash-es": "^4.17.21",
-    "wsemi": "^1.8.20"
+    "wsemi": "^1.8.21"
   },
   "devDependencies": {
     "form-data": "^4.0.4",
