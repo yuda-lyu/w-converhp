@@ -280,6 +280,16 @@ function WConverhpServer(opt = {}) {
                     origin: corsOrigins, //Access-Control-Allow-Origin
                     credentials: false, //Access-Control-Allow-Credentials
                 },
+                // compression: { //壓縮須納入通用訊息處理(obj2u8arr與u8arr2obj), 其他傳輸或提供下載檔案等, 通常為已壓縮, 故不須指定壓縮
+                //     minBytes: {
+                //         value: 1024, //超過1KB才壓縮
+                //     },
+                //     mime: {
+                //         'application/json': true,
+                //         'text/html': true,
+                //         'application/octet-stream': true, //針對application/octet-stream壓縮的話, Content-Length得要回傳壓縮後的資料長度
+                //     },
+                // },
             },
         })
 

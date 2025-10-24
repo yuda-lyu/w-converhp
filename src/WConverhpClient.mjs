@@ -472,6 +472,7 @@ function WConverhpClient(opt) {
             timeout,
             maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
+            // decompress: true, //axios於nodejs中預設為true
             responseType: rt,
             onUploadProgress: function(ev) {
                 //console.log('onUploadProgress', ev)
