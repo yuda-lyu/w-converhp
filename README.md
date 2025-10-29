@@ -17,6 +17,7 @@ To view documentation or get support, visit [docs](https://yuda-lyu.github.io/w-
 * `w-converhp-client`: for nodejs and browser client
 
 ## Installation
+
 ### Using npm(ES6 module):
 ```alias
 npm i w-converhp
@@ -217,9 +218,8 @@ downloadLargeFile()
 ```
 
 ### In a browser(UMD module):
-> **Note:** `w-converhp-client` does't depend on any package.
 
-[Necessary] Add script for w-converhp-client.
+Add script for w-converhp-client.
 ```alias
 <script src="https://cdn.jsdelivr.net/npm/w-converhp@2.0.70/dist/w-converhp-client.umd.js"></script>
 ```
