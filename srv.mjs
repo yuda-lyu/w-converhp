@@ -23,6 +23,7 @@ let opt = {
         // await w.delay(3000)
         return true
     },
+    delayForSlice: 0,
 }
 
 //new
@@ -135,7 +136,7 @@ setTimeout(() => {
     console.log('ms', ms)
     // console.log('ms', JSON.stringify(ms))
     wo.stop()
-}, 100 * 3000)
+}, 5 * 60 * 1000) //5min
 
 
 //node srv.mjs
