@@ -1065,8 +1065,11 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileId in payload')
             }
 
+            //token, 自authorization提取供外部download事件進行授權檢查
+            let token = isestr(authorization) ? authorization.slice(cstr(tokenType).length + 1) : ''
+
             //inp
-            let inp = { fileId }
+            let inp = { fileId, token }
 
             //procDownload
             let out = {}
@@ -1188,8 +1191,8 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileId in query')
             }
 
-            //inp
-            let inp = { fileId }
+            //inp, token供外部download事件進行授權檢查
+            let inp = { fileId, token }
 
             //procDownload
             let out = {}
@@ -1311,8 +1314,11 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileId in payload')
             }
 
+            //token, 自authorization提取供外部download事件進行授權檢查
+            let token = isestr(authorization) ? authorization.slice(cstr(tokenType).length + 1) : ''
+
             //inp
-            let inp = { fileId }
+            let inp = { fileId, token }
 
             //procDownload
             let out = {}
