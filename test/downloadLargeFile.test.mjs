@@ -163,7 +163,7 @@ describe('downloadLargeFile', function() {
         return pm
     }
 
-    let res = `[{"client download input":"id-for-file"},{"server receive input":{"fileId":"id-for-file"}},{"client download done":"1mb中文.7z"}]`
+    let res = `[{"client download input":"id-for-file"},{"server receive input":{"fileId":"id-for-file","token":"token-for-test"}},{"client download done":"1mb中文.7z"}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)
