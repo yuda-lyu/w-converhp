@@ -1,5 +1,5 @@
 import path from 'path'
-import rollupFiles from 'w-package-tools/src/rollupFiles.mjs'
+import rollupFile from 'w-package-tools/src/rollupFile.mjs'
 import rollupWorker from 'w-package-tools/src/rollupWorker.mjs'
 
 
@@ -78,8 +78,8 @@ async function core() {
             console.log(err)
         })
 
-    await rollupFiles({
-        fns: ['WConverhpServer.mjs'],
+    await rollupFile({
+        fn: 'WConverhpServer.mjs',
         fdSrc,
         fdTar,
         nameDistType: 'kebabCase',
@@ -106,8 +106,8 @@ async function core() {
         runin: 'nodejs',
     })
 
-    await rollupFiles({
-        fns: ['WConverhpClient.mjs'],
+    await rollupFile({
+        fn: 'WConverhpClient.mjs',
         fdSrc,
         fdTar,
         nameDistType: 'kebabCase',
