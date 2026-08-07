@@ -1,15 +1,10 @@
 import path from 'path'
-import cleanFolder from 'w-package-tools/src/cleanFolder.mjs'
 import rollupFile from 'w-package-tools/src/rollupFile.mjs'
 import rollupWorker from 'w-package-tools/src/rollupWorker.mjs'
 
 
 let fdSrc = './src'
 let fdTar = './dist'
-
-
-//清除dist, 使每次建置為全新產出(rollupFile無內建clean, 故於此單點清場)
-cleanFolder(fdTar)
 
 //因為WConverhpServer會import checkTotalHash.wk.umd.js故得先編譯
 await rollupWorker({
