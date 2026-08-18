@@ -77,7 +77,6 @@ await rollupFile({
         'path': 'path',
         'fs': 'fs',
         'stream': 'stream',
-        'crypto': 'crypto', //因crypto-js修改使用內建crypto方式, 會偵測nodejs並使用require內建的crypto, 故需剔除
         '@hapi/hapi': '@hapi/hapi',
         '@hapi/inert': '@hapi/inert',
         // 'form-data': 'FormData',
@@ -87,7 +86,6 @@ await rollupFile({
         'path',
         'fs',
         'stream',
-        'crypto',
         '@hapi/hapi',
         '@hapi/inert',
         // 'form-data',
@@ -105,7 +103,6 @@ await rollupFile({
         'path': 'path',
         'fs': 'fs',
         'stream': 'stream',
-        'crypto': 'crypto', //因crypto-js修改使用內建crypto方式, 會偵測nodejs並使用require內建的crypto, 故需剔除
         '@hapi/hapi': '@hapi/hapi',
         '@hapi/inert': '@hapi/inert',
         // 'form-data': 'FormData',
@@ -115,7 +112,6 @@ await rollupFile({
         'path',
         'fs',
         'stream',
-        'crypto',
         '@hapi/hapi',
         '@hapi/inert',
         // 'form-data',
