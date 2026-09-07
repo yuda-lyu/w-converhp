@@ -609,33 +609,44 @@ function WConverhpClient(opt) {
                 //data
                 let data = null
 
-                //statusText, err
-                let statusText = get(res, 'response.statusText') || get(res, 'message')
-                let err = get(res, 'response.data') || get(res, 'stack')
-                // console.log(`get(res, 'response.statusText')`, get(res, 'response.statusText'))
-                // console.log(`get(res, 'message')`, get(res, 'message'))
-                // console.log(`get(res, 'response.data')`, get(res, 'response.data'))
-                // console.log(`get(res, 'stack')`, get(res, 'stack'))
-
-                if (statusText) {
-                    // console.log('statusText', statusText)
-                    data = statusText
-                }
-                else if (err) {
-                    // console.log('err', err)
-                    data = err
+                //check, callApiCore於伺服器回傳業務錯誤(如'invalid func'、'permission denied')時, 是reject伺服器給的
+                //訊息本體(字串或物件)而非axios錯誤物件, 故須先攔截並原樣向外傳遞, 否則下方各get皆取不到值而誤判為無法連線
+                //註: isestr與iseobj對Error(含axios錯誤)皆為false, 故可用於區分[伺服器訊息]與[傳輸層錯誤]
+                if (isestr(res) || iseobj(res)) {
+                    // console.log('res is an error message from server', res)
+                    data = res
                 }
                 else {
-                    try {
-                        res = res.toJSON()
+
+                    //statusText, err
+                    let statusText = get(res, 'response.statusText') || get(res, 'message')
+                    let err = get(res, 'response.data') || get(res, 'stack')
+                    // console.log(`get(res, 'response.statusText')`, get(res, 'response.statusText'))
+                    // console.log(`get(res, 'message')`, get(res, 'message'))
+                    // console.log(`get(res, 'response.data')`, get(res, 'response.data'))
+                    // console.log(`get(res, 'stack')`, get(res, 'stack'))
+
+                    if (statusText) {
+                        // console.log('statusText', statusText)
+                        data = statusText
                     }
-                    catch (err) {}
-                    // console.log('err', res)
-                    eeEmit('error', res)
-                    data = 'Can not connect to server.'
-                }
-                if (data === 'Network Error') {
-                    data = `Network Error. Make sure your space of hard drive is large enough or blocking by browser plugins.`
+                    else if (err) {
+                        // console.log('err', err)
+                        data = err
+                    }
+                    else {
+                        try {
+                            res = res.toJSON()
+                        }
+                        catch (err) {}
+                        // console.log('err', res)
+                        eeEmit('error', res)
+                        data = 'Can not connect to server.'
+                    }
+                    if (data === 'Network Error') {
+                        data = `Network Error. Make sure your space of hard drive is large enough or blocking by browser plugins.`
+                    }
+
                 }
                 // console.log('data', data)
 
@@ -931,6 +942,7 @@ function WConverhpClient(opt) {
 
                         //check
                         if (res.state === 'success') {
+                            // console.log('merge-slices-get success', res)
 
                             //clearInterval
                             clearInterval(t)
@@ -943,20 +955,37 @@ function WConverhpClient(opt) {
 
                         }
                         else if (res.state === 'error') {
-                            console.log('merge-slices-get error', res)
+                            // console.log('merge-slices-get error', res)
 
                             //clearInterval
                             clearInterval(t)
 
                             //reject, state為'error'時會於msg提供錯誤訊息
-                            pm.resolve(res.msg)
+                            pm.reject(res.msg)
 
                         }
 
                     })
                     .catch((err) => {
-                        console.log('merge-slices-get catch', err)
-                        //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態
+                        // console.log('merge-slices-get catch', err)
+
+                        //check, 為伺服器訊息(字串或物件)時代表伺服器已明確回應業務錯誤(例如伺服器upload事件reject),
+                        //屬確定性失敗, 須停止輪詢並向外傳遞, 否則會無限輪詢且每輪都重新觸發伺服器upload事件
+                        //註: isestr與iseobj對Error(含網路斷訊之axios錯誤)皆為false, 故網路錯誤仍會繼續輪詢
+                        if (isestr(err) || iseobj(err)) {
+
+                            //clearInterval
+                            clearInterval(t)
+
+                            //reject
+                            pm.reject(err)
+
+
+                        }
+                        else {
+                            //其餘(例如網路斷訊錯誤)不clearInterval, 持續輪循測試合併大檔之狀態
+                        }
+
                     })
 
             }, 2000)

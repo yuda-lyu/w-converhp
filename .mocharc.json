@@ -1,0 +1,9 @@
+{
+    "spec": [
+        "test/api-*.test.mjs",
+        "test/executeWithU8a.test.mjs",
+        "test/executeWithFile.test.mjs",
+        "test/uploadLargeFile.test.mjs",
+        "test/downloadLargeFile.test.mjs"
+    ]
+}

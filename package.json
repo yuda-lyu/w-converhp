@@ -10,13 +10,15 @@
   },
   "devDependencies": {
     "form-data": "^4.0.6",
+    "playwright": "^1.63.0",
     "w-package-tools": "^1.1.15"
   },
   "scripts": {
     "@hapi/hapi": "^20.2.1",
     "@hapi/inert": "^6.0.5",
     "test": "mocha --parallel --timeout 60000",
-    "deploy": "gh-pages -d docs"
+    "deploy": "gh-pages -d docs",
+    "test:e2e": "mocha --no-config --timeout 180000 test/e2e-*.test.mjs"
   },
   "repository": {
     "type": "git",
