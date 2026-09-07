@@ -595,11 +595,12 @@ function WConverhpClient(opt) {
                 //data
                 let data = null
 
-                //check, callApiCore於伺服器回傳業務錯誤(如'invalid func'、'permission denied')時, 是reject伺服器給的
-                //訊息本體(字串或物件)而非axios錯誤物件, 故須先攔截並原樣向外傳遞, 否則下方各get皆取不到值而誤判為無法連線
-                //註: isestr與iseobj對Error(含axios錯誤)皆為false, 故可用於區分[伺服器訊息]與[傳輸層錯誤]
-                if (isestr(res) || iseobj(res)) {
-                    // console.log('res is an error message from server', res)
+                //check, callApiCore於伺服器回傳業務錯誤(如'invalid func'、'permission denied', 或應用端handler之reject值)時,
+                //是reject伺服器給的值本體而非axios錯誤物件, 故須先攔截並原樣向外傳遞, 否則下方各get皆取不到值而誤判為無法連線
+                //判準採反向: 本地失敗(axios、fs、解析)一律為Error實例, 而經序列化自伺服器回來之值結構上不可能是Error實例,
+                //故非Error者即為伺服器回傳值, 不論其形狀(字串、物件、數字、陣列、空字串、null)皆原樣交出; 不可用形狀白名單, 外部應用端之拒絕值列不完
+                if (!(res instanceof Error)) {
+                    // console.log('res is a value returned by server', res)
                     data = res
                 }
                 else {

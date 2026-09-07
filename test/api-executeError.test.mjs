@@ -47,6 +47,10 @@ describe('api-executeError', function() {
                 //以物件形式回報錯誤, 測試非字串之錯誤內容亦須能原樣傳到呼叫端
                 pm.reject({ code: 'E42', detail: '錯誤詳情' })
             }
+            else if (func === 'shapeError') {
+                //以呼叫端指定之任意值reject, 測試各種形狀皆須原樣傳回
+                pm.reject(input.v)
+            }
             else {
                 pm.reject('invalid func')
             }
@@ -100,6 +104,18 @@ describe('api-executeError', function() {
         let r = await catchOf(() => wo.execute('objError', {}, () => {}))
         assert.strict.deepEqual(r.state, 'reject')
         assert.strict.deepEqual(r.msg, { code: 'E42', detail: '錯誤詳情' })
+    })
+
+    it('伺服器以任意形狀拒絕(數字/0/false/空字串/null/陣列/物件/字串)時, 呼叫端皆須收到同一值', async function() {
+        //外部應用端的拒絕值形狀列不完, 不得以形狀白名單判定; 本地傳輸層失敗一律為Error實例, 非Error者即為伺服器回傳值
+        let shapes = [404, 0, false, '', null, ['a', 'b'], { code: 1, msg: '中文' }, 'plain string']
+        for (let v of shapes) {
+            let wo = mkClient()
+            wo.on('error', () => {})
+            let r = await catchOf(() => wo.execute('shapeError', { v }, () => {}))
+            assert.strict.deepEqual(r.state, 'reject', JSON.stringify(v))
+            assert.strict.deepEqual(r.msg, v, `shape ${JSON.stringify(v)} -> ${JSON.stringify(r.msg)}`)
+        }
     })
 
     it('權限驗證失敗時, 呼叫端須收到permission denied', async function() {
