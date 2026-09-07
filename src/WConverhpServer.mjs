@@ -244,25 +244,6 @@ function WConverhpServer(opt = {}) {
         }
     }
 
-    //checkConn, 各路由呼叫verifyConn之唯一出口, 拋錯或reject一律視為未通過, 各路由不得再自行呼叫verifyConn
-    //why: 原本僅apiMain有try/catch, 其餘五路由於verifyConn拋錯或reject時會回HTTP 500且body不可解析,
-    //六路由對同一種失敗之行為不對稱; 收斂於此後一律回permission denied, 並以error事件通知應用端(與其他路由之錯誤回報方式一致)
-    async function checkConn(inp) {
-        let m = false
-        try {
-            m = verifyConn(inp)
-            if (ispm(m)) {
-                m = await m
-            }
-        }
-        catch (err) {
-            console.log(`verifyConn error for apiType[${get(inp, 'apiType', '')}]`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
-            eeEmit('error', `verifyConn error for apiType[${get(inp, 'apiType', '')}]: ${get(err, 'message', err)}`)
-            m = false
-        }
-        return m === true
-    }
-
     //corsOrigins
     let corsOrigins = get(opt, 'corsOrigins', [])
     if (!isearr(corsOrigins)) {
@@ -322,6 +303,25 @@ function WConverhpServer(opt = {}) {
         setTimeout(() => {
             ee.emit(name, ...args)
         }, 1)
+    }
+
+    //checkConn, 各路由呼叫verifyConn之唯一出口, 拋錯或reject一律視為未通過, 各路由不得再自行呼叫verifyConn
+    //why: 原本僅apiMain有try/catch, 其餘五路由於verifyConn拋錯或reject時會回HTTP 500且body不可解析,
+    //六路由對同一種失敗之行為不對稱; 收斂於此後一律回permission denied, 並以error事件通知應用端(與其他路由之錯誤回報方式一致)
+    async function checkConn(inp) {
+        let m = false
+        try {
+            m = verifyConn(inp)
+            if (ispm(m)) {
+                m = await m
+            }
+        }
+        catch (err) {
+            console.log(`verifyConn error for apiType[${get(inp, 'apiType', '')}]`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            eeEmit('error', `verifyConn error for apiType[${get(inp, 'apiType', '')}]: ${get(err, 'message', err)}`)
+            m = false
+        }
+        return m === true
     }
 
     //procDeal
