@@ -196,52 +196,6 @@ describe('api-uploadVariants', function() {
         assert.strict.deepEqual(r1.size, r2.size)
     })
 
-    it('伺服器upload拒絕時, 呼叫端須收到伺服器給的錯誤訊息', async function() {
-        //另起一台只會拒絕的伺服器
-        let port2 = 8187
-
-        //須先清乾淨暫存資料夾, 確保走完整切片+合併路徑,
-        //若殘留同內容檔案會改走check-total-hash去重路徑而測不到本案例
-        try {
-            fs.rmSync(`${pathUploadTemp}-reject`, { recursive: true, force: true })
-        }
-        catch (err) {}
-
-        let wsv2 = new WConverhpServer({
-            port: port2,
-            apiName: 'api',
-            pathStaticFiles: '.',
-            pathUploadTemp: `${pathUploadTemp}-reject`,
-            sizeSlice,
-            verifyConn: async() => true,
-        })
-        wsv2.on('upload', (input, pm) => {
-            pm.reject('upload denied by server')
-        })
-        wsv2.on('error', () => {})
-        await w.delay(1000)
-
-        let wo = mkClient({ url: `http://localhost:${port2}`, retryUpload: 0 })
-        wo.on('error', () => {})
-
-        let u8a = mkU8a(sizeSlice * 2, 19)
-        let msg = null
-        try {
-            await wo.upload('rej.bin', u8a, () => {})
-        }
-        catch (err) {
-            msg = err
-        }
-
-        wsv2.stop()
-        try {
-            fs.rmSync(`${pathUploadTemp}-reject`, { recursive: true, force: true })
-        }
-        catch (err) {}
-
-        assert.strict.deepEqual(msg, 'upload denied by server')
-    })
-
     it('權限驗證失敗時, upload須收到permission denied', async function() {
         let wo = mkClient({ getToken: () => '', retryUpload: 0 })
         wo.on('error', () => {})

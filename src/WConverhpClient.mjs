@@ -942,7 +942,6 @@ function WConverhpClient(opt) {
 
                         //check
                         if (res.state === 'success') {
-                            // console.log('merge-slices-get success', res)
 
                             //clearInterval
                             clearInterval(t)
@@ -955,7 +954,7 @@ function WConverhpClient(opt) {
 
                         }
                         else if (res.state === 'error') {
-                            // console.log('merge-slices-get error', res)
+                            console.log('merge-slices-get error', res)
 
                             //clearInterval
                             clearInterval(t)
@@ -967,25 +966,8 @@ function WConverhpClient(opt) {
 
                     })
                     .catch((err) => {
-                        // console.log('merge-slices-get catch', err)
-
-                        //check, 為伺服器訊息(字串或物件)時代表伺服器已明確回應業務錯誤(例如伺服器upload事件reject),
-                        //屬確定性失敗, 須停止輪詢並向外傳遞, 否則會無限輪詢且每輪都重新觸發伺服器upload事件
-                        //註: isestr與iseobj對Error(含網路斷訊之axios錯誤)皆為false, 故網路錯誤仍會繼續輪詢
-                        if (isestr(err) || iseobj(err)) {
-
-                            //clearInterval
-                            clearInterval(t)
-
-                            //reject
-                            pm.reject(err)
-
-
-                        }
-                        else {
-                            //其餘(例如網路斷訊錯誤)不clearInterval, 持續輪循測試合併大檔之狀態
-                        }
-
+                        console.log('merge-slices-get catch', err)
+                        //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態
                     })
 
             }, 2000)

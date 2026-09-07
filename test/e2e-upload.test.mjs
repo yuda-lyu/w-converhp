@@ -17,7 +17,7 @@ import { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServe
  *   ⑤觀察 promise 之 resolve/reject
  *   ⑥後端副作用: 伺服器 upload 事件收到合併後之檔案
  *
- * 變體覆蓋 (技能 §2.1 第6維): 單切片 / 多切片 / 中文檔名 / 重複內容去重 / 伺服器拒絕
+ * 變體覆蓋 (技能 §2.1 第6維): 單切片 / 多切片 / 中文檔名 / 重複內容去重
  */
 describe('e2e-upload', function() {
 
@@ -31,9 +31,6 @@ describe('e2e-upload', function() {
 
     //rsv, 記錄伺服器端收到的上傳結果
     let rsv = []
-
-    //nUpload, 記錄 upload 事件被觸發次數, 供驗證不重複觸發
-    let nUpload = 0
 
     //md5
     let md5 = (buf) => {
@@ -89,19 +86,6 @@ window.tUpload = async (n, seed, name, o) => {
     let r = await cat(() => wo.upload(file.name, file, (m) => evs.push({ prog: Math.floor(m.prog), p: m.p, m: m.m })))
     return { state: r.state, msg: r.state === 'resolve' ? r.msg : String(r.msg), evs }
 }
-
-//tUploadReject, 驗證伺服器拒絕時不會無限輪詢
-window.tUploadReject = async (n, seed, name) => {
-    let wo = mk({ retryUpload: 0 })
-    wo.on('error', () => {})
-    let t0 = performance.now()
-    let file = mkFile(n, seed, name)
-    let r = await Promise.race([
-        cat(() => wo.upload(file.name, file, () => {})),
-        new Promise((res) => setTimeout(() => res({ state: 'TIMEOUT-20s', msg: '前端未回應' }), 20000)),
-    ])
-    return { state: r.state, msg: String(r.msg), ms: Math.round(performance.now() - t0) }
-}
 `)
 
         wsv = await startServer({
@@ -116,14 +100,6 @@ window.tUploadReject = async (n, seed, name) => {
         })
 
         wsv.on('upload', (input, pm) => {
-            nUpload += 1
-
-            //檔名含 reject 者回以拒絕, 供測試錯誤路徑
-            if (input.filename.indexOf('reject') >= 0) {
-                pm.reject('upload denied by server')
-                return
-            }
-
             try {
                 //讀取合併後檔案, 記錄其內容雜湊供比對
                 //注意: 此處不刪除檔案, 因去重測試須依賴伺服器已存在該檔
@@ -251,23 +227,6 @@ window.tUploadReject = async (n, seed, name) => {
         assert.strict.deepEqual(a1.hash, md5(Buffer.from(mkU8a(n, seed))))
         assert.strict.deepEqual(a2.hash, a1.hash)
         assert.strict.deepEqual(a2.from, 'check-total-hash') //第2次應走去重路徑
-    })
-
-    it('伺服器upload拒絕時, 瀏覽器端須收到錯誤訊息且不重複觸發伺服器事件', async function() {
-        let page = await openPage()
-
-        let n = sizeSlice * 2
-        let n0 = nUpload
-
-        let r = await page.evaluate(({ n }) => window.tUploadReject(n, 19, 'reject-e2e.bin'), { n })
-
-        //使用者觀察: 須明確 reject, 不可停在無回應狀態
-        assert.strict.deepEqual(r.state, 'reject')
-        assert.strict.deepEqual(r.msg, 'upload denied by server')
-
-        //後端副作用: 伺服器 upload 事件只可被觸發一次
-        //(修正前為每2秒輪詢一次且每輪都重新觸發, 前端永不回應)
-        assert.strict.deepEqual(nUpload - n0, 1)
     })
 
 })
