@@ -3,15 +3,15 @@
   "version": "2.0.88",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
-    "@hapi/hapi": "^21.4.9",
+    "@hapi/hapi": "^21.4.10",
     "@hapi/inert": "^7.1.2",
-    "axios": "^1.18.1",
-    "wsemi": "^1.8.85"
+    "axios": "^1.20.0",
+    "wsemi": "^1.8.86"
   },
   "devDependencies": {
     "form-data": "^4.0.6",
     "playwright": "^1.63.0",
-    "w-package-tools": "^1.1.15"
+    "w-package-tools": "^1.1.16"
   },
   "scripts": {
     "@hapi/hapi": "^20.2.1",
