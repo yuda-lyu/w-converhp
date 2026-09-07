@@ -108,10 +108,9 @@ describe('api-uploadMergeFail', function() {
         let r = await pollUntilSettled(queueId, 10000)
         assert.strict.deepEqual(r.state, 'error', JSON.stringify(r))
 
-        //原因須附上, 前綴為固定契約, 其後為底層錯誤
-        assert.strict.deepEqual(w.isestr(r.msg), true)
-        assert.strict.deepEqual(r.msg.indexOf('merge slices failed: ') === 0, true, r.msg)
-        assert.strict.deepEqual(r.msg.length > 'merge slices failed: '.length, true, r.msg)
+        //對外訊息為固定字串, 不含伺服器路徑與底層細節(細節以伺服器 error 事件通知, 由 api-pathTraversal 驗)
+        assert.strict.deepEqual(r.msg, 'merge slices failed')
+        assert.strict.deepEqual(Object.keys(r).indexOf('reason') < 0 && Object.keys(r).indexOf('path') < 0, true, JSON.stringify(r))
 
         //伺服器: 失敗態存在、成功態不存在, upload 事件不得被觸發
         assert.strict.deepEqual(fs.existsSync(path.resolve(pathUploadTemp, `${hash}.error`)), true)
@@ -170,8 +169,9 @@ describe('api-uploadMergeFail', function() {
         let nUpload0 = nUpload
         let r = await pollUntilSettled(queueId, 10000, hash2)
         assert.strict.deepEqual(r.state, 'error', JSON.stringify(r))
-        assert.strict.deepEqual(w.isestr(r.msg) && r.msg.indexOf('merge slices failed: ') === 0, true, r.msg)
-        assert.strict.deepEqual(r.msg.length > 'merge slices failed: '.length, true, r.msg)
+        //對外訊息為固定字串, 不含伺服器路徑與底層細節(細節以伺服器 error 事件通知, 由 api-pathTraversal 驗)
+        assert.strict.deepEqual(r.msg, 'merge slices failed')
+        assert.strict.deepEqual(Object.keys(r).indexOf('reason') < 0 && Object.keys(r).indexOf('path') < 0, true, JSON.stringify(r))
 
         assert.strict.deepEqual(fs.existsSync(path.resolve(pathUploadTemp, `${hash2}.error`)), true)
         assert.strict.deepEqual(fs.existsSync(path.resolve(pathUploadTemp, `${hash2}.done`)), false)

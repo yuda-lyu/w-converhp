@@ -23,6 +23,7 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
+import isSafeId from './isSafeId.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
@@ -696,8 +697,8 @@ function WConverhpServer(opt = {}) {
             let fileHash = get(req, 'payload.fileHash', '')
             // console.log(mode, 'fileHash', fileHash)
 
-            //check
-            if (!isestr(fileHash)) {
+            //check, fileHash會參與pathUploadTemp下之路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
+            if (!isSafeId(fileHash)) {
                 // console.log('invalid fileHash in payload')
                 return responseU8aStreamWithError(res, 'invalid fileHash in payload')
             }
@@ -742,6 +743,9 @@ function WConverhpServer(opt = {}) {
 
                     }
 
+                    //path, 為伺服器絕對路徑, 僅供上方procUpload使用, 不回傳前端(前端未使用, 且會外洩伺服器目錄結構)
+                    delete out.path
+
                 }
                 else if (mode === 'check-slices-hash') {
 
@@ -782,13 +786,17 @@ function WConverhpServer(opt = {}) {
                     //mmg.get
                     let r = mmg.get(queueId, pathUploadTemp)
 
-                    //out
+                    //out, r.path為伺服器絕對路徑, 僅供下方procUpload使用, 不回傳前端
                     out = {
                         state: r.state,
-                        msg: r.msg, //state為'error'時會於msg提供錯誤訊息
+                        msg: r.msg, //state為'error'時會於msg提供錯誤訊息(不含伺服器路徑與底層細節)
                         queueId,
                         filename,
-                        path: r.path,
+                    }
+
+                    //check, 失敗細節(含伺服器路徑)僅以error事件通知應用端, 不回傳前端
+                    if (r.state === 'error' && isestr(r.reason)) {
+                        eeEmit('error', `merge slices failed for fileHash[${fileHash}]: ${r.reason}`)
                     }
 
                     //check
@@ -916,7 +924,7 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid chunkTotal in headers')
             }
             chunkTotal = cint(chunkTotal)
-            if (!isestr(packageId)) {
+            if (!isSafeId(packageId)) { //packageId會參與切片檔路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
                 // console.log('invalid packageId in headers')
                 return responseU8aStreamWithError(res, 'invalid packageId in headers')
             }

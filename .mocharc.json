@@ -1,5 +1,6 @@
 {
     "spec": [
+        "test/unit-*.test.mjs",
         "test/api-*.test.mjs",
         "test/executeWithU8a.test.mjs",
         "test/executeWithFile.test.mjs",

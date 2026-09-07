@@ -23,6 +23,8 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
+import sanitizeFilename from './sanitizeFilename.mjs'
+import isPathInside from './isPathInside.mjs'
 
 
 /**
@@ -359,6 +361,10 @@ function WConverhpClient(opt) {
             //filename
             let filename = getFilenameByHeader(contentDisposition)
             filename = b642str(filename) //headers內對中文支援度不佳須用base64傳, 此處解析提取後須反轉
+
+            //sanitizeFilename, 檔名來自伺服器不可信: 只取最末路徑段並去除非法字元(含可逸出之Windows磁碟機相對路徑 C:x)與保留裝置名,
+            //否則nodejs端存檔會逸出fdDownload(瀏覽器與curl對Content-Disposition皆做同等處理)
+            filename = sanitizeFilename(filename)
             // console.log('filename', filename)
 
             //streamRecv
@@ -391,7 +397,26 @@ function WConverhpClient(opt) {
                     // console.log('fdDownload', fdDownload)
 
                     //fp
-                    let fp = path.resolve(fdDownload, filename)
+                    //fdReal, 以realpath正規化基準資料夾, 消除符號連結造成之路徑歧異(OWASP: 先正規化再做邊界判定)
+                    let fdReal = fs.realpathSync(fdDownload)
+
+                    //fp
+                    let fp = path.resolve(fdReal, filename)
+
+                    //check, 落點須仍在fdDownload之內(檔名已淨化, 此為第二道防線), 以path.relative判定, 不用startsWith(base+sep): 後者於base為磁碟根目錄時誤判
+                    if (!isPathInside(fdReal, fp, path)) {
+                        throw new Error('invalid filename from server')
+                    }
+
+                    //check, 目標已存在且為符號連結則拒絕: createWriteStream會穿過連結寫到其指向處, 預先植入之連結可使寫入逸出資料夾
+                    let st = null
+                    try {
+                        st = fs.lstatSync(fp)
+                    }
+                    catch (err) {}
+                    if (st !== null && st.isSymbolicLink()) {
+                        throw new Error('invalid filename from server')
+                    }
                     // console.log('fp', fp)
 
                     //streamWriter

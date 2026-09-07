@@ -1,11 +1,22 @@
 import path from 'path'
 import fs from 'fs'
+import get from 'lodash-es/get.js'
 import size from 'lodash-es/size.js'
+import isp0int from 'wsemi/src/isp0int.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
+import isSafeId from './isSafeId.mjs'
 
 
 let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
+
+    //check, fileHash會參與路徑組裝, 須為安全識別字(英數字)
+    if (!isSafeId(fileHash)) {
+        let r = {
+            error: 'invalid fileHash',
+        }
+        return r
+    }
 
     //check, 前端須檢核, 若之前已回應無切片, 就不能再調用檢測切片hash的API
     if (size(fileSliceHashs) === 0) {
@@ -28,9 +39,19 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
         //v
         let v = fileSliceHashs[k]
 
+        //check, 切片索引須為非負整數, 否則不視為已確認(略過), 避免非法值參與路徑組裝
+        if (!isp0int(get(v, 'i'))) {
+            continue
+        }
+
         //_pathFile
         let _pathFile = path.resolve(pathUploadTemp, `${fileHash}_${v.i}`)
         // console.log('_pathFile', _pathFile)
+
+        //check, 切片不存在即視為未確認(略過), 不可讓readFileSync拋錯: 其ENOENT訊息含伺服器絕對路徑, 會隨error回應外洩至前端
+        if (!fsIsFile(_pathFile)) {
+            continue
+        }
 
         //_fileHash
         let _fileHash = ''

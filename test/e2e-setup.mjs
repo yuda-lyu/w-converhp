@@ -68,10 +68,10 @@ function buildClientBundle() {
         //mkdir
         fs.mkdirSync(fdTmp, { recursive: true })
 
-        //複製現行 src 至 _tmp 後打包, 避免污染 src 資料夾
-        let fpSrc = path.resolve(projRoot, 'src', 'WConverhpClient.mjs')
+        //於 _tmp 產生 re-export 入口後打包, 不複製 src 檔案: 複製會使 client 內之相對 import(./isPathInside.mjs 等)於 _tmp 解析不到;
+        //入口檔名決定 UMD 之全域名, 故沿用 nameBundle
         let fnTmp = `${nameBundle}.mjs`
-        fs.copyFileSync(fpSrc, path.resolve(fdTmp, fnTmp))
+        fs.writeFileSync(path.resolve(fdTmp, fnTmp), `export { default } from '../../src/WConverhpClient.mjs'\n`, 'utf8')
 
         //rollup, runin 須為 browser, 與 toolg/gDistRollup.mjs 之 client 設定一致
         await rollupFile({

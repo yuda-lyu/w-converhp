@@ -7,6 +7,7 @@ import sep from 'wsemi/src/sep.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
+import isSafeId from './isSafeId.mjs'
 // import mergeSlices from './mergeSlices.mjs'
 import mergeSlices from './mergeSlices.wk.umd.js'
 
@@ -61,15 +62,16 @@ let qGet = (id, pathUploadTemp) => {
         }
     }
 
-    //fileHash
+    //fileHash, 自前端回傳之id解析, 會參與路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
     let s = sep(id, '|')
     let fileHash = get(s, 2, '')
-    if (!isestr(fileHash)) {
-        errTemp = `can not find fileHash in id[${id}]`
+    if (!isSafeId(fileHash)) {
+        errTemp = `invalid fileHash in id[${id}]`
         console.log(errTemp)
         return {
             state: 'error',
-            msg: errTemp,
+            msg: 'invalid queueId', //不回傳細節
+            reason: errTemp,
             path: '',
         }
     }
@@ -92,7 +94,8 @@ let qGet = (id, pathUploadTemp) => {
         catch (e) {}
         return {
             state: 'error',
-            msg: `merge slices failed: ${msg}`,
+            msg: 'merge slices failed', //不含路徑與底層細節(底層訊息含伺服器絕對路徑), 細節置於reason供伺服器端以error事件通知應用端
+            reason: msg,
             path: fp,
         }
     }
