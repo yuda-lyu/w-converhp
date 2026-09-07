@@ -79,7 +79,6 @@ await rollupFile({
         'stream': 'stream',
         '@hapi/hapi': '@hapi/hapi',
         '@hapi/inert': '@hapi/inert',
-        // 'form-data': 'FormData',
     },
     external: [
         'worker_threads',
@@ -88,7 +87,6 @@ await rollupFile({
         'stream',
         '@hapi/hapi',
         '@hapi/inert',
-        // 'form-data',
     ],
     runin: 'nodejs',
 })
@@ -105,7 +103,6 @@ await rollupFile({
         'stream': 'stream',
         '@hapi/hapi': '@hapi/hapi',
         '@hapi/inert': '@hapi/inert',
-        // 'form-data': 'FormData',
     },
     external: [
         'worker_threads',
@@ -114,7 +111,6 @@ await rollupFile({
         'stream',
         '@hapi/hapi',
         '@hapi/inert',
-        // 'form-data',
     ],
     runin: 'browser',
 })

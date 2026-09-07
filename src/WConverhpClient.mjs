@@ -46,13 +46,11 @@ import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
  * import fs from 'fs'
  * import _ from 'lodash-es'
  * import w from 'wsemi'
- * import FormData from 'form-data'
  * import WConverhpClient from './src/WConverhpClient.mjs'
  *
  * let ms = []
  *
  * let opt = {
- *     FormData,
  *     url: 'http://localhost:8080',
  *     apiName: 'api',
  *     getToken: () => {
@@ -246,7 +244,7 @@ function WConverhpClient(opt) {
 
         //dataType
         let dataType = get(opt, 'dataType', '')
-        if (dataType !== 'blob' && dataType !== 'fmd' && dataType !== 'json') {
+        if (dataType !== 'blob' && dataType !== 'json') {
             dataType = 'blob'
         }
         // console.log('dataType', dataType)
@@ -281,43 +279,6 @@ function WConverhpClient(opt) {
 
             //set dd
             dd = pkg
-
-        }
-        else if (dataType === 'fmd') {
-
-            //fmd
-            let fmd
-            if (env === 'browser') {
-                fmd = new FormData()
-            }
-            else {
-                if (isfun(opt.FormData)) {
-                    fmd = new opt.FormData({ maxDataSize: 1024 * 1024 * 1024 * 1024 }) //nodejs, 使用套件form-data設定資料量最大為1tb
-                }
-                else {
-                    // console.log(`invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
-                    eeEmit('error', `invalid opt.FormData, need [npm i form-data] and [import FormData from 'form-data'] to set opt.FormData = FormData`)
-                    throw new Error('invalid opt.FormData')
-                }
-            }
-
-            //append
-            fmd.append('bb', pkg)
-            // console.log('fmd', fmd)
-
-            //set ct
-            if (env === 'nodejs') {
-                ct = {
-                    'Content-Type': `multipart/form-data; boundary=${fmd.getBoundary()}` //nodejs, 使用套件form-data需設定boundary
-                }
-                // console.log('ct', ct)
-            }
-            else {
-                //browser會自動根據fmd的邊界boundary來設定
-            }
-
-            //set dd
-            dd = fmd
 
         }
         else if (dataType === 'json') {

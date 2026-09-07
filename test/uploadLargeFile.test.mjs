@@ -72,7 +72,6 @@ describe('uploadLargeFile', function() {
     let runClient = () => {
 
         let opt = {
-            FormData,
             url: 'http://localhost:8082', //同時test故得要不同port
             apiName: 'api',
             getToken: () => {

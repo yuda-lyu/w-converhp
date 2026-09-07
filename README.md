@@ -165,13 +165,11 @@ setTimeout(() => {
 #### Example for w-converhp-client in nodejs:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-converhp/blob/master/scla.mjs)]
 ```alias
-import FormData from 'form-data'
 import WConverhpClient from './src/WConverhpClient.mjs'
 
 let ms = []
 
 let opt = {
-    FormData,
     url: 'http://localhost:8080',
     apiName: 'api',
     getToken: () => {
@@ -229,7 +227,6 @@ Add script for w-converhp-client.
 ```alias
 
 let opt = {
-    // FormData, //使用瀏覽器內建FormData, 非後端不須另外提供
     url: 'http://localhost:8080',
     apiName: 'api',
 }

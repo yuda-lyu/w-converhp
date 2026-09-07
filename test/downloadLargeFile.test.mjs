@@ -95,7 +95,6 @@ describe('downloadLargeFile', function() {
         // let ms = []
 
         let opt = {
-            FormData,
             url: 'http://localhost:8083', //同時test故得要不同port
             apiName: 'api',
             getToken: () => {

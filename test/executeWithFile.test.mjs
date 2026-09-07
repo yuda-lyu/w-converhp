@@ -90,7 +90,6 @@ describe('executeWithFile', function() {
         // let ms = []
 
         let opt = {
-            FormData,
             url: 'http://localhost:8081', //'http://localhost:8080', //同時test故得要不同port
             apiName: 'api',
             getToken: () => {

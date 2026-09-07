@@ -88,7 +88,6 @@ describe('executeWithU8a', function() {
         // let ms = []
 
         let opt = {
-            FormData,
             url: 'http://localhost:8080',
             apiName: 'api',
             getToken: () => {

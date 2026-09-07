@@ -2,14 +2,12 @@ import path from 'path'
 import fs from 'fs'
 import _ from 'lodash-es'
 import w from 'wsemi'
-import FormData from 'form-data'
 import WConverhpClient from './src/WConverhpClient.mjs'
 
 
 let ms = []
 
 let opt = {
-    FormData,
     url: 'http://localhost:8080',
     apiName: 'api',
     getToken: () => {
