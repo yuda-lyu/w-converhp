@@ -1121,8 +1121,9 @@ function WConverhpClient(opt) {
             let urlUse = getUrlUse('download-get')
             // console.log('urlUse', urlUse)
 
-            //url
-            let url = `${urlUse}?fileId=${fileId}&token=${token}`
+            //url, fileId與token皆須encodeURIComponent: 含&或#會截斷query(#更會連token一起丟), 含+會被伺服器解析為空白(base64型token常見),
+            //其他路由的token走Authorization header不受影響, 唯獨此處走query string
+            let url = `${urlUse}?fileId=${encodeURIComponent(fileId)}&token=${encodeURIComponent(token)}`
             // console.log('url', url)
 
             //透過a元素打url下載, 讓瀏覽器認定為直接下載模式, 由瀏覽器展示下載進度與排入正在下載清單

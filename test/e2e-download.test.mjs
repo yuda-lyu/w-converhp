@@ -33,6 +33,9 @@ describe('e2e-download', function() {
     //rsv, 記錄伺服器端收到的下載請求
     let rsv = []
 
+    //auths, 記錄 /dwgf 之 verifyConn 實際收到的授權字串與 fileId(皆來自 client 組出的 query)
+    let auths = []
+
     //md5File
     let md5File = (fp) => {
         return crypto.createHash('md5').update(fs.readFileSync(fp)).digest('hex')
@@ -90,7 +93,11 @@ window.tDownloadManager = async (fileId, o) => {
         wsv = await startServer({
             port,
             apiName: 'api',
-            verifyConn: async({ authorization }) => {
+            verifyConn: async({ apiType, authorization, query }) => {
+                //記錄 /dwgf 實際收到的授權字串與 fileId, 供驗證 client 組 URL 時有正確 encode
+                if (apiType === 'download-get-file') {
+                    auths.push({ authorization, fileId: (query || {}).fileId })
+                }
                 let token = w.strdelleft(authorization, 7) //刪除 Bearer
                 return w.isestr(token)
             },
@@ -272,6 +279,46 @@ window.tDownloadManager = async (fileId, o) => {
 
         assert.strict.deepEqual(rsv.length, n0 + 1)
         assert.strict.deepEqual(rsv[rsv.length - 1], { fileId: 'ascii', token: 'token-for-test' })
+    })
+
+    it('downloadByManager=true時, fileId 含 & # + 空白 亦須原樣送達伺服器且下載成功', async function() {
+        let page = await openPage()
+        let fileId = 'a&b#c d+e'
+        auths = []
+        let n0 = rsv.length
+
+        let pmDownload = page.waitForEvent('download', { timeout: 60000 })
+        let r = await page.evaluate((fileId) => window.tDownloadManager(fileId), fileId)
+        assert.strict.deepEqual(r.state, 'resolve')
+
+        let download = await pmDownload
+        let fpOut = path.resolve(projRoot, 'test', '_tmp', 'dl-manager-special.7z')
+        await download.saveAs(fpOut)
+        assert.strict.deepEqual(md5File(fpOut), md5File(fpSrc))
+
+        //伺服器 download 事件於 /dwgfn 與 /dwgf 各觸發一次, 兩次收到的 fileId 皆須原樣
+        //(修正前 /dwgf 之 fileId 會在 & 或 # 處被截斷)
+        assert.strict.deepEqual(rsv.slice(n0).map((v) => v.fileId), [fileId, fileId])
+
+        //verifyConn 於 /dwgf 收到的 fileId 亦須原樣
+        assert.strict.deepEqual(auths.map((v) => v.fileId), [fileId])
+    })
+
+    it('downloadByManager=true時, token 含 + 與 = 亦須原樣送達伺服器', async function() {
+        let page = await openPage()
+        let token = 'abc+def=='
+        auths = []
+
+        let pmDownload = page.waitForEvent('download', { timeout: 60000 })
+        let r = await page.evaluate((token) => window.tDownloadManager('ascii', { getToken: () => token }), token)
+        assert.strict.deepEqual(r.state, 'resolve')
+        await pmDownload
+
+        //verifyConn 於 /dwgf 收到的授權字串須為 Bearer + 原始 token(修正前 + 會被解析成空白, base64 型 token 會因此被拒)
+        assert.strict.deepEqual(auths.map((v) => v.authorization), [`Bearer ${token}`])
+
+        //伺服器 download 事件(/dwgf 那次, 其 token 取自 query)收到的 token 亦須原樣
+        assert.strict.deepEqual(rsv[rsv.length - 1].token, token)
     })
 
 })
