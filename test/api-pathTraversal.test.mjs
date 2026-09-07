@@ -234,14 +234,20 @@ describe('api-pathTraversal', function() {
             let fpOutside = path.resolve(fdSand, 'target-outside.bin')
             fs.writeFileSync(fpOutside, 'ORIGINAL', 'utf8')
             let fpLink = path.resolve(fdDownload, 'planted.bin')
+            let fdOutside = path.resolve(fdSand, 'target-outside-dir')
+
+            //建立指向資料夾外之符號連結: Windows 建立檔案符號連結需特權或開發人員模式, 失敗時改用 junction(目錄型 reparse point, 不需特權);
+            //Node 之 lstat 對 junction 亦回報 isSymbolicLink=true, 與檔案符號連結走 client 同一條拒絕判斷
+            let bJunction = false
             try {
                 fs.symlinkSync(fpOutside, fpLink, 'file')
             }
             catch (err) {
-                //Windows 建立符號連結需權限或開發人員模式, 無法建立時本案例不適用
-                fs.rmSync(fpOutside, { force: true })
-                this.skip()
+                fs.mkdirSync(fdOutside, { recursive: true })
+                fs.symlinkSync(fdOutside, fpLink, 'junction')
+                bJunction = true
             }
+            assert.strict.deepEqual(fs.lstatSync(fpLink).isSymbolicLink(), true)
 
             let msg = null
             try {
@@ -251,11 +257,21 @@ describe('api-pathTraversal', function() {
                 msg = err
             }
 
-            //須拒絕, 且資料夾外之目標內容不得被改寫
+            //須以 client 之判斷拒絕(而非 EISDIR 等其他錯誤), 且資料夾外之目標不得被改寫或寫入
             assert.strict.deepEqual(msg, 'invalid filename from server')
             assert.strict.deepEqual(fs.readFileSync(fpOutside, 'utf8'), 'ORIGINAL')
+            if (bJunction) {
+                assert.strict.deepEqual(fs.readdirSync(fdOutside), [])
+            }
 
-            fs.rmSync(fpLink, { force: true })
+            //清理: junction 須以 rmdir 移除(只移除連結本身, 不動目標)
+            if (bJunction) {
+                fs.rmdirSync(fpLink)
+                fs.rmSync(fdOutside, { recursive: true, force: true })
+            }
+            else {
+                fs.rmSync(fpLink, { force: true })
+            }
             fs.rmSync(fpOutside, { force: true })
         })
 

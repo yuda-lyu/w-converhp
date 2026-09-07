@@ -36,12 +36,12 @@ describe('api-verifyConnError', function() {
     //routes, 六個路由之最小合法請求
     let routes = () => {
         return [
-            { name: '/main', apiType: 'main', url: `${base}/main`, method: 'POST', ct: 'application/octet-stream', body: Buffer.from(w.obj2u8arr({ func: 'ok', input: {} })) },
-            { name: '/ulctr', apiType: 'upload-controller', url: `${base}/ulctr`, method: 'POST', ct: 'application/json', body: JSON.stringify({ mode: 'check-total-hash', fileHash: 'a1b2c3d4e5f60718', filename: 'a', fileSize: 1 }) },
-            { name: '/slc', apiType: 'upload-slice', url: `${base}/slc`, method: 'POST', ct: 'application/octet-stream', body: Buffer.from('x'), extra: { 'chunk-index': '0', 'chunk-total': '1', 'package-id': 'a1b2c3d4e5f60718' } },
-            { name: '/dwgfn', apiType: 'download-get-filename', url: `${base}/dwgfn`, method: 'POST', ct: 'application/json', body: JSON.stringify({ fileId: 'a' }) },
-            { name: '/dw', apiType: 'download', url: `${base}/dw`, method: 'POST', ct: 'application/json', body: JSON.stringify({ fileId: 'a' }) },
-            { name: '/dwgf', apiType: 'download-get-file', url: `${base}/dwgf?fileId=a&token=t`, method: 'GET' },
+            { name: '/main', apiType: 'main', api: 'apiMain', url: `${base}/main`, method: 'POST', ct: 'application/octet-stream', body: Buffer.from(w.obj2u8arr({ func: 'ok', input: {} })) },
+            { name: '/ulctr', apiType: 'upload-controller', api: 'apiUploadCheck', url: `${base}/ulctr`, method: 'POST', ct: 'application/json', body: JSON.stringify({ mode: 'check-total-hash', fileHash: 'a1b2c3d4e5f60718', filename: 'a', fileSize: 1 }) },
+            { name: '/slc', apiType: 'upload-slice', api: 'apiUploadSlice', url: `${base}/slc`, method: 'POST', ct: 'application/octet-stream', body: Buffer.from('x'), extra: { 'chunk-index': '0', 'chunk-total': '1', 'package-id': 'a1b2c3d4e5f60718' } },
+            { name: '/dwgfn', apiType: 'download-get-filename', api: 'apiDownloadGetFilename', url: `${base}/dwgfn`, method: 'POST', ct: 'application/json', body: JSON.stringify({ fileId: 'a' }) },
+            { name: '/dw', apiType: 'download', api: 'apiDownload', url: `${base}/dw`, method: 'POST', ct: 'application/json', body: JSON.stringify({ fileId: 'a' }) },
+            { name: '/dwgf', apiType: 'download-get-file', api: 'apiDownloadGetFile', url: `${base}/dwgf?fileId=a&token=t`, method: 'GET' },
         ]
     }
 
@@ -117,8 +117,8 @@ describe('api-verifyConnError', function() {
             assert.strict.notDeepEqual((r.body || {}).error, 'permission denied', rt.name)
         }
         await w.delay(100) //eeEmit 為 setTimeout 發送
-        //六個路由都須真的走到授權之後(handler 事件僅於放行後 emit), 且不得有任何 error 事件
-        assert.strict.deepEqual(handled.length, 6, JSON.stringify(handled))
+        //六個路由都須真的走到授權之後(handler 事件僅於放行後 emit), 且各路由之 handler 標籤須正確(應用端靠它分辨路由), 不得有任何 error 事件
+        assert.strict.deepEqual([...handled].sort(), routes().map((rt) => rt.api).sort())
         assert.strict.deepEqual(errs, [])
     })
 

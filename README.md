@@ -37,6 +37,7 @@ let opt = {
     port: 8080,
     apiName: 'api',
     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
+    maxBytesMain: 100 * 1024 * 1024, //execute所用API(/main)之請求本體上限, 預設100mb; 該路由須整包讀入記憶體(約為本體5至6倍), 大檔案請改用upload
     verifyConn: async ({ apiType, authorization, headers, query }) => {
         console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
         let token = w.strdelleft(authorization, 7) //刪除Bearer
@@ -281,7 +282,8 @@ function executeWithU8a() {
 function executeWithFile() {
     let core = async()=>{
 
-        let msg = await wsemi.domShowInputAndGetFiles({ sizeMbLimit: 100*1000 }) //100g
+        //execute會把整個檔案讀入伺服器記憶體再處理, 上限由伺服器opt.maxBytesMain決定(預設100mb), 更大的檔案請改用uploadLargeFile(切片上傳)
+        let msg = await wsemi.domShowInputAndGetFiles({ sizeMbLimit: 100 }) //100mb
         console.log('domShowInputAndGetFiles msg',msg)
 
         //check
