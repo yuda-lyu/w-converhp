@@ -13,11 +13,9 @@
     "w-package-tools": "^1.1.16"
   },
   "scripts": {
-    "@hapi/hapi": "^20.2.1",
-    "@hapi/inert": "^6.0.5",
     "test": "mocha --parallel --timeout 60000",
-    "deploy": "gh-pages -d docs",
-    "test:e2e": "mocha --no-config --timeout 180000 test/e2e-*.test.mjs"
+    "test:e2e": "mocha --no-config --timeout 180000 test/e2e-*.test.mjs",
+    "deploy": "gh-pages -d docs"
   },
   "repository": {
     "type": "git",

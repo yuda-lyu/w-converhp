@@ -48,7 +48,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
- * @param {Integer} [opt.maxBytesMain=100*1024*1024] 輸入execute所用API(/main)可接受之請求本體大小上限整數，單位為Byte，預設為100*1024*1024。因/main須將整個本體讀入記憶體並反序列化，伺服器記憶體用量約為本體之5至6倍，超過上限會回應413且不觸發execute事件；大檔案請改用upload
+ * @param {Integer} [opt.sizeMsg=100*1024*1024] 輸入單次請求本體大小上限整數，單位為Byte，預設為100*1024*1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發事件；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
@@ -67,7 +67,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  *     port: 8080,
  *     apiName: 'api',
  *     pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
- *     maxBytesMain: 100 * 1024 * 1024, //execute所用API(/main)之請求本體上限, 預設100mb; 該路由須整包讀入記憶體(約為本體5至6倍), 大檔案請改用upload
+ *     sizeMsg: 100 * 1024 * 1024, //單次請求本體上限, 預設100mb, 適用於除切片(/slc)外之各API; 切片單次上限為sizeSlice, 大檔案總大小不受限, 請改用upload
  *     verifyConn: async ({ apiType, authorization, query, headers, req }) => {
  *         console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
  *         let token = w.strdelleft(authorization, 7) //刪除Bearer
@@ -239,12 +239,12 @@ function WConverhpServer(opt = {}) {
         sizeSlice = 1024 * 1024 //1m
     }
 
-    //maxBytesMain, /main之請求本體上限
-    //why: /main須整包讀入記憶體再反序列化(實測記憶體約為本體5至6倍), 上限若給到遠超RAM之值(原為1tb), 單一請求即可令整個行程OOM;
-    //大檔本就應走切片上傳(/slc為串流直接落地, 不緩衝)
-    let maxBytesMain = get(opt, 'maxBytesMain')
-    if (!ispint(maxBytesMain)) {
-        maxBytesMain = 100 * 1024 * 1024 //100m
+    //sizeMsg, 單次請求本體上限, 適用於除切片(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)
+    //why: 此類請求須整包讀入記憶體再反序列化(/main實測記憶體約為本體5至6倍), 上限若給到遠超RAM之值(原為1tb), 單一請求即可令整個行程OOM;
+    //切片(/slc)為串流直接落地不緩衝, 其單次上限為sizeSlice; 大檔本就應走切片上傳, 總大小不受此限制
+    let sizeMsg = get(opt, 'sizeMsg')
+    if (!ispint(sizeMsg)) {
+        sizeMsg = 100 * 1024 * 1024 //100m
     }
 
     //verifyConn
@@ -492,7 +492,7 @@ function WConverhpServer(opt = {}) {
         method: 'POST',
         options: {
             payload: {
-                maxBytes: maxBytesMain, //hapi預設1mb; 本路由整包緩衝, 上限須誠實反映記憶體能力, 由opt.maxBytesMain設定(預設100mb)
+                maxBytes: sizeMsg, //hapi預設1mb; 本路由整包緩衝, 上限須誠實反映記憶體能力, 由opt.sizeMsg設定(預設100mb)
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 output: 'stream', //代表前端用stream傳至伺服器(Content-Type為application/octet-stream)
@@ -563,7 +563,7 @@ function WConverhpServer(opt = {}) {
                         //check, 超限後不再緩衝, 但持續讀完剩餘本體(丟棄)而不destroy請求串流: destroy會使hapi視為請求中止而直接斷線, 413回不到前端;
                         //讀完於end才回413, 記憶體仍受保護(不再累積), 且前端必收到明確回應
                         nReceived += chunk.length
-                        if (nReceived > maxBytesMain) {
+                        if (nReceived > sizeMsg) {
                             chunks = []
                             bOver = true
                             cb()
@@ -632,10 +632,10 @@ function WConverhpServer(opt = {}) {
             }
             catch (err) {
 
-                //check, 超過maxBytesMain(無Content-Length之本體由receive自行計數攔截), 比照hapi對有Content-Length者之處置回413,
+                //check, 超過sizeMsg(無Content-Length之本體由receive自行計數攔截), 比照hapi對有Content-Length者之處置回413,
                 //使前端不論送法皆收到同一種結果(Payload Too Large), 且不觸發execute事件
                 if (err === 'payload too large') {
-                    return res.response({ statusCode: 413, error: 'Request Entity Too Large', message: `Payload content length greater than maximum allowed: ${maxBytesMain}` }).code(413)
+                    return res.response({ statusCode: 413, error: 'Request Entity Too Large', message: `Payload content length greater than maximum allowed: ${sizeMsg}` }).code(413)
                 }
 
                 //其餘(如接收中斷線)維持原行為向外拋出
@@ -682,7 +682,7 @@ function WConverhpServer(opt = {}) {
         method: 'POST',
         options: {
             payload: {
-                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxBytes: sizeMsg, //控制用JSON(含check-slices-hash之各切片雜湊清單, 每片約36byte), parse:true整包讀入記憶體, 與/main共用上限(預設100mb, 約對應2.7tb檔案), 原為1tb形同無上限
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
@@ -906,7 +906,7 @@ function WConverhpServer(opt = {}) {
         method: 'POST',
         options: {
             payload: {
-                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxBytes: sizeSlice, //單一切片本就不超過sizeSlice(checkTotalHash亦以sizeSlice判定切片是否完整), 前後端sizeSlice須一致; 原為1tb形同無上限
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 output: 'stream', //代表前端用stream傳至伺服器(Content-Type為application/octet-stream)
@@ -989,6 +989,29 @@ function WConverhpServer(opt = {}) {
                 //pm
                 let pm = genPm()
 
+                //nReceived, 自行累計已收位元組
+                //why: 同/main, hapi之maxBytes對output:'stream'僅於請求帶Content-Length時預判, 無Content-Length之chunked本體會繞過;
+                //超限即停止落地(unpipe須早於pipe之data監聽, 故此監聽先註冊)並刪除已寫部分, 持續讀完剩餘本體而不destroy(否則413回不到前端), 於end回413
+                let nReceived = 0
+                let bOver = false
+                req.payload.on('data', (chunk) => {
+                    if (bOver) {
+                        return
+                    }
+                    nReceived += chunk.length
+                    if (nReceived > sizeSlice) {
+                        bOver = true
+                        req.payload.unpipe(streamWrite)
+                        req.payload.resume() //unpipe移除最後一個目的地時Node會自動pause, 須resume才會繼續讀完剩餘本體並觸發end
+                        streamWrite.destroy()
+                    }
+                })
+                streamWrite.on('close', () => {
+                    if (bOver) {
+                        fs.rm(pathFileChunk, { force: true }, () => {}) //待fd關閉後才刪, 否則Windows下會EBUSY
+                    }
+                })
+
                 //pipe
                 req.payload.pipe(streamWrite)
                 // console.log(`receiving chunk[${chunkIndex + 1}/${chunkTotal}]...`)
@@ -996,6 +1019,12 @@ function WConverhpServer(opt = {}) {
                 //end
                 req.payload.on('end', () => {
                     // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] done`)
+
+                    //check, 超限者於此reject, 由handler回413
+                    if (bOver) {
+                        pm.reject('payload too large')
+                        return
+                    }
 
                     //setTimeout, 切片上傳添加延遲處理, 避免佔滿伺服器CPU與流量
                     setTimeout(() => {
@@ -1018,18 +1047,24 @@ function WConverhpServer(opt = {}) {
             let out = {}
             let returnType = ''
             let returnMsg = ''
-            await receive()
-                .then((res) => {
-                    out.success = res
-                    returnType = 'success'
-                    returnMsg = 'need to parse'
-                })
-                .catch((err) => {
-                    out.error = err
-                    returnType = 'error'
-                    returnMsg = 'need to parse'
-                    eeEmit('error', err)
-                })
+            try {
+                let r = await receive()
+                out.success = r
+                returnType = 'success'
+                returnMsg = 'need to parse'
+            }
+            catch (err) {
+
+                //check, 超過sizeSlice(無Content-Length之本體由receive自行計數攔截), 比照hapi對有Content-Length者之處置回413, 使前端不論送法皆收到同一種結果
+                if (err === 'payload too large') {
+                    return res.response({ statusCode: 413, error: 'Request Entity Too Large', message: `Payload content length greater than maximum allowed: ${sizeSlice}` }).code(413)
+                }
+
+                out.error = err
+                returnType = 'error'
+                returnMsg = 'need to parse'
+                eeEmit('error', err)
+            }
             // console.log('out', out)
 
             //u8aOut
@@ -1057,7 +1092,7 @@ function WConverhpServer(opt = {}) {
         method: 'POST',
         options: {
             payload: {
-                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxBytes: sizeMsg, //控制用JSON({fileId}), parse:true整包讀入記憶體, 與/main共用上限, 原為1tb形同無上限
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
@@ -1300,7 +1335,7 @@ function WConverhpServer(opt = {}) {
         method: 'POST',
         options: {
             payload: {
-                maxBytes: 1024 * 1024 * 1024 * 1024, //預設為1mb, 調整至1tb, 也就是給予3次方
+                maxBytes: sizeMsg, //控制用JSON({fileId}), parse:true整包讀入記憶體, 與/main共用上限, 原為1tb形同無上限
                 maxParts: 1000 * 1000 * 1000, //預設為1000, 給予3次方
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',

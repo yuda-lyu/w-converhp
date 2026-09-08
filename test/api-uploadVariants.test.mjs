@@ -196,6 +196,28 @@ describe('api-uploadVariants', function() {
         assert.strict.deepEqual(r1.size, r2.size)
     })
 
+    it('0-byte 檔案上傳後, 伺服器所得須為 0-byte 且雜湊與空內容一致, 進度末值須為100', async function() {
+        let wo = mkClient()
+        wo.on('error', () => {})
+
+        let rec = mkRecorder()
+        let u8a = new Uint8Array(0)
+        let n0 = rsv.length
+        let r = await wo.upload('empty.bin', u8a, rec.cb)
+
+        assert.strict.deepEqual(rsv.length, n0 + 1)
+        let last = rsv[rsv.length - 1]
+        assert.strict.deepEqual(last.filename, 'empty.bin')
+        assert.strict.deepEqual(last.size, 0)
+        assert.strict.deepEqual(last.hash, md5(u8a))
+        assert.strict.deepEqual(r, { filename: 'empty.bin', size: 0 })
+
+        //進度: m皆為upload, 末值須為100
+        assert.strict.deepEqual(rec.evs.length > 0, true)
+        assert.strict.deepEqual([...new Set(rec.evs.map((v) => v.m))], ['upload'])
+        assert.strict.deepEqual(rec.evs[rec.evs.length - 1].prog, 100)
+    })
+
     it('權限驗證失敗時, upload須收到permission denied', async function() {
         let wo = mkClient({ getToken: () => '', retryUpload: 0 })
         wo.on('error', () => {})

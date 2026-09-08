@@ -1,4 +1,6 @@
 import assert from 'assert'
+import fs from 'fs'
+import path from 'path'
 import net from 'net'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
@@ -6,16 +8,21 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 
 
 /**
- * /main(execute)之請求本體上限 opt.maxBytesMain
- *   - 真實 client(帶 Content-Length): 超限 → 'Payload Too Large', execute 事件不觸發; 未超限正常
- *   - chunked 無 Content-Length: hapi 之 maxBytes 不會預判(實測), 伺服器須自行計數 → 413
- *   - 預設值 100MB: 以宣稱 Content-Length 100MB+1 但不送本體之請求驗證(hapi 依標頭預判即 413), 不需真的配置 100MB
+ * 單次請求本體上限
+ *   - /main(execute): opt.sizeMsg
+ *     - 真實 client(帶 Content-Length): 超限 → 'Payload Too Large', execute 事件不觸發; 未超限正常
+ *     - chunked 無 Content-Length: hapi 之 maxBytes 不會預判(實測), 伺服器須自行計數 → 413
+ *     - 預設值 100MB: 以 chunked 50MB 接受 / 100MB u8a 拒絕驗證
+ *   - /ulctr、/dwgfn、/dw(控制用 JSON, parse:true 整包進記憶體): 與 /main 共用 opt.sizeMsg, 超限 → 413(hapi 對 parse:true 於讀取時計數, 不依賴 Content-Length)
+ *   - /slc(切片): 上限為 opt.sizeSlice, 等於 sizeSlice 接受; 超過 → 413 且不得留下切片檔(帶 Content-Length 由 hapi 預判, chunked 由伺服器自行計數)
  */
 describe('api-mainMaxBytes', function() {
 
     let port = 8198 //同時test故得要不同port
     let portDef = 8200 //預設值伺服器(8199 為 api-executeError 之「連線失敗」測試所用, 不可佔用)
     let LIMIT = 1024 * 1024 //測試用上限 1MB
+    let SLICE = 64 * 1024 //測試用切片大小 64KB
+    let pathUploadTemp = './test/_tmp/uploadTemp-api-mainMaxBytes'
     let wsv = null
     let wsvDef = null
 
@@ -28,7 +35,7 @@ describe('api-mainMaxBytes', function() {
     }
 
     //raw, 以 socket 自組 HTTP 請求, 回傳 {status, ms}; 標頭須以空行結束
-    let raw = (p, extraHeaders, chunks) => {
+    let raw = (p, urlPath, ct, extraHeaders, chunks) => {
         return new Promise((resolve) => {
             let t0 = Date.now()
             let buf = ''
@@ -40,7 +47,7 @@ describe('api-mainMaxBytes', function() {
                 }
             }
             let sock = net.connect(p, '127.0.0.1', async() => {
-                sock.write(`POST /api/main HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t\r\nContent-Type: application/octet-stream\r\n${extraHeaders}\r\n\r\n`)
+                sock.write(`POST ${urlPath} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t\r\nContent-Type: ${ct}\r\n${extraHeaders}\r\n\r\n`)
                 for (let c of chunks) {
                     if (!sock.write(c)) {
                         await new Promise((resolve) => sock.once('drain', resolve))
@@ -81,7 +88,7 @@ describe('api-mainMaxBytes', function() {
             pm.resolve({ len: input.u8a ? input.u8a.length : 0 })
         }
 
-        wsv = new WConverhpServer({ port, apiName: 'api', pathStaticFiles: '.', pathUploadTemp: './test/_tmp/uploadTemp-api-mainMaxBytes', maxBytesMain: LIMIT, verifyConn: async() => true })
+        wsv = new WConverhpServer({ port, apiName: 'api', pathStaticFiles: '.', pathUploadTemp, sizeMsg: LIMIT, sizeSlice: SLICE, verifyConn: async() => true })
         wsv.on('execute', onExec)
         wsv.on('error', () => {})
 
@@ -95,6 +102,11 @@ describe('api-mainMaxBytes', function() {
     after(function() {
         wsv.stop()
         wsvDef.stop()
+        try {
+            fs.rmSync(pathUploadTemp, { recursive: true, force: true }) //清除本測試之切片暫存資料夾
+            fs.rmSync(`${pathUploadTemp}-def`, { recursive: true, force: true })
+        }
+        catch (err) {}
     })
 
     //mkClient
@@ -127,7 +139,7 @@ describe('api-mainMaxBytes', function() {
     it('chunked 無 Content-Length 之超限本體亦須回 413(hapi 不預判, 伺服器須自行計數)', async function() {
         this.timeout(20000)
         nExec = 0
-        let r = await raw(port, 'Transfer-Encoding: chunked', toChunked(mkBody(2 * 1024 * 1024), 64 * 1024))
+        let r = await raw(port, '/api/main', 'application/octet-stream', 'Transfer-Encoding: chunked', toChunked(mkBody(2 * 1024 * 1024), 64 * 1024))
         assert.strict.deepEqual(r.status, 413, JSON.stringify(r))
         assert.strict.deepEqual(nExec, 0)
     })
@@ -135,7 +147,7 @@ describe('api-mainMaxBytes', function() {
     it('chunked 無 Content-Length 之未超限本體須正常', async function() {
         this.timeout(20000)
         nExec = 0
-        let r = await raw(port, 'Transfer-Encoding: chunked', toChunked(mkBody(500 * 1024), 64 * 1024))
+        let r = await raw(port, '/api/main', 'application/octet-stream', 'Transfer-Encoding: chunked', toChunked(mkBody(500 * 1024), 64 * 1024))
         assert.strict.deepEqual(r.status, 200, JSON.stringify(r))
         assert.strict.deepEqual(nExec, 1)
     })
@@ -146,7 +158,7 @@ describe('api-mainMaxBytes', function() {
     it('未設定時預設上限須為 100MB: 50MB 之本體須被接受(不得 413)', async function() {
         this.timeout(60000)
         nExec = 0
-        let r = await raw(portDef, 'Transfer-Encoding: chunked', toChunked(mkBody(50 * 1024 * 1024), 256 * 1024))
+        let r = await raw(portDef, '/api/main', 'application/octet-stream', 'Transfer-Encoding: chunked', toChunked(mkBody(50 * 1024 * 1024), 256 * 1024))
         assert.strict.deepEqual(r.status, 200, JSON.stringify(r))
         assert.strict.deepEqual(nExec, 1)
     })
@@ -154,9 +166,80 @@ describe('api-mainMaxBytes', function() {
     it('未設定時預設上限須為 100MB: 100MB u8a 之本體(封包必大於 100MB)須 413 且不觸發 execute', async function() {
         this.timeout(60000)
         nExec = 0
-        let r = await raw(portDef, 'Transfer-Encoding: chunked', toChunked(mkBody(100 * 1024 * 1024), 256 * 1024))
+        let r = await raw(portDef, '/api/main', 'application/octet-stream', 'Transfer-Encoding: chunked', toChunked(mkBody(100 * 1024 * 1024), 256 * 1024))
         assert.strict.deepEqual(r.status, 413, JSON.stringify(r))
         assert.strict.deepEqual(nExec, 0)
+    })
+
+    //mkJson, 帶 Content-Length 之 JSON 本體, 以 pad 撐到指定大小
+    let mkJson = (obj, n) => {
+        let s = JSON.stringify(obj)
+        let pad = 'x'.repeat(Math.max(n - s.length - 12, 0))
+        let b = Buffer.from(JSON.stringify({ ...obj, pad }))
+        return { hd: `Content-Length: ${b.length}`, chunks: [b] }
+    }
+
+    it('/dw 之 JSON 本體超過 sizeMsg 須 413', async function() {
+        let { hd, chunks } = mkJson({ fileId: 'a' }, 2 * 1024 * 1024)
+        let r = await raw(port, '/api/dw', 'application/json', hd, chunks)
+        assert.strict.deepEqual(r.status, 413, JSON.stringify(r))
+    })
+
+    it('/dwgfn 之 JSON 本體超過 sizeMsg 須 413', async function() {
+        let { hd, chunks } = mkJson({ fileId: 'a' }, 2 * 1024 * 1024)
+        let r = await raw(port, '/api/dwgfn', 'application/json', hd, chunks)
+        assert.strict.deepEqual(r.status, 413, JSON.stringify(r))
+    })
+
+    it('/ulctr 之 JSON 本體超過 sizeMsg 須 413; 未超限(500KB 之切片雜湊清單)須被接受', async function() {
+        let fileSliceHashs = []
+        for (let i = 0; i < 15000; i++) { //每筆約34byte, 15000筆約500KB
+            fileSliceHashs.push({ i, h: '0123456789abcdef' })
+        }
+        let body = Buffer.from(JSON.stringify({ mode: 'check-slices-hash', fileHash: 'a1b2c3d4e5f60718', fileSliceHashs }))
+        assert.strict.deepEqual(body.length > 400 * 1024 && body.length < LIMIT, true, `body.length[${body.length}]`)
+        let r1 = await raw(port, '/api/ulctr', 'application/json', `Content-Length: ${body.length}`, [body])
+        assert.strict.deepEqual(r1.status, 200, JSON.stringify(r1))
+
+        let { hd, chunks } = mkJson({ mode: 'check-total-hash', fileHash: 'a1b2c3d4e5f60718' }, 2 * 1024 * 1024)
+        let r2 = await raw(port, '/api/ulctr', 'application/json', hd, chunks)
+        assert.strict.deepEqual(r2.status, 413, JSON.stringify(r2))
+    })
+
+    //slcHeaders, 切片路由所需標頭
+    let slcHeaders = (pkg, extra) => {
+        return `chunk-index: 0\r\nchunk-total: 1\r\npackage-id: ${pkg}\r\n${extra}`
+    }
+
+    it('/slc 切片等於 sizeSlice 須被接受並落地', async function() {
+        let pkg = 'slcok'
+        let fp = path.resolve(pathUploadTemp, `${pkg}_0`)
+        let b = Buffer.alloc(SLICE, 7)
+        let r = await raw(port, '/api/slc', 'application/octet-stream', slcHeaders(pkg, `Content-Length: ${b.length}`), [b])
+        assert.strict.deepEqual(r.status, 200, JSON.stringify(r))
+        await w.delay(300)
+        assert.strict.deepEqual(fs.existsSync(fp), true)
+        assert.strict.deepEqual(fs.statSync(fp).size, SLICE)
+    })
+
+    it('/slc 帶 Content-Length 之切片超過 sizeSlice 須 413 且不得留下切片檔', async function() {
+        let pkg = 'slccl'
+        let fp = path.resolve(pathUploadTemp, `${pkg}_0`)
+        let b = Buffer.alloc(SLICE + 1, 7)
+        let r = await raw(port, '/api/slc', 'application/octet-stream', slcHeaders(pkg, `Content-Length: ${b.length}`), [b])
+        assert.strict.deepEqual(r.status, 413, JSON.stringify(r))
+        await w.delay(300)
+        assert.strict.deepEqual(fs.existsSync(fp), false)
+    })
+
+    it('/slc chunked 無 Content-Length 之切片超過 sizeSlice 亦須 413 且不得留下切片檔(伺服器須自行計數)', async function() {
+        let pkg = 'slcch'
+        let fp = path.resolve(pathUploadTemp, `${pkg}_0`)
+        let b = Buffer.alloc(SLICE * 4, 7)
+        let r = await raw(port, '/api/slc', 'application/octet-stream', slcHeaders(pkg, 'Transfer-Encoding: chunked'), toChunked(b, 16 * 1024))
+        assert.strict.deepEqual(r.status, 413, JSON.stringify(r))
+        await w.delay(300)
+        assert.strict.deepEqual(fs.existsSync(fp), false)
     })
 
 })

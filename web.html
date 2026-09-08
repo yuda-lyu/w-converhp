@@ -84,7 +84,7 @@
             function executeWithFile() {
                 let core = async()=>{
 
-                    //execute會把整個檔案讀入伺服器記憶體再處理, 上限由伺服器opt.maxBytesMain決定(預設100mb), 更大的檔案請改用uploadLargeFile(切片上傳)
+                    //execute會把整個檔案讀入伺服器記憶體再處理, 上限由伺服器opt.sizeMsg決定(預設100mb), 更大的檔案請改用uploadLargeFile(切片上傳)
                     let msg = await wsemi.domShowInputAndGetFiles({ sizeMbLimit: 100 }) //100mb
                     console.log('domShowInputAndGetFiles msg',msg)
 
