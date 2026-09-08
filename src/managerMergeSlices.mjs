@@ -12,19 +12,40 @@ import isSafeId from './isSafeId.mjs'
 import mergeSlices from './mergeSlices.wk.umd.js'
 
 
+//merging, 合併進行中之合併檔路徑集合(記憶體內), 供qPush避免重入; 以路徑為鍵使同行程內多個伺服器實例(不同pathUploadTemp)互不影響; 行程重啟即清空, 已完成者另由.done判定
+let merging = new Set()
+
 //qPush
 let qPush = (fileHash, chunkTotal, pathUploadTemp) => {
 
     //id, 使用fileHash代表不用佇列儲存, 通過id即可解析反查
     let id = `${now2strp()}|${genID(6)}|${fileHash}`
 
-    //fpe, 合併失敗態檔案, 與成功態.done對稱
+    //fp, fpd, fpe, 合併檔、成功態.done、失敗態.error
+    let fp = path.resolve(pathUploadTemp, fileHash)
+    let fpd = path.resolve(pathUploadTemp, `${fileHash}.done`)
     let fpe = path.resolve(pathUploadTemp, `${fileHash}.error`)
 
+    //check, 重入保護: 同一合併檔已在合併中即不再啟動
+    //why: 合併以寫入模式開啟輸出檔, 第二次合併開檔當下就把第一次的結果截斷, 且切片已被第一次合併逐片刪除, 第二次必於第零片失敗而寫.error,
+    //使已完成或進行中的合併被回報為失敗並需整檔重傳; 觸發路徑為push之回應遺失後client重試, 或同檔並發上傳。直接回傳id, 由get走既有判定
+    if (merging.has(fp)) {
+        return id
+    }
+
+    //check, 已完成(合併檔與.done同時存在且無失敗態)亦不再啟動, 理由同上; 有失敗態則屬失敗後補傳再push之正規路徑, 須重新合併
+    let bErr = fsIsFile(fpe)
+    if (!bErr && fsIsFile(fp) && fsIsFile(fpd)) {
+        return id
+    }
+
     //清除前一次合併殘留之失敗態, 否則本次重新合併會被舊的失敗態誤判
-    if (fsIsFile(fpe)) {
+    if (bErr) {
         fsDeleteFile(fpe)
     }
+
+    //merging, 於脫勾前即登記, 使同一tick內之重複push亦被擋下
+    merging.add(fp)
 
     //setTimeout, 脫勾觸發
     setTimeout(() => {
@@ -41,6 +62,9 @@ let qPush = (fileHash, chunkTotal, pathUploadTemp) => {
                     console.log(`can not write ${fpe}`, e)
                 }
 
+            })
+            .finally(() => {
+                merging.delete(fp) //合併結束(不論成敗)才解除, 期間之重複push皆為no-op; 成功者之後由.done擋, 失敗者之後由.error路徑重新合併
             })
     }, 1)
 
