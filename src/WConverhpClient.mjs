@@ -168,8 +168,14 @@ function WConverhpClient(opt) {
     let env = isWindow() ? 'browser' : 'nodejs'
     // console.log('env', env)
 
-    //ee
-    let ee = evem() //new events.EventEmitter()
+    //ee, 採wsemi evem之safe型: 應用端監聽器同步拋錯或async reject一律攔截, 事件為setTimeout派發, 不攔截於nodejs即為uncaughtException/unhandledRejection使行程崩潰(瀏覽器則為console錯誤);
+    //client之事件僅error, 不帶pm, 故自訂funGetListenerError只記錄, 不再發error事件避免遞迴
+    let ee = evem({
+        type: 'safe',
+        funGetListenerError: (name, err) => {
+            console.log(`listener of event[${name}] error`, err)
+        },
+    })
 
     //eeEmit
     let eeEmit = (name, ...args) => {

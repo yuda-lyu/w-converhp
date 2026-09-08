@@ -42,7 +42,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  *
  * @class
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080
+ * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080。埠被占用等啟動失敗時不拋出，以error事件通知
  * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true
  * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
@@ -54,7 +54,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、handler
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。監聽器同步拋錯或async reject皆由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰
  * @example
  *
  * import fs from 'fs'
@@ -307,8 +307,21 @@ function WConverhpServer(opt = {}) {
 
     }
 
-    //ee
-    let ee = evem() //new events.EventEmitter()
+    //ee, 採wsemi evem之safe型: 應用端監聽器同步拋錯或async reject一律攔截, 事件為setTimeout派發, 不攔截即為uncaughtException/unhandledRejection, 整個伺服器行程會崩潰;
+    //不採其預設政策(取args[0].pm), 本套件之pm為execute/upload/download事件之最後一個參數, 故自訂funGetListenerError: 一併reject使前端收到回應而非永久懸置; 細節(含stack)僅以error事件通知應用端, 回前端不含細節
+    let ee = evem({
+        type: 'safe',
+        funGetListenerError: (name, err, args) => {
+            console.log(`listener of event[${name}] error`, err)
+            if (name !== 'error') { //error事件之監聽器出錯不再發error事件, 避免無限遞迴
+                eeEmit('error', `listener of event[${name}] error: ${get(err, 'message', err)}`)
+            }
+            let pm = args[args.length - 1]
+            if (ispm(pm)) {
+                pm.reject(`listener of event[${name}] error`)
+            }
+        },
+    })
 
     //eeEmit
     let eeEmit = (name, ...args) => {
@@ -751,6 +764,17 @@ function WConverhpServer(opt = {}) {
                 return responseU8aStreamWithError(res, 'invalid fileHash in payload')
             }
 
+            //chunkTotal, 從payload接收, 僅merge-slices-push使用
+            //check, chunkTotal決定mergeSlices配置路徑陣列之長度, 須為正整數; 巨大值另由mergeSlices逐片確認存在(缺片即停)兜底, 不會依此值無上限配置而耗盡記憶體
+            let chunkTotal = get(req, 'payload.chunkTotal', '')
+            if (mode === 'merge-slices-push') {
+                if (!ispint(chunkTotal)) {
+                    // console.log('invalid chunkTotal in payload')
+                    return responseU8aStreamWithError(res, 'invalid chunkTotal in payload')
+                }
+                chunkTotal = cint(chunkTotal)
+            }
+
             //procCore
             let procCore = async() => {
                 let out = null
@@ -811,11 +835,7 @@ function WConverhpServer(opt = {}) {
                 }
                 else if (mode === 'merge-slices-push') {
 
-                    //chunkTotal, 從payload接收
-                    let chunkTotal = get(req, 'payload.chunkTotal', '')
-                    // console.log(mode, 'chunkTotal', chunkTotal)
-
-                    //mmg.push
+                    //mmg.push, chunkTotal已於上方檢核為正整數
                     let queueId = mmg.push(fileHash, chunkTotal, pathUploadTemp)
 
                     //out
@@ -1544,6 +1564,11 @@ function WConverhpServer(opt = {}) {
     }
     else {
         startServer()
+            .catch((err) => {
+                //埠被占用(EADDRINUSE)等啟動失敗須攔截: 未await之promise被reject即為unhandledRejection, 整個行程會崩潰且應用端無從得知; 改以error事件通知, 由應用端決定處置
+                console.log(`start server error`, err)
+                eeEmit('error', `start server error: ${get(err, 'message', err)}`)
+            })
     }
 
     //stop
