@@ -89,14 +89,14 @@ describe('api-pathTraversal', function() {
 
     it('S1: /slc 之 package-id 含 ../ 須被拒絕, 且不得在 uploadTemp 之外建檔', async function() {
         let r = await slc('../escapedA', 0, 1, Buffer.from('ESCAPED'))
-        assert.strict.deepEqual(r, { error: 'invalid packageId in headers' })
+        assert.strict.deepEqual(r, { error: 'invalid packageId in headers', retryable: false }) //參數檢核類為可證明不需重試, 封包須標示 retryable:false
         assert.strict.deepEqual(fs.existsSync(path.resolve(fdSand, 'escapedA_0')), false)
         assert.strict.deepEqual(lsEscaped(), [])
     })
 
     it('S2: merge-slices-push 之 fileHash 含 ../ 須被拒絕, 且不得在 uploadTemp 之外產生合併檔或 .done', async function() {
         let r = await ulctr({ mode: 'merge-slices-push', fileHash: '../escapedC', chunkTotal: 1 })
-        assert.strict.deepEqual(r, { error: 'invalid fileHash in payload' })
+        assert.strict.deepEqual(r, { error: 'invalid fileHash in payload', retryable: false })
         await w.delay(300)
         assert.strict.deepEqual(fs.existsSync(path.resolve(fdSand, 'escapedC')), false)
         assert.strict.deepEqual(fs.existsSync(path.resolve(fdSand, 'escapedC.done')), false)
@@ -106,7 +106,7 @@ describe('api-pathTraversal', function() {
     it('S3: check-total-hash 之 fileHash 含 ../ 須被拒絕, 不得探測 uploadTemp 之外的檔案', async function() {
         fs.writeFileSync(path.resolve(fdSand, 'secretB'), 'SECRET', 'utf8')
         let r = await ulctr({ mode: 'check-total-hash', fileHash: '../secretB', filename: 'x', fileSize: 6 })
-        assert.strict.deepEqual(r, { error: 'invalid fileHash in payload' })
+        assert.strict.deepEqual(r, { error: 'invalid fileHash in payload', retryable: false })
         fs.rmSync(path.resolve(fdSand, 'secretB'))
     })
 
@@ -124,7 +124,7 @@ describe('api-pathTraversal', function() {
 
     it('S4: check-slices-hash 之 fileHash 含 ../ 須被拒絕', async function() {
         let r = await ulctr({ mode: 'check-slices-hash', fileHash: '../x', fileSliceHashs: [{ i: 0, h: 'x' }] })
-        assert.strict.deepEqual(r, { error: 'invalid fileHash in payload' })
+        assert.strict.deepEqual(r, { error: 'invalid fileHash in payload', retryable: false })
     })
 
     it('S5: merge-slices-get 以偽造 queueId 夾帶 ../ 時須回 error 且不含路徑', async function() {

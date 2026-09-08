@@ -38,9 +38,9 @@ import isPathInside from './isPathInside.mjs'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止
  * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘
- * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3
- * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10
- * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2
+ * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413
+ * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain
+ * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain
  * @returns {Object} 回傳事件物件，可使用函數execute、upload
  * @example
  *
@@ -182,6 +182,16 @@ function WConverhpClient(opt) {
         setTimeout(() => {
             ee.emit(name, ...args)
         }, 1)
+    }
+
+    //symNoRetry, 標記「可證明不需重試」之錯誤: 伺服器於error封包標示retryable為false(參數檢核類, 結果僅由請求內容決定), 或HTTP 413(本體超過伺服器上限, 上限為伺服器建構參數, 重送同一本體必同一結果且每次重送整包)
+    //以Symbol為鍵避免與伺服器回傳之任意值撞名; 僅於send內部流轉, 交予呼叫端前解包, 呼叫端仍收到原始error值; 其餘(permission denied、應用端reject、斷線等)皆屬狀態不穩, 依重試原則照常重試
+    let symNoRetry = Symbol('noRetry')
+    let isNoRetry = (msg) => {
+        return (isobj(msg) && msg[symNoRetry] === true) || get(msg, 'response.status') === 413
+    }
+    let unwrapNoRetry = (msg) => {
+        return (isobj(msg) && msg[symNoRetry] === true) ? msg.msg : msg
     }
 
     //getUrlUse
@@ -354,8 +364,13 @@ function WConverhpClient(opt) {
             let returnMsg = get(res, `headers['return-msg']`, '')
             // console.log('returnMsg', returnMsg)
 
-            //check
+            //check, 伺服器於標頭標示Return-Retryable為false者為可證明不需重試之錯誤(下載路徑只讀標頭不解析本體; 瀏覽器跨域時若該標頭未被曝露則讀不到, 退回照常重試)
             if (returnType === 'error') {
+                let returnRetryable = get(res, `headers['return-retryable']`, '')
+                if (returnRetryable === 'false') {
+                    pm.reject({ [symNoRetry]: true, msg: returnMsg })
+                    return pm
+                }
                 pm.reject(returnMsg)
                 return pm
             }
@@ -535,6 +550,12 @@ function WConverhpClient(opt) {
             }
             else if (haskey(data, 'error')) {
                 eeEmit('error', data.error)
+
+                //check, 伺服器標示retryable為false者為可證明不需重試之錯誤, 以symNoRetry包裝交由callApi中止重試並解包
+                if (data.retryable === false) {
+                    return Promise.reject({ [symNoRetry]: true, msg: data.error })
+                }
+
                 return Promise.reject(data.error)
             }
             else {
@@ -561,6 +582,11 @@ function WConverhpClient(opt) {
             let n = 0
             while (r.state === 'error') {
 
+                //check, 可證明不需重試者直接中止, 減少無效重試(413每次都重送整包本體)
+                if (isNoRetry(r.msg)) {
+                    break
+                }
+
                 //add
                 n += 1
 
@@ -585,7 +611,7 @@ function WConverhpClient(opt) {
                 return r.msg
             }
             else {
-                return Promise.reject(r.msg)
+                return Promise.reject(unwrapNoRetry(r.msg)) //解包後呼叫端收到原始error值
             }
         }
 
@@ -926,7 +952,19 @@ function WConverhpClient(opt) {
             let queueId = resUpMgp.queueId
             // console.log('queueId', queueId)
 
+            //bBusy, 同一時間只允許一條查詢(含其重試鏈)在途
+            //why: setInterval每2秒固定觸發, 前一次send若仍在retryUpload之退避重試中(伺服器回錯誤封包或斷線皆會進入重試)即再發一條, 多條重試鏈會疊加同時打伺服器,
+            //每條鏈的每次重試都使伺服器重新觸發應用端upload事件(實測預設設定下12秒內觸發16次且遞增), 屬重試資源之多重濫用;
+            //序列化後重試本身不變(每條send仍依retryUpload重試), 斷線續輪詢之設計亦不變, 只是前一條未結束前不再開新的一條
+            let bBusy = false
+
             let t = setInterval(() => {
+
+                //check
+                if (bBusy) {
+                    return
+                }
+                bBusy = true
 
                 //send merge-slices-get
                 // console.log(`send merge-slices-get...`)
@@ -969,6 +1007,9 @@ function WConverhpClient(opt) {
                     .catch(() => {
                         // console.log('merge-slices-get catch')
                         //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態; 此處不可console.log, 斷線期間每2秒會印一次
+                    })
+                    .finally(() => {
+                        bBusy = false //本條查詢(含其重試鏈)已結束, 下一個tick才可再發
                     })
 
             }, 2000)

@@ -479,7 +479,7 @@ function WConverhpServer(opt = {}) {
     }
 
     //responseU8aStreamWithError
-    function responseU8aStreamWithError(res, msg) {
+    function responseU8aStreamWithError(res, msg, opt = {}) {
 
         //check
         if (!isestr(msg)) {
@@ -488,16 +488,33 @@ function WConverhpServer(opt = {}) {
             msg = ''
         }
 
-        //u8aOut
-        let u8aOut = obj2u8arr({
+        //retryable, 預設true; 給false者限「可證明不需重試」之錯誤: 結果僅由client自行建構之請求內容(mode、fileHash、chunkTotal、chunkIndex、packageId、fileId)決定, 重送同一請求必得同一結果;
+        //凡涉及權限(permission denied)、應用端reject、應用端回傳形狀不合、磁碟、網路者皆為狀態不穩, 不得標示, 依重試原則由前端照常重試
+        //標示同時置於封包(供execute/upload/dwgfn之本體解析)與標頭Return-Retryable(供download之串流路徑, 該路徑只讀標頭不解析本體)
+        let retryable = get(opt, 'retryable', true)
+
+        //out
+        let out = {
             error: msg,
-        })
+        }
+        if (retryable === false) {
+            out.retryable = false
+        }
+
+        //u8aOut
+        let u8aOut = obj2u8arr(out)
         // console.log('download u8aOut', u8aOut)
 
         //str2b64
         // msg = str2b64(msg) //預期程式內調用皆為英文, 不須轉base64來支援中文
 
-        return responseU8aStream(res, u8aOut, { returnType: 'error', returnMsg: msg })
+        //r
+        let r = responseU8aStream(res, u8aOut, { returnType: 'error', returnMsg: msg })
+        if (retryable === false) {
+            r.header('Return-Retryable', 'false')
+        }
+
+        return r
     }
 
     //apiMain
@@ -751,7 +768,7 @@ function WConverhpServer(opt = {}) {
             //check
             if (mode !== 'check-total-hash' && mode !== 'check-slices-hash' && mode !== 'merge-slices-push' && mode !== 'merge-slices-get') {
                 // console.log('invalid mode in payload')
-                return responseU8aStreamWithError(res, `invalid mode[${mode}] in payload`)
+                return responseU8aStreamWithError(res, `invalid mode[${mode}] in payload`, { retryable: false })
             }
 
             //fileHash, 從payload接收
@@ -761,7 +778,7 @@ function WConverhpServer(opt = {}) {
             //check, fileHash會參與pathUploadTemp下之路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
             if (!isSafeId(fileHash)) {
                 // console.log('invalid fileHash in payload')
-                return responseU8aStreamWithError(res, 'invalid fileHash in payload')
+                return responseU8aStreamWithError(res, 'invalid fileHash in payload', { retryable: false })
             }
 
             //chunkTotal, 從payload接收, 僅merge-slices-push使用
@@ -770,7 +787,7 @@ function WConverhpServer(opt = {}) {
             if (mode === 'merge-slices-push') {
                 if (!ispint(chunkTotal)) {
                     // console.log('invalid chunkTotal in payload')
-                    return responseU8aStreamWithError(res, 'invalid chunkTotal in payload')
+                    return responseU8aStreamWithError(res, 'invalid chunkTotal in payload', { retryable: false })
                 }
                 chunkTotal = cint(chunkTotal)
             }
@@ -987,17 +1004,17 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isp0int(chunkIndex)) {
                 // console.log('invalid chunkIndex in headers')
-                return responseU8aStreamWithError(res, 'invalid chunkIndex in headers')
+                return responseU8aStreamWithError(res, 'invalid chunkIndex in headers', { retryable: false })
             }
             chunkIndex = cint(chunkIndex)
             if (!isp0int(chunkTotal)) {
                 // console.log('invalid chunkTotal in headers')
-                return responseU8aStreamWithError(res, 'invalid chunkTotal in headers')
+                return responseU8aStreamWithError(res, 'invalid chunkTotal in headers', { retryable: false })
             }
             chunkTotal = cint(chunkTotal)
             if (!isSafeId(packageId)) { //packageId會參與切片檔路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
                 // console.log('invalid packageId in headers')
-                return responseU8aStreamWithError(res, 'invalid packageId in headers')
+                return responseU8aStreamWithError(res, 'invalid packageId in headers', { retryable: false })
             }
 
             //pathFileChunk
@@ -1194,7 +1211,7 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in payload')
-                return responseU8aStreamWithError(res, 'invalid fileId in payload')
+                return responseU8aStreamWithError(res, 'invalid fileId in payload', { retryable: false })
             }
 
             //token, 自authorization提取供外部download事件進行授權檢查
@@ -1317,7 +1334,7 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in query')
-                return responseU8aStreamWithError(res, 'invalid fileId in query')
+                return responseU8aStreamWithError(res, 'invalid fileId in query', { retryable: false })
             }
 
             //inp, token供外部download事件進行授權檢查
@@ -1437,7 +1454,7 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in payload')
-                return responseU8aStreamWithError(res, 'invalid fileId in payload')
+                return responseU8aStreamWithError(res, 'invalid fileId in payload', { retryable: false })
             }
 
             //token, 自authorization提取供外部download事件進行授權檢查
