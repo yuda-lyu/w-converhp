@@ -360,8 +360,9 @@ function WConverhpServer(opt = {}) {
         pmm
             .then((output) => {
 
-                //add output
-                data['output'] = output
+                //add output, 監聽器以pm.resolve()不帶值結束時output為undefined, 序列化(obj2u8arr)會把值為undefined之鍵整個省略, 前端收不到output鍵即判為畸形封包而拒絕(invalid msg.output);
+                //故正規化為null, 此為序列化傳輸能表達之極限, 前端收到null而非錯誤; 舊版前端亦相容(null有鍵)
+                data['output'] = (output === undefined) ? null : output
 
                 //delete input, 因input可能很大故回傳數據不包含原input
                 delete data['input']

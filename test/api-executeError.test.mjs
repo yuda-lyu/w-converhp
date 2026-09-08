@@ -47,6 +47,10 @@ describe('api-executeError', function() {
                 //以物件形式回報錯誤, 測試非字串之錯誤內容亦須能原樣傳到呼叫端
                 pm.reject({ code: 'E42', detail: '錯誤詳情' })
             }
+            else if (func === 'noValue') {
+                //不帶值 resolve, 命令型 handler 之常見寫法
+                pm.resolve()
+            }
             else if (func === 'shapeError') {
                 //以呼叫端指定之任意值reject, 測試各種形狀皆須原樣傳回
                 pm.reject(input.v)
@@ -96,6 +100,13 @@ describe('api-executeError', function() {
         let r = await catchOf(() => wo.execute('nofunc', {}, () => {}))
         assert.strict.deepEqual(r.state, 'reject')
         assert.strict.deepEqual(r.msg, 'invalid func')
+    })
+
+    it('伺服器 execute 以 pm.resolve() 不帶值結束時, 呼叫端須收到 null 而非 invalid msg.output(undefined 之鍵會被序列化省略, 伺服器須正規化為 null)', async function() {
+        let wo = mkClient()
+        wo.on('error', () => {})
+        let r = await catchOf(() => wo.execute('noValue', {}, () => {}))
+        assert.strict.deepEqual(r, { state: 'resolve', msg: null })
     })
 
     it('伺服器以物件形式拒絕時, 呼叫端須收到同一物件', async function() {
