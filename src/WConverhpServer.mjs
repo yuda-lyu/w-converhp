@@ -46,7 +46,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080。埠被占用等啟動失敗時不拋出，以error事件通知
  * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true
  * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
- * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
+ * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'。資料夾內除切片與合併檔外另有狀態標記檔(<fileHash>.done為合併完成、<fileHash>.error為合併失敗、<fileHash>.q<隊列>.ro為該次上傳已由upload事件處理完成之結果)，為合併佇列之狀態載體，前端重送查詢時據以回傳相同結果而不重複觸發upload事件；上傳可能仍在進行時不得刪除，應用端可依修改時間清理確定已結束者
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止
@@ -858,8 +858,8 @@ function WConverhpServer(opt = {}) {
                 }
                 else if (mode === 'merge-slices-push') {
 
-                    //mmg.push, chunkTotal已於上方檢核為正整數
-                    let queueId = mmg.push(fileHash, chunkTotal, pathUploadTemp)
+                    //mmg.push, chunkTotal已於上方檢核為正整數; 合併檔在而.done不在(前次中止)時會先驗證完整性, 故為async
+                    let queueId = await mmg.push(fileHash, chunkTotal, pathUploadTemp)
 
                     //out
                     out = {
@@ -877,43 +877,32 @@ function WConverhpServer(opt = {}) {
                     let queueId = get(req, 'payload.queueId', '')
                     // console.log(mode, 'queueId', queueId)
 
-                    //mmg.get
-                    let r = mmg.get(queueId, pathUploadTemp)
+                    //mmg.get, 狀態判定與消費(呼叫應用端upload事件)皆於managerMergeSlices內依其檔頭狀態表處理, 此處只提供消費函數與記錄函數並組回應;
+                    //首次消費之結果會落地, 同一queueId之重送(回應遺失、逾時)直接回儲存之結果而不再呼叫應用端; 應用端拒絕值由mmg.get原樣向外拋, 經procCore之catch成為error封包送回前端(依重試原則由前端重送)
+                    let r = await mmg.get(queueId, pathUploadTemp, {
+                        funConsume: async(fp) => {
+                            return await procUpload({
+                                from: 'merge-slices-get',
+                                filename,
+                                path: fp, //fp使用path.resolve為絕對路徑
+                            })
+                        },
+                        funLog: (msg) => {
+                            eeEmit('error', msg)
+                        },
+                    })
 
-                    //out, r.path為伺服器絕對路徑, 僅供下方procUpload使用, 不回傳前端
+                    //out, r.path為伺服器絕對路徑, 不回傳前端; state為'success'時msg為應用端之結果(首次消費或儲存之結果), 'error'時為不含伺服器路徑與底層細節之訊息
                     out = {
                         state: r.state,
-                        msg: r.msg, //state為'error'時會於msg提供錯誤訊息(不含伺服器路徑與底層細節)
+                        msg: r.msg,
                         queueId,
                         filename,
                     }
 
-                    //check, 失敗細節(含伺服器路徑)僅以error事件通知應用端, 不回傳前端
+                    //check, 失敗細節(含伺服器路徑)僅以error事件通知應用端, 不回傳前端; 格式為「<msg> for fileHash[...]: <reason>」
                     if (r.state === 'error' && isestr(r.reason)) {
-                        eeEmit('error', `merge slices failed for fileHash[${fileHash}]: ${r.reason}`)
-                    }
-
-                    //check
-                    if (r.state === 'success') {
-
-                        //ri
-                        let ri = {
-                            from: 'merge-slices-get',
-                            filename,
-                            path: r.path, //r.path使用path.resolve為絕對路徑
-                        }
-
-                        //procUpload, 偵測有合併完成大檔, 得調用procUpload讓伺服器攔截函數處理
-                        // console.log('procUpload start')
-                        let ro = await procUpload(ri)
-                        // console.log('procUpload done', ro)
-
-                        //out merge, ro為附加至msg, 前端偵測state為'success'時, 才提取msg使用
-                        out = {
-                            ...out, //state為'success'時out.msg為空字串, 故可直接被ro複寫uot.msg
-                            msg: ro,
-                        }
-
+                        eeEmit('error', `${r.msg} for fileHash[${fileHash}]: ${r.reason}`)
                     }
 
                 }
