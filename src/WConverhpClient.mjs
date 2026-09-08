@@ -403,14 +403,16 @@ function WConverhpClient(opt) {
             }
             else {
 
-                //nodejs通過fs與stream接收檔案, stream出錯只會觸發error事件, 此處try catch為攔截其他非stream程式碼錯誤
+                //nodejs通過fs與stream接收檔案, 串流出錯由pipeline回報, 此處try catch為攔截其他非串流程式碼錯誤(路徑判定、mkdir、lstat)
                 try {
 
-                    //path, fs, 使用動態import供nodejs使用, 須用變數字串給予載入套件, 否則用於前端時會被webpack偵測而報錯
+                    //path, fs, stream, 使用動態import供nodejs使用, 須用變數字串給予載入套件, 否則用於前端時會被webpack偵測而報錯
                     let cImPath = 'path'
                     let cImFs = 'fs'
+                    let cImStream = 'stream'
                     let path = await import(cImPath)
                     let fs = await import(cImFs)
+                    let stream = await import(cImStream)
 
                     //fdDownload, 只有nodejs下載才使用fdDownload
                     let fdDownload = get(opt, 'fdDownload', '')
@@ -443,17 +445,22 @@ function WConverhpClient(opt) {
                     //streamWriter
                     let streamWriter = fs.createWriteStream(fp)
 
-                    //pipe
-                    streamRecv.pipe(streamWriter)
+                    //pipeline, 不用streamRecv.pipe(streamWriter): .pipe()不會因源串流出錯或中途斷線而關閉目的串流, 伺服器串流中途失敗時finish永不發生,
+                    //本promise永不settle(axios之timeout只涵蓋到回應標頭, 不涵蓋串流本體)、寫入fd開啟、殘留部分檔; pipeline對源與目的任一方出錯或提前關閉皆銷毀雙方並回報,
+                    //使失敗能reject而進入send之重試(傳輸不穩須重試, 前提是失敗要被偵測到)
+                    stream.pipeline(streamRecv, streamWriter, (err) => {
+                        if (err) {
 
-                    //finish
-                    streamWriter.on('finish', () => {
+                            //不完整檔須刪除, 否則殘留部分內容會被當成已下載之檔案; 刪除失敗不影響reject(重試會以寫入模式覆蓋)
+                            try {
+                                fs.unlinkSync(fp)
+                            }
+                            catch (e) {}
+
+                            pm.reject(err)
+                            return
+                        }
                         pm.resolve(fp)
-                    })
-
-                    //error
-                    streamWriter.on('error', (err) => {
-                        pm.reject(err)
                     })
 
                 }

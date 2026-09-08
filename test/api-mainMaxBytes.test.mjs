@@ -304,7 +304,8 @@ describe('api-mainMaxBytes', function() {
         assert.strict.deepEqual(r.status, 200, JSON.stringify(r)) //錯誤以本套件之 error 封包回傳, HTTP 狀態仍為 200
         await w.delay(300)
         let ks = errs.filter((v) => typeof v === 'string' && v.indexOf('write chunk[1/1] of packageId[slcwe] error') === 0)
-        assert.strict.deepEqual(ks.length >= 1, true, JSON.stringify(errs))
+        assert.strict.deepEqual(ks.length, 1, JSON.stringify(errs)) //恰一則: 於 streamWrite error 中 emit(含 err.message); 修正前 handler 之 catch 再 emit 一則不含細節者, 同一失敗兩則
+        assert.strict.deepEqual(ks[0].indexOf('error: ') > 0, true, ks[0]) //保留的是含底層訊息那則
         let re = await mkClient(port).execute('echo', { u8a: new Uint8Array(1024) }, () => {})
         assert.strict.deepEqual(re, { len: 1024 })
         assert.strict.deepEqual(nExec, 1)

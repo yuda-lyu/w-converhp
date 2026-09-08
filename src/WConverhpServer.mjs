@@ -1045,8 +1045,13 @@ function WConverhpServer(opt = {}) {
                 //bWriteErr, 寫入失敗(資料夾被清、磁碟滿、權限不足)須攔截: Writable之error無監聽時會拋成未捕捉例外, 整個伺服器行程會崩潰而前端仍收到200
                 //細節(含伺服器路徑)僅以error事件通知應用端, 回前端之訊息不含路徑
                 let bWriteErr = false
+
+                //bAbort, bEnded, 前端中斷(斷線)須收尾目的串流: .pipe()不會因源串流出錯或提前關閉而關閉目的, 寫入fd會隨每次中斷累積(實測5次中斷5個fd全開), 長跑伺服器終至EMFILE;
+                //比照bOver/bWriteErr: destroy後於close刪除不完整切片(續傳本就以大小不等於sizeSlice判定須重傳, 殘留無用); bEnded供close判別「未end即close」之中斷路徑
+                let bAbort = false
+                let bEnded = false
                 streamWrite.on('error', (err) => {
-                    if (bWriteErr || bOver) {
+                    if (bWriteErr || bOver || bAbort) {
                         return
                     }
                     bWriteErr = true
@@ -1057,8 +1062,8 @@ function WConverhpServer(opt = {}) {
                     pm.reject(`write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error`)
                 })
                 streamWrite.on('close', () => {
-                    if (bOver || bWriteErr) {
-                        fsDeleteFile(pathFileChunk) //待fd關閉(close)後才刪, 否則Windows下會EBUSY; 檔案不存在視為成功且不拋錯; 寫入失敗者亦清除可能殘留之不完整切片
+                    if (bOver || bWriteErr || bAbort) {
+                        fsDeleteFile(pathFileChunk) //待fd關閉(close)後才刪, 否則Windows下會EBUSY; 檔案不存在視為成功且不拋錯; 寫入失敗與中斷者亦清除殘留之不完整切片
                     }
                 })
 
@@ -1083,6 +1088,7 @@ function WConverhpServer(opt = {}) {
                 //end
                 req.payload.on('end', () => {
                     // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] done`)
+                    bEnded = true
 
                     //check, 寫入失敗者已於streamWrite error中reject
                     if (bWriteErr) {
@@ -1102,11 +1108,27 @@ function WConverhpServer(opt = {}) {
 
                 })
 
+                //onAbort, 源串流出錯(如aborted/ECONNRESET)或未end即close皆為中斷, 只處理一次: 關閉寫入fd(其close會刪除不完整切片)、emit一則error事件、reject;
+                //已正常end或已由寫入失敗路徑處置者不再處理; 超限(bOver)排空中斷線者仍須reject使handler結束(413已無法送達, 但不可懸置)
+                let onAbort = (msg) => {
+                    if (bAbort || bEnded || bWriteErr) {
+                        return
+                    }
+                    bAbort = true
+                    streamWrite.destroy()
+                    eeEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${msg}`)
+                    pm.reject(`receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${msg}`)
+                }
+
                 //error
                 req.payload.on('error', (err) => {
                     console.log(`apiUploadSlice req.payload chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
-                    eeEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${err.message}`)
-                    pm.reject(`receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${err.message}`)
+                    onAbort(err.message)
+                })
+
+                //close, 未end即close亦視為中斷(部分中斷路徑只發close不發error); 正常路徑end先於close, 由bEnded擋下
+                req.payload.on('close', () => {
+                    onAbort('closed before end')
                 })
 
                 return pm
@@ -1129,10 +1151,10 @@ function WConverhpServer(opt = {}) {
                     return res.response({ statusCode: 413, error: 'Request Entity Too Large', message: `Payload content length greater than maximum allowed: ${sizeSlice}` }).code(413)
                 }
 
+                //其餘錯誤(源串流出錯或中斷、寫入失敗)已於receive內各路徑各emit一則error事件(含底層訊息), 此處只組回應不再emit, 否則同一失敗會有兩則(且寫入失敗者兩則文字不同, 形同兩次故障)
                 out.error = err
                 returnType = 'error'
                 returnMsg = 'need to parse'
-                eeEmit('error', err)
             }
             // console.log('out', out)
 
