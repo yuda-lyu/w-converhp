@@ -25,6 +25,7 @@ import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
+import encodeRfc5987 from './encodeRfc5987.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
@@ -51,9 +52,9 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止
  * @param {Integer} [opt.sizeMsg=100*1024*1024] 輸入單次請求本體大小上限整數，單位為Byte，預設為100*1024*1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發事件；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
- * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
+ * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
- * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null
+ * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效
  * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。監聽器同步拋錯或async reject皆由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰
  * @example
  *
@@ -291,6 +292,10 @@ function WConverhpServer(opt = {}) {
                 cors: {
                     origin: corsOrigins, //Access-Control-Allow-Origin
                     credentials: false, //Access-Control-Allow-Credentials
+                    //additionalExposedHeaders, 本套件回應協定除本體外另靠此四個標頭傳成敗(Return-Type/Return-Msg)、可否重試(Return-Retryable)與檔名(Content-Disposition);
+                    //瀏覽器對跨來源回應只讓 JS 讀 Access-Control-Expose-Headers 列出者(hapi 預設僅 WWW-Authenticate,Server-Authorization), 未列則 client 讀到空字串,
+                    //download 路徑(只讀標頭不解析本體)整條失效: 錯誤封包被當檔案、檔名解析拋錯; execute/upload 只解析本體故不受影響. 用 additional 以保留 hapi 預設兩項
+                    additionalExposedHeaders: ['Return-Type', 'Return-Msg', 'Return-Retryable', 'Content-Disposition'],
                 },
                 // compression: { //壓縮須納入通用訊息處理(obj2u8arr與u8arr2obj), 其他傳輸或提供下載檔案等, 通常為已壓縮, 故不須指定壓縮
                 //     minBytes: {
@@ -1386,10 +1391,21 @@ function WConverhpServer(opt = {}) {
             }
             fileType = cstr(fileType)
 
-            return res.response(streamRead)
+            //filename, 應用端有給則以 RFC 6266 之 filename*(值為 RFC 5987 percent-encoding)回傳, 使瀏覽器不論頁面與 API 是否同源皆以此命名並強制下載(attachment)
+            //why: 瀏覽器只對同源 URL 採用 <a download> 之檔名, 跨來源時忽略而以 URL 末段(dwgf)命名, 可直接顯示之型別(txt/圖片/pdf)更會改為導頁而非下載;
+            //以往不給此標頭之理由(中文於 filename="..." 須 base64, chrome 檔名因而變 base64)是舊寫法之限制, filename* 由瀏覽器直接還原 UTF-8;
+            //同源時標頭與 <a download> 為同一檔名, 行為不變. 未給 filename 者維持不帶標頭(向後相容), 由 <a download> 或 URL 命名
+            let filename = get(r, 'filename')
+
+            //rr
+            let rr = res.response(streamRead)
                 .type(fileType)
-                // .header('Content-Disposition', `attachment; filename="${filename}"`) //chrome會優先使用header內filename, 但header內支援中文度很差須用base64, 此導致chrome下載檔名只能為base64, 故一律改由前端(browser)先取得真實檔名後直接給予下載檔名, 避免用header提供真實檔名
                 .header('Content-Length', fileSize)
+            if (isestr(filename)) {
+                rr.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeRfc5987(filename)}`)
+            }
+
+            return rr
         },
     }
 

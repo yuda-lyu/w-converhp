@@ -2,6 +2,7 @@ import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import stream from 'stream'
 import w from 'wsemi'
 import { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer } from './e2e-setup.mjs'
 
@@ -18,13 +19,19 @@ import { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServe
  *   ⑤觀察進度序列(僅 false 模式有, true 模式交由瀏覽器管理故無)
  *   ⑥後端副作用: 伺服器 download 事件收到 fileId 與 token
  *
- * 變體覆蓋 (技能 §2.1 第6維): 兩種 downloadByManager 分支 × 中文/英文檔名 × 成功/拒絕/權限失敗
+ * 變體覆蓋 (技能 §2.1 第6維): 兩種 downloadByManager 分支 × 中文/英文檔名 × 成功/拒絕/權限失敗 × 同源/跨來源 × 二進位/可直接顯示之型別
  * 註: downloadByManager=true 走的 GET /dwgf 端點只存在於瀏覽器路徑, node 端與 api-* 測試皆無法覆蓋
+ *
+ * 跨來源: 頁面由 127.0.0.1 供應, client 之 url 改指 localhost(同一伺服器、同一 port, 瀏覽器仍視為不同 origin), 使 CORS 與 <a download> 之同源限制生效;
+ * 此為技能 §9.3「端點一律 127.0.0.1」之刻意偏離, 只用於跨來源案例, 目的是不多起一個伺服器即製造跨來源條件。
+ * 兩種下載模式在跨來源下各靠伺服器之不同機制: false 靠 Access-Control-Expose-Headers 曝露 Return-Type 與 Content-Disposition,
+ * true 靠 /dwgf 之 Content-Disposition filename*(瀏覽器對跨來源 URL 忽略 <a download> 之檔名, 可直接顯示之型別更會改為導頁)
  */
 describe('e2e-download', function() {
 
     let port = 8192 //各測試檔須用不同 port
     let baseUrl = `http://${HOST}:${port}`
+    let urlCross = `http://localhost:${port}` //跨來源案例用: 與頁面之 127.0.0.1 為不同 origin(見檔頭說明)
     let fpSrc = path.resolve(projRoot, 'test', '1mb.7z')
     let wsv = null
     let browser = null
@@ -110,6 +117,20 @@ window.tDownloadManager = async (fileId, o) => {
                 //check, fileId 決定回傳何種結果
                 if (input.fileId === 'not-exist') {
                     pm.reject('file not found')
+                    return
+                }
+
+                //inline-text, 可於瀏覽器內直接顯示之型別(text/plain), 供測試跨來源時是否被導頁而非下載
+                if (input.fileId === 'inline-text') {
+                    let b = Buffer.from('hello inline text')
+                    let s = new stream.PassThrough() //不可用 Readable.from([b]): 其為 objectMode, hapi 拒收
+                    s.end(b)
+                    pm.resolve({
+                        streamRead: s,
+                        filename: '說明.txt',
+                        fileSize: b.length,
+                        fileType: 'text/plain',
+                    })
                     return
                 }
 
@@ -319,6 +340,83 @@ window.tDownloadManager = async (fileId, o) => {
 
         //伺服器 download 事件(/dwgf 那次, 其 token 取自 query)收到的 token 亦須原樣
         assert.strict.deepEqual(rsv[rsv.length - 1].token, token)
+    })
+
+    it('downloadByManager=true時, 可直接顯示之型別(text/plain)亦須進下載管理器且頁面不得被導走', async function() {
+        let page = await openPage()
+        let urlPage0 = page.url()
+
+        let pmDownload = page.waitForEvent('download', { timeout: 60000 })
+        let r = await page.evaluate(() => window.tDownloadManager('inline-text'))
+        assert.strict.deepEqual(r, { state: 'resolve', msg: '說明.txt' })
+
+        let download = await pmDownload
+        assert.strict.deepEqual(download.suggestedFilename(), '說明.txt')
+        let fpOut = path.resolve(projRoot, 'test', '_tmp', 'dl-manager-inline.txt')
+        await download.saveAs(fpOut)
+        assert.strict.deepEqual(fs.readFileSync(fpOut, 'utf8'), 'hello inline text')
+
+        //使用者觀察: 仍停在原頁面
+        assert.strict.deepEqual(page.url(), urlPage0)
+    })
+
+    it('跨來源: downloadByManager=false時, 須取回Blob且內容與來源檔一致(修正前: 讀不到 Return-Type 與 Content-Disposition, 以 Malformed UTF-8 data 拒絕)', async function() {
+        let page = await openPage()
+
+        let r = await page.evaluate((url) => window.tDownloadBlob('ascii', { url }), urlCross)
+        assert.strict.deepEqual(r.state, 'resolve', JSON.stringify(r))
+        assert.strict.deepEqual(r.filename, 'plain-name.7z')
+        assert.strict.deepEqual(r.size, fs.statSync(fpSrc).size)
+        assert.strict.deepEqual(r.sum, sumOfFile(fpSrc))
+    })
+
+    it('跨來源: downloadByManager=false時, 中文檔名須能正確還原', async function() {
+        let page = await openPage()
+
+        let r = await page.evaluate((url) => window.tDownloadBlob('id-for-file', { url }), urlCross)
+        assert.strict.deepEqual(r.state, 'resolve', JSON.stringify(r))
+        assert.strict.deepEqual(r.filename, '中文檔名 測試.7z')
+        assert.strict.deepEqual(r.sum, sumOfFile(fpSrc))
+    })
+
+    it('跨來源: 伺服器download拒絕時, 瀏覽器端須收到伺服器統一的錯誤訊息(修正前: 錯誤封包被當成檔案)', async function() {
+        let page = await openPage()
+
+        let r = await page.evaluate((url) => window.tDownloadBlob('not-exist', { url, retryDownload: 0 }), urlCross)
+        assert.strict.deepEqual(r.state, 'reject', JSON.stringify(r))
+        assert.strict.deepEqual(r.msg, 'can not get file from fileId')
+    })
+
+    it('跨來源: downloadByManager=true時, 中文檔名須能正確還原且內容與來源檔一致(修正前: 存成 dwgf)', async function() {
+        let page = await openPage()
+
+        let pmDownload = page.waitForEvent('download', { timeout: 60000 })
+        let r = await page.evaluate((url) => window.tDownloadManager('id-for-file', { url }), urlCross)
+        assert.strict.deepEqual(r, { state: 'resolve', msg: '中文檔名 測試.7z' })
+
+        let download = await pmDownload
+        assert.strict.deepEqual(download.suggestedFilename(), '中文檔名 測試.7z')
+        let fpOut = path.resolve(projRoot, 'test', '_tmp', 'dl-manager-cross-cht.7z')
+        await download.saveAs(fpOut)
+        assert.strict.deepEqual(md5File(fpOut), md5File(fpSrc))
+    })
+
+    it('跨來源: downloadByManager=true時, 可直接顯示之型別(text/plain)亦須進下載管理器且頁面不得被導走(修正前: 無下載, 頁面被導至 /dwgf)', async function() {
+        let page = await openPage()
+        let urlPage0 = page.url()
+
+        let pmDownload = page.waitForEvent('download', { timeout: 60000 })
+        let r = await page.evaluate((url) => window.tDownloadManager('inline-text', { url }), urlCross)
+        assert.strict.deepEqual(r, { state: 'resolve', msg: '說明.txt' })
+
+        let download = await pmDownload
+        assert.strict.deepEqual(download.suggestedFilename(), '說明.txt')
+        let fpOut = path.resolve(projRoot, 'test', '_tmp', 'dl-manager-cross-inline.txt')
+        await download.saveAs(fpOut)
+        assert.strict.deepEqual(fs.readFileSync(fpOut, 'utf8'), 'hello inline text')
+
+        //使用者觀察: 仍停在原頁面, 且網址列未出現帶 token 之 /dwgf
+        assert.strict.deepEqual(page.url(), urlPage0)
     })
 
 })

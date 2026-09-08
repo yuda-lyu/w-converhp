@@ -10,7 +10,7 @@ describe('api-uploadVariants', function() {
 
     let port = 8186 //同時test故得要不同port
     let url = `http://localhost:${port}`
-    let pathUploadTemp = './uploadTemp-api-uploadVariants' //各測試檔須用不同暫存資料夾, 避免parallel互相干擾
+    let pathUploadTemp = './test/_tmp/uploadTemp-api-uploadVariants' //各測試檔須用不同暫存資料夾, 避免parallel互相干擾; 須置於 test/_tmp(已 gitignore), 置於專案根目錄時測試進行中 commit 會把暫存檔收進版本庫
     let sizeSlice = 64 * 1024 //縮小切片, 使小檔亦能造出多切片情境
     let wsv = null
 
