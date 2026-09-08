@@ -23,6 +23,7 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
+import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
@@ -47,7 +48,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
- * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
+ * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止
  * @param {Integer} [opt.sizeMsg=100*1024*1024] 輸入單次請求本體大小上限整數，單位為Byte，預設為100*1024*1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發事件；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']
@@ -793,6 +794,9 @@ function WConverhpServer(opt = {}) {
                     //path, 為伺服器絕對路徑, 僅供上方procUpload使用, 不回傳前端(前端未使用, 且會外洩伺服器目錄結構)
                     delete out.path
 
+                    //sizeSlice, 回傳伺服器切片大小供前端比對, 前後端不一致時前端可提早以明確訊息終止, 而非於/slc被413拒絕或永遠無法續傳
+                    out.sizeSlice = sizeSlice
+
                 }
                 else if (mode === 'check-slices-hash') {
 
@@ -994,6 +998,28 @@ function WConverhpServer(opt = {}) {
                 //超限即停止落地(unpipe須早於pipe之data監聽, 故此監聽先註冊)並刪除已寫部分, 持續讀完剩餘本體而不destroy(否則413回不到前端), 於end回413
                 let nReceived = 0
                 let bOver = false
+
+                //bWriteErr, 寫入失敗(資料夾被清、磁碟滿、權限不足)須攔截: Writable之error無監聽時會拋成未捕捉例外, 整個伺服器行程會崩潰而前端仍收到200
+                //細節(含伺服器路徑)僅以error事件通知應用端, 回前端之訊息不含路徑
+                let bWriteErr = false
+                streamWrite.on('error', (err) => {
+                    if (bWriteErr || bOver) {
+                        return
+                    }
+                    bWriteErr = true
+                    req.payload.unpipe(streamWrite)
+                    req.payload.resume() //持續讀完剩餘本體, 使錯誤回應能回到前端
+                    console.log(`apiUploadSlice streamWrite chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err)
+                    eeEmit('error', `write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${err.message}`)
+                    pm.reject(`write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error`)
+                })
+                streamWrite.on('close', () => {
+                    if (bOver || bWriteErr) {
+                        fsDeleteFile(pathFileChunk) //待fd關閉(close)後才刪, 否則Windows下會EBUSY; 檔案不存在視為成功且不拋錯; 寫入失敗者亦清除可能殘留之不完整切片
+                    }
+                })
+
+                //data
                 req.payload.on('data', (chunk) => {
                     if (bOver) {
                         return
@@ -1006,11 +1032,6 @@ function WConverhpServer(opt = {}) {
                         streamWrite.destroy()
                     }
                 })
-                streamWrite.on('close', () => {
-                    if (bOver) {
-                        fs.rm(pathFileChunk, { force: true }, () => {}) //待fd關閉後才刪, 否則Windows下會EBUSY
-                    }
-                })
 
                 //pipe
                 req.payload.pipe(streamWrite)
@@ -1019,6 +1040,11 @@ function WConverhpServer(opt = {}) {
                 //end
                 req.payload.on('end', () => {
                     // console.log(`receive chunk[${chunkIndex + 1}/${chunkTotal}] done`)
+
+                    //check, 寫入失敗者已於streamWrite error中reject
+                    if (bWriteErr) {
+                        return
+                    }
 
                     //check, 超限者於此reject, 由handler回413
                     if (bOver) {

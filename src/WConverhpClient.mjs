@@ -36,7 +36,7 @@ import isPathInside from './isPathInside.mjs'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
- * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024
+ * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止
  * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘
  * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10
@@ -791,6 +791,14 @@ function WConverhpClient(opt) {
             return resMg
         }
 
+        //check, 前後端sizeSlice須一致: 伺服器/slc以其sizeSlice為單次請求上限(超過即413), 且以切片檔大小是否等於sizeSlice判定切片完整(不等則永遠無法續傳),
+        //故於此提早以明確訊息終止, 否則前端只會收到Payload Too Large而無從得知是組態不符; 舊版伺服器不回傳sizeSlice, 略過檢查以維持相容
+        if (ispint(resUpCkt.sizeSlice) && resUpCkt.sizeSlice !== sizeSlice) {
+            let msg = `sizeSlice mismatch: client[${sizeSlice}] and server[${resUpCkt.sizeSlice}] must be equal`
+            eeEmit('error', msg)
+            return Promise.reject(msg)
+        }
+
         //針對伺服器上已有切片檔案計算hash與比對
         if (resUpCkt.bSls) {
             // console.log('receive slks...', resUpCkt.slks[0], size(resUpCkt.slks))
@@ -941,7 +949,7 @@ function WConverhpClient(opt) {
 
                         }
                         else if (res.state === 'error') {
-                            console.log('merge-slices-get error', res)
+                            // console.log('merge-slices-get error', res)
 
                             //clearInterval
                             clearInterval(t)
@@ -952,9 +960,9 @@ function WConverhpClient(opt) {
                         }
 
                     })
-                    .catch((err) => {
-                        console.log('merge-slices-get catch', err)
-                        //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態
+                    .catch(() => {
+                        // console.log('merge-slices-get catch')
+                        //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態; 此處不可console.log, 斷線期間每2秒會印一次
                     })
 
             }, 2000)
