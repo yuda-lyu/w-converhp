@@ -107,7 +107,17 @@ let consume = (id, ps, funConsume, funLog) => {
         .then((ro) => {
             ro = (ro === undefined) ? null : ro
             try {
-                fs.writeFileSync(ps.fpr, Buffer.from(obj2u8arr({ ro })))
+
+                //check, 應用端結果須能序列化才可儲存: 不能者(如含BigInt或循環參照)寬鬆模式會落地成解不出ro鍵之空封包,
+                //使首次回應為原值、重送回應變成null —— 同一queueId兩種結果, 破壞本檔之「重送得同一結果」保證.
+                //故序列化失敗時不落地, 只記錄; 之後重送會依S2再呼叫一次應用端(與儲存失敗同一處置), 至少結果一致
+                let re = obj2u8arr({ ro }, { returnWithStateAndMsg: true })
+                if (get(re, 'state') !== 'success') {
+                    funLog(`can not serialize consumed result for ${ps.fpr}: ${get(re, 'msg', 'unknown error')}`)
+                    return ro
+                }
+
+                fs.writeFileSync(ps.fpr, Buffer.from(re.msg))
             }
             catch (err) {
                 funLog(`can not store consumed result to ${ps.fpr}: ${get(err, 'message', String(err))}`)

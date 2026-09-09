@@ -6,7 +6,7 @@
     "@hapi/hapi": "^21.4.10",
     "@hapi/inert": "^7.1.2",
     "axios": "^1.20.0",
-    "wsemi": "^1.8.87"
+    "wsemi": "^1.8.89"
   },
   "devDependencies": {
     "playwright": "^1.63.0",

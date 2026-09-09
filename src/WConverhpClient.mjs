@@ -36,11 +36,11 @@ import isPathInside from './isPathInside.mjs'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
- * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止
- * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘
- * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413
- * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain
- * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain
+ * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止。須為安全整數，Infinity與超出安全範圍者視為無效取預設
+ * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘。為axios之閒置逾時，0為不逾時；須為安全整數，Infinity與超出安全範圍者視為無效取預設；另受計時器上限2147483647約束，超過者亦取預設。不可用Infinity或超大數字表示不逾時(axios會於請求送出前即拋錯，超大數字則因計時器溢位而立即逾時)，不逾時請給0
+ * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設
+ * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設
+ * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設
  * @returns {Object} 回傳事件物件，可使用函數execute、upload
  * @example
  *
@@ -134,33 +134,41 @@ function WConverhpClient(opt) {
         tokenType = 'Bearer'
     }
 
+    //maxTimer, node計時器以32位元帶號整數表達, 超過即溢位: axios之timeout給2**31實測不是等24.9日而是20ms即以「timeout of 2147483648ms exceeded」拒絕;
+    //故凡進入計時器之毫秒值皆須以此為上限, 超過者視為無效而取預設(與Infinity同處置), 不採截斷: 要表達「不逾時」另有正式語意(timeout為0), 給超大數字屬誤用
+    let maxTimer = 2147483647 //2**31-1
+
+    //optSafe, 數值選項一律以wsemi之安全整數模式檢核: 其預設(寬鬆)對Infinity與超出安全整數者皆回true,
+    //而Infinity會使切片數算成0(sizeSlice)、axios於送出前即拋錯(timeout)、重試次數終止條件永不成立(retry); 超出安全整數者則使伺服器端建構同步拋錯
+    let optSafe = { useLimitSafe: true }
+
     //sizeSlice
     let sizeSlice = get(opt, 'sizeSlice')
-    if (!ispint(sizeSlice)) {
+    if (!ispint(sizeSlice, optSafe)) {
         sizeSlice = 1024 * 1024 //1m
     }
 
-    //timeout
+    //timeout, 0為不逾時(axios語意); 交予計時器故另受maxTimer約束
     let timeout = get(opt, 'timeout')
-    if (!isp0int(timeout)) {
+    if (!isp0int(timeout, optSafe) || cint(timeout) > maxTimer) {
         timeout = 5 * 60 * 1000 //5min
     }
 
     //retryMain
     let retryMain = get(opt, 'retryMain')
-    if (!isp0int(retryMain)) {
+    if (!isp0int(retryMain, optSafe)) {
         retryMain = 3
     }
 
     //retryUpload
     let retryUpload = get(opt, 'retryUpload')
-    if (!isp0int(retryUpload)) {
+    if (!isp0int(retryUpload, optSafe)) {
         retryUpload = 10
     }
 
     //retryDownload
     let retryDownload = get(opt, 'retryDownload')
-    if (!isp0int(retryDownload)) {
+    if (!isp0int(retryDownload, optSafe)) {
         retryDownload = 2
     }
 
@@ -541,8 +549,14 @@ function WConverhpClient(opt) {
             let u8a = await res2u8arr(bb)
             // console.log('u8a', u8a)
 
-            //u8arr2obj
-            let data = u8arr2obj(u8a)
+            //u8arr2obj, 以嚴格模式取狀態: 封包損毀(截斷、被中間層改寫)與「伺服器真的回了空物件」在寬鬆模式下都是{}, 分不出來也講不清楚
+            let rd = u8arr2obj(u8a, { returnWithStateAndMsg: true })
+            if (get(rd, 'state') !== 'success') {
+                let msg = `invalid packet from server: ${get(rd, 'msg', 'unknown error')}`
+                eeEmit('error', msg)
+                return Promise.reject(msg) //屬傳輸不穩, 依重試原則不標示不重試
+            }
+            let data = rd.msg
             // console.log('data', data)
 
             //check
@@ -690,8 +704,15 @@ function WConverhpClient(opt) {
         let bb = null
         try {
 
-            //obj2u8arr
-            let u8a = obj2u8arr(data)
+            //obj2u8arr, 以嚴格模式取狀態: 呼叫端給之input若含BigInt或循環參照, 寬鬆模式回空封包而伺服器會收到空物件並照常觸發execute事件,
+            //呼叫端只會拿到不知所云之結果; 於此提早以明確訊息拒絕, 不送出
+            let re = obj2u8arr(data, { returnWithStateAndMsg: true })
+            if (get(re, 'state') !== 'success') {
+                let msg = `input can not be serialized: ${get(re, 'msg', 'unknown error')}`
+                eeEmit('error', msg)
+                return Promise.reject(msg)
+            }
+            let u8a = re.msg
             // console.log('u8a', u8a)
 
             //u8a to blob(in browser) or buffer(in nodejs)
