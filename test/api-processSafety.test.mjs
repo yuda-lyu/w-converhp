@@ -100,10 +100,13 @@ describe('api-processSafety', function() {
             if (func === 'throwSync') {
                 throw new Error('boom sync')
             }
-            if (func === 'throwAsync') {
-                return (async() => { //回傳被 reject 之 promise, 等同 async 監聽器內拋錯
-                    throw new Error('boom async')
-                })()
+            if (func === 'asyncFail') { //契約寫法: 監聽器維持同步, 非同步結果以 pm 回覆
+                Promise.reject('boom async').then(pm.resolve, pm.reject)
+                return
+            }
+            if (func === 'asyncOk') { //同上, 成功路徑
+                Promise.resolve({ ok: 2 }).then(pm.resolve, pm.reject)
+                return
             }
             if (func === 'ok') {
                 pm.resolve({ ok: 1 })
@@ -195,12 +198,20 @@ describe('api-processSafety', function() {
         assert.strict.deepEqual(re, { ok: 1 })
     })
 
-    it('execute 監聽器 async reject 時, 亦須同上處置', async function() {
+    it('[契約] 監聽器須為同步, 非同步結果以事件所帶之 pm 回覆: 成功與失敗皆須正確送達呼叫端', async function() {
+        //why 不支援 async 監聽器: emit 依 EventEmitter 規範**丟棄監聽器之回傳值**, 其 rejection 無人觀察,
+        //於 nodejs 即 unhandledRejection 而使整個行程崩潰 —— 該情形無法以呼叫端之 try 攔截, 亦非本套件可代為處置者。
+        //而事件已帶 pm 作為回覆通道, 監聽器不需要第二條; 故契約為「監聽器同步, 非同步結果走 pm」。
+        //本條鎖住該契約之正向行為: 應用端照契約寫時, 非同步之成功與失敗皆須完整送達
         errs = []
-        let r = await catchOf(() => mkClient().execute('throwAsync', {}, () => {}))
-        assert.strict.deepEqual(r, { state: 'reject', msg: 'listener of event[execute] error' })
+
+        let rOk = await mkClient().execute('asyncOk', {}, () => {})
+        assert.strict.deepEqual(rOk, { ok: 2 })
+
+        let rFail = await catchOf(() => mkClient().execute('asyncFail', {}, () => {}))
+        assert.strict.deepEqual(rFail, { state: 'reject', msg: 'boom async' })
+
         await w.delay(200)
-        assert.strict.deepEqual(hasErr('listener of event[execute] error: boom async'), true, JSON.stringify(errs))
         let re = await mkClient().execute('ok', {}, () => {})
         assert.strict.deepEqual(re, { ok: 1 })
     })

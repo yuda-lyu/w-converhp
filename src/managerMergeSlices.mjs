@@ -6,6 +6,7 @@ import now2strp from 'wsemi/src/now2strp.mjs'
 import genID from 'wsemi/src/genID.mjs'
 import sep from 'wsemi/src/sep.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
+import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
@@ -75,7 +76,7 @@ let verifyMerged = async(fileHash, ps) => {
         return { state: 'error', reason: msg }
     }
     catch (err) {
-        return { state: 'error', reason: `verify merged file[${ps.fp}] error: ${get(err, 'message', String(err))}` }
+        return { state: 'error', reason: `verify merged file[${ps.fp}] error: ${getErrorMessage(err)}` }
     }
     finally {
         merging.delete(ps.fp)
@@ -107,7 +108,7 @@ let readStored = (ps, funLog) => {
         return { ok: true, ro: o.ro }
     }
     catch (err) {
-        funLog(`can not read stored result ${ps.fpr}: ${get(err, 'message', String(err))}`)
+        funLog(`can not read stored result ${ps.fpr}: ${getErrorMessage(err)}`)
         return { ok: false }
     }
 }
@@ -148,7 +149,7 @@ let consume = (id, ps, funConsume, funLog) => {
                 }
             }
             catch (err) {
-                funLog(`can not store consumed result to ${ps.fpr}: ${get(err, 'message', String(err))}`)
+                funLog(`can not store consumed result to ${ps.fpr}: ${getErrorMessage(err)}`)
             }
             return ro
         })
@@ -210,7 +211,7 @@ let qPush = async(fileHash, chunkTotal, pathUploadTemp) => {
                 console.log(err)
 
                 //失敗須落地為.error, 否則.done永不出現, qGet只能回merging, 前端會無止境等待一件不會發生的事
-                let msg = isestr(err) ? err : get(err, 'message', String(err))
+                let msg = getErrorMessage(err) //字串型之err由getErrorMessage之階0原樣回傳, 無須另行分支
                 try {
                     fs.writeFileSync(ps.fpe, msg, 'utf8')
                 }

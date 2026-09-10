@@ -3,6 +3,7 @@ import get from 'lodash-es/get.js'
 import size from 'lodash-es/size.js'
 import isWindow from 'wsemi/src/isWindow.mjs'
 import evem from 'wsemi/src/evem.mjs'
+import evEmitBase from 'wsemi/src/evEmit.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
@@ -25,6 +26,7 @@ import delay from 'wsemi/src/delay.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
+import retryDelay from './retryDelay.mjs'
 
 
 /**
@@ -38,10 +40,10 @@ import isPathInside from './isPathInside.mjs'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止。須為安全整數，Infinity與超出安全範圍者視為無效取預設
  * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘。為axios之閒置逾時，0為不逾時；須為安全整數，Infinity與超出安全範圍者視為無效取預設；另受計時器上限2147483647約束，超過者亦取預設。不可用Infinity或超大數字表示不逾時(axios會於請求送出前即拋錯，超大數字則因計時器溢位而立即逾時)，不逾時請給0
- * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設
- * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設
- * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設
- * @returns {Object} 回傳事件物件，可使用函數execute、upload
+ * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
+ * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
+ * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
+ * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰
  * @example
  *
  * import path from 'path'
@@ -138,58 +140,68 @@ function WConverhpClient(opt) {
     //故凡進入計時器之毫秒值皆須以此為上限, 超過者視為無效而取預設(與Infinity同處置), 不採截斷: 要表達「不逾時」另有正式語意(timeout為0), 給超大數字屬誤用
     let maxTimer = 2147483647 //2**31-1
 
+    //maxRetryTimes, 重試次數上限
+    //why: 退避延遲為指數成長且以「第nToPeak次達到maxDelay」校準(見callApi), 次數若無上限則延遲隨之無界 ——
+    //實測第20次單次等待16小時, 第27次起更超過32位元計時器上限而溢位成1ms, 退避反而塌陷為熱迴圈打伺服器.
+    //本上限與callApi之延遲封頂成對: 上限擋住次數, 封頂擋住單次等待, 兩者缺一皆會使另一者失效
+    let maxRetryTimes = 20
+
     //optSafe, 數值選項一律以wsemi之安全整數模式檢核: 其預設(寬鬆)對Infinity與超出安全整數者皆回true,
     //而Infinity會使切片數算成0(sizeSlice)、axios於送出前即拋錯(timeout)、重試次數終止條件永不成立(retry); 超出安全整數者則使伺服器端建構同步拋錯
     let optSafe = { useLimitSafe: true }
 
-    //sizeSlice
+    //sizeSlice, 檢核與正規化須成對: ispint亦接受數字字串('1048576'), 而sizeSlice會與伺服器回傳者以!==比較(見sendDataSlice),
+    //未正規化時字串與數值即判為mismatch而使上傳整個失敗, 縱使兩端組態實為相同值
     let sizeSlice = get(opt, 'sizeSlice')
     if (!ispint(sizeSlice, optSafe)) {
         sizeSlice = 1024 * 1024 //1m
     }
+    sizeSlice = cint(sizeSlice)
 
     //timeout, 0為不逾時(axios語意); 交予計時器故另受maxTimer約束
     let timeout = get(opt, 'timeout')
     if (!isp0int(timeout, optSafe) || cint(timeout) > maxTimer) {
         timeout = 5 * 60 * 1000 //5min
     }
+    timeout = cint(timeout)
 
     //retryMain
     let retryMain = get(opt, 'retryMain')
     if (!isp0int(retryMain, optSafe)) {
         retryMain = 3
     }
+    retryMain = Math.min(cint(retryMain), maxRetryTimes) //超過上限者截為上限而非取預設: 取預設會減少重試次數, 而呼叫端給大值之意圖正是要多重試
 
     //retryUpload
     let retryUpload = get(opt, 'retryUpload')
     if (!isp0int(retryUpload, optSafe)) {
         retryUpload = 10
     }
+    retryUpload = Math.min(cint(retryUpload), maxRetryTimes) //超過上限者截為上限而非取預設: 取預設會減少重試次數, 而呼叫端給大值之意圖正是要多重試
 
     //retryDownload
     let retryDownload = get(opt, 'retryDownload')
     if (!isp0int(retryDownload, optSafe)) {
         retryDownload = 2
     }
+    retryDownload = Math.min(cint(retryDownload), maxRetryTimes) //超過上限者截為上限而非取預設: 取預設會減少重試次數, 而呼叫端給大值之意圖正是要多重試
 
     //env
     let env = isWindow() ? 'browser' : 'nodejs'
     // console.log('env', env)
 
-    //ee, 採wsemi evem之safe型: 應用端監聽器同步拋錯或async reject一律攔截, 事件為setTimeout派發, 不攔截於nodejs即為uncaughtException/unhandledRejection使行程崩潰(瀏覽器則為console錯誤);
-    //client之事件僅error, 不帶pm, 故自訂funGetListenerError只記錄, 不再發error事件避免遞迴
-    let ee = evem({
-        type: 'safe',
-        funGetListenerError: (name, err) => {
-            console.log(`listener of event[${name}] error`, err)
-        },
-    })
+    //ev, 原生eventemitter3(wsemi 1.8.91起evem不再包裝監聽器, 其語意完全遵循EventEmitter規範)
+    let ev = evem()
 
-    //eeEmit
-    let eeEmit = (name, ...args) => {
-        setTimeout(() => {
-            ee.emit(name, ...args)
-        }, 1)
+    //evEmit, 於呼叫端之堆疊上派發, 交由wsemi之evEmit(其為「直接ev.emit並以try攔截」之單一擁有者)
+    //why 不以setTimeout脫勾: setTimeout會開一個沒有呼叫者之堆疊, 監聽器之同步拋錯於該處即為uncaughtException,
+    //於nodejs殺整個行程(瀏覽器則為console錯誤), 且呼叫端無論如何try都攔不到
+    //why 不處理async監聽器: emit依EventEmitter規範丟棄監聽器之回傳值, 其rejection無人觀察; 見建構函數之JSDoc
+    //client之事件僅error且不帶pm, 故無funSettle; 其error監聽器出錯者由wsemi之通報路徑走console.error留痕, 不再重發避免遞迴
+    let evEmit = (name, ...args) => {
+        return evEmitBase(ev, name, args, {
+            tag: 'w-converhp-client',
+        })
     }
 
     //symNoRetry, 標記「可證明不需重試」之錯誤: 伺服器於error封包標示retryable為false(參數檢核類, 結果僅由請求內容決定), 或HTTP 413(本體超過伺服器上限, 上限為伺服器建構參數, 重送同一本體必同一結果且每次重送整包)
@@ -553,7 +565,7 @@ function WConverhpClient(opt) {
             let rd = u8arr2obj(u8a, { returnWithStateAndMsg: true })
             if (get(rd, 'state') !== 'success') {
                 let msg = `invalid packet from server: ${get(rd, 'msg', 'unknown error')}`
-                eeEmit('error', msg)
+                evEmit('error', msg)
                 return Promise.reject(msg) //屬傳輸不穩, 依重試原則不標示不重試
             }
             let data = rd.msg
@@ -561,7 +573,7 @@ function WConverhpClient(opt) {
 
             //check
             if (!iseobj(data)) {
-                eeEmit('error', `data is not an effective object`)
+                evEmit('error', `data is not an effective object`)
                 return Promise.reject(`data is not an effective object`)
             }
 
@@ -570,7 +582,7 @@ function WConverhpClient(opt) {
                 return Promise.resolve(data.success)
             }
             else if (haskey(data, 'error')) {
-                eeEmit('error', data.error)
+                evEmit('error', data.error)
 
                 //check, 伺服器標示retryable為false者為可證明不需重試之錯誤, 以symNoRetry包裝交由callApi中止重試並解包
                 if (data.retryable === false) {
@@ -580,7 +592,7 @@ function WConverhpClient(opt) {
                 return Promise.reject(data.error)
             }
             else {
-                eeEmit('error', `data does not contain success or error`)
+                evEmit('error', `data does not contain success or error`)
                 return Promise.reject(`data does not contain success or error`)
             }
 
@@ -596,10 +608,7 @@ function WConverhpClient(opt) {
             let r = await fun(s)
             // console.log('r', r)
 
-            //while
-            let maxRetry = 10
-            let baseDelay = 1000 //初始延遲為1秒
-            let ratio = Math.pow(180000 / baseDelay, 1 / (maxRetry - 1)) //1.888
+            //while, 退避曲線見src/retryDelay.mjs(其自有封頂, 使延遲不隨retry次數無界成長)
             let n = 0
             while (r.state === 'error') {
 
@@ -617,7 +626,7 @@ function WConverhpClient(opt) {
                 }
 
                 //delay
-                let t = Math.round(baseDelay * Math.pow(ratio, n - 1))
+                let t = retryDelay(n)
                 console.log(`wait ${dig(t / 1000, 1)}(second) to retry...`)
                 await delay(t)
 
@@ -680,7 +689,7 @@ function WConverhpClient(opt) {
                         }
                         catch (err) {}
                         // console.log('err', res)
-                        eeEmit('error', res)
+                        evEmit('error', res)
                         data = 'Can not connect to server.'
                     }
                     if (data === 'Network Error') {
@@ -709,7 +718,7 @@ function WConverhpClient(opt) {
             let re = obj2u8arr(data, { returnWithStateAndMsg: true })
             if (get(re, 'state') !== 'success') {
                 let msg = `input can not be serialized: ${get(re, 'msg', 'unknown error')}`
-                eeEmit('error', msg)
+                evEmit('error', msg)
                 return Promise.reject(msg)
             }
             let u8a = re.msg
@@ -752,6 +761,13 @@ function WConverhpClient(opt) {
     //sendDataSlice
     let sendDataSlice = async(fileTotalName, bb, cbProgress) => {
 
+        //cbProgress, 與send內同一道防呆: 本函數直接呼叫cbProgress(不經send), 故須自行給預設
+        //why: send已對其opt.cbProgress補預設, 故execute與download省略cbProgress皆正常, 唯獨upload會於首片上傳完成時拋
+        //「cbProgress is not a function」—— 三個公開方法對同一個選用參數行為不一致
+        if (!isfun(cbProgress)) {
+            cbProgress = () => {}
+        }
+
         //n
         let n = 0
         if (n === 0) {
@@ -769,7 +785,7 @@ function WConverhpClient(opt) {
             catch (err) {}
         }
         if (n === 0) {
-            // eeEmit('error', `can not get size of bb`)
+            // evEmit('error', `can not get size of bb`)
             // return Promise.reject(`can not get size of bb`)
             n = 1 //最小給1, 使能支援無大小檔案上傳
         }
@@ -855,7 +871,7 @@ function WConverhpClient(opt) {
         //故於此提早以明確訊息終止, 否則前端只會收到Payload Too Large而無從得知是組態不符; 舊版伺服器不回傳sizeSlice, 略過檢查以維持相容
         if (ispint(resUpCkt.sizeSlice) && resUpCkt.sizeSlice !== sizeSlice) {
             let msg = `sizeSlice mismatch: client[${sizeSlice}] and server[${resUpCkt.sizeSlice}] must be equal`
-            eeEmit('error', msg)
+            evEmit('error', msg)
             return Promise.reject(msg)
         }
 
@@ -1105,14 +1121,14 @@ function WConverhpClient(opt) {
         //check
         if (state === '') {
             // console.log('invalid state', r)
-            eeEmit('error', `invalid state`)
+            evEmit('error', `invalid state`)
             return Promise.reject('invalid state')
         }
 
         //check
         if (state === 'error') {
             // console.log('send data error', r)
-            // eeEmit('error', res) //一般錯誤會嘗試n次, 每次也都會emit, 故此處不再基於已知state='error'時再emit
+            // evEmit('error', res) //一般錯誤會嘗試n次, 每次也都會emit, 故此處不再基於已知state='error'時再emit
             return Promise.reject(res)
         }
 
@@ -1210,11 +1226,11 @@ function WConverhpClient(opt) {
     }
 
     //save
-    ee.execute = execute
-    ee.upload = upload
-    ee.download = download
+    ev.execute = execute
+    ev.upload = upload
+    ev.download = download
 
-    return ee
+    return ev
 }
 
 

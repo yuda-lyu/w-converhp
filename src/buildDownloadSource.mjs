@@ -1,12 +1,12 @@
 import stream from 'stream'
 import get from 'lodash-es/get.js'
 import isestr from 'wsemi/src/isestr.mjs'
+import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import isstr from 'wsemi/src/isstr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import attempt from './attempt.mjs'
 import hasPipe from './hasPipe.mjs'
-import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 
 
 /**
@@ -120,7 +120,7 @@ function buildDownloadSource(streamRead, fileSize, funError, opt = {}) {
             //pipeline, 任一方出錯或提前關閉皆銷毀雙方; 長度不符者另以error事件通知應用端, 來源自身出錯或前端中斷則不另報
             stream.pipeline(streamRead, counter, (err) => {
                 if (err && bMismatch) {
-                    funError(err.message)
+                    funError(getErrorMessage(err))
                 }
             })
 

@@ -144,10 +144,106 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(n, 2, `R4 之 cint 正規化須於 /dwgf 與 /dw 兩處各一 ${hint}`)
     })
 
-    it('R5 error 事件發送站點須為 25', function() {
+    //stripCode, 去除整行註解、JSDoc 與行尾註解(不動 http:// 之雙斜線), 供「禁用寫法」類之掃描使用
+    //why: R10 之禁用樣式(err.message 等)正好會出現在「說明為何不用該寫法」的註解裡, 不去除即為假陽性
+    //note: 須以 /\r?\n/ 分行 —— 本專案檔案為 CRLF, 只以 '\n' 分行會使每行尾端留 \r,
+    //而 JS 之 . 不跨行終止符, 行尾註解之正規式因 $ 錨不到而整條失效(此處踩過一次)
+    let stripCode = (fp) => {
+        return fs.readFileSync(fp, 'utf8')
+            .split(/\r?\n/)
+            .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+            .map((line) => line.replace(/([^:])\/\/.*$/, '$1'))
+            .join('\n')
+    }
+
+    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 14', function() {
+        //why: err 為應用端 throw/reject 之任意值, 其 message 可為拋錯之 getter、toString 可拋錯。
+        //以 err.message / get(err,'message',err) / String(err) 組訊息, 即於 catch 內再拋 —— 保護層自身失效。
+        //實測後果: verifyConn 為此形狀 → 裸 HTTP 500 + 0 則事件; 監聽器為此形狀 → 請求永久懸置。
+        //分辨力見 test/api-hostileErrorValues.test.mjs(修正前 5 failing)
+        let fps = [
+            'src/WConverhpServer.mjs',
+            'src/WConverhpClient.mjs',
+            'src/managerMergeSlices.mjs',
+            'src/buildDownloadSource.mjs',
+            'src/attempt.mjs',
+            'src/encodeOut.mjs',
+            'src/readDownloadFields.mjs',
+            'src/responseU8aStream.mjs',
+            'src/responseU8aStreamWithError.mjs',
+        ]
+        let reBad = /get\((err|e), 'message'|\b(err|e)\.(message|stack)\b|String\((err|e)\)/g
+        let nBad = 0
+        let nGood = 0
+        let bad = []
+        for (let fp of fps) {
+            let c = stripCode(fp)
+            let hits = c.match(reBad) || []
+            if (hits.length > 0) {
+                bad.push(`${fp}: ${hits.join(' / ')}`)
+            }
+            nBad += hits.length
+            nGood += countAll(c, /getErrorMessage\(/g)
+        }
+        assert.strict.deepEqual(nBad, 0, `R10 出現禁用之取因寫法[${bad.join(' ; ')}]。${hint}`)
+        assert.strict.deepEqual(nGood, 14, `R10 站點數 ${hint}`)
+    })
+
+    it('R10 之結構層: 保護函數內「非做不可」之事須排在回報之前', function() {
+        //why: 取值層(getErrorMessage 契約上不拋錯)是一道防線, 但保護函數內若還有其他會拋錯之步驟,
+        //排在其後之 settle 仍會被跳過。故唯一「非做不可」之事須排在回報之前, 使失效在結構上不可能
+        let c = readCode('src/WConverhpServer.mjs')
+
+        //其一, 事件派發之 settle —— 該順序已由 wsemi 之 evEmit 擁有並明載「不得對調」, 本套件之責任是**把 funSettle 傳進去**
+        //  wsemi 明載其不猜測 pm 之位置(本套件之 pm 為事件之最後一個參數), 不傳即等於沒有 settle, 監聽器出錯時該請求懸置
+        assert.strict.deepEqual(c.includes('funSettle:'), true, 'R10 server 之 evEmit 須傳入 funSettle, 否則監聽器出錯時請求會懸置')
+        assert.strict.deepEqual(c.includes('pm.reject(`listener of event['), true, 'R10 funSettle 內須 reject 該次請求之 pm')
+
+        //其二, checkConn 之授權結果 —— 此順序仍由本套件擁有
+        let iM = c.indexOf('m = false')
+        let iEmitV = c.indexOf(`evEmit('error', \`verifyConn error for apiType[`)
+        assert.strict.deepEqual(iM > 0 && iEmitV > 0, true, '找不到 checkConn 之兩個標記')
+        assert.strict.deepEqual(iM < iEmitV, true, 'checkConn: m = false 須早於 error 事件之發送(否則組訊息拋錯即逸出成裸 500)')
+    })
+
+    it('R11 派發一律交由 wsemi 之 evEmit / evEmitDelay', function() {
+        //why: 其為「於呼叫端堆疊上直接 ev.emit 並以 try 攔截」之單一擁有者, 且把本套件所需之紀律
+        //(settle 排在通報之前、通報自身包 try 並留痕、脫勾後仍於新堆疊內攔截、ms 夾至計時器上限)寫成明文契約。
+        //自行手寫等於把同一條規則寫第二遍 —— 而規則寫兩遍正是本帳本各條重複出現之形狀
+        assert.strict.deepEqual(countAll(src.server, /evEmitBase\(/g), 1, `R11 server 之派發擁有者須恰為 1 ${hint}`)
+        assert.strict.deepEqual(countAll(src.client, /evEmitBase\(/g), 1, `R11 client 之派發擁有者須恰為 1 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelayBase\(/g), 1, `R11 server 之脫勾派發擁有者須恰為 1 ${hint}`)
+    })
+
+    it('R11 ev.emit 僅得出現於形狀轉接器內', function() {
+        //why: wsemi 之通報形狀為 { fun, name, msg, args } 物件, 而本套件 error 事件之對外契約為字串訊息,
+        //故須以 funEmit 轉換; 該轉換是 ev.emit 的**唯一**正當用途。其餘任何直接 ev.emit 皆為繞過派發擁有者
+        assert.strict.deepEqual(src.server.includes('function funEmitOfPkg('), true, 'R11 找不到形狀轉接器 funEmitOfPkg')
+        assert.strict.deepEqual(countAll(src.server, /ev\.emit\(/g), 2, `R11 server 之 ev.emit 須恰為 2(皆於 funEmitOfPkg 內) ${hint}`)
+        assert.strict.deepEqual(countAll(src.client, /ev\.emit\(/g), 0, `R11 client 無形狀轉接需求, 不得直接 ev.emit ${hint}`)
+    })
+
+    it('R11 以 timer 脫勾派發僅限建構期: evEmitDelay 之呼叫站點須恰為 1', function() {
+        //why: 建構期之失敗事件須脫勾, 因應用端於 new 回傳後才有機會註冊監聽器(實測 tmp/probe_r8_defer.mjs);
+        //其餘派發站點皆於請求進來後才觸發, 脫勾對其毫無作用而只帶來「堆疊被切斷」之代價
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('/g), 1, `R11 evEmitDelay 之呼叫站點須恰為 1 ${hint}`)
+        assert.strict.deepEqual(countAll(src.client, /evEmitDelay\(/g), 0, `R11 client 無建構期事件, 不應有脫勾派發 ${hint}`)
+    })
+
+    it('R11 監聽器須為同步之契約須寫在建構函數之 JSDoc 內', function() {
+        //why: 此為對外契約(不支援 async 監聽器), 未寫進 JSDoc 者等於沒有裁定
+        for (let fp of ['src/WConverhpServer.mjs', 'src/WConverhpClient.mjs']) {
+            let doc = fs.readFileSync(fp, 'utf8')
+            assert.strict.deepEqual(doc.includes('監聽器須為同步函數'), true, `${fp} 之 JSDoc 缺少「監聽器須為同步」之契約`)
+        }
+    })
+
+    it('R5 error 事件發送站點須為 25(即時 23 + 建構期脫勾 1 + 監聽器出錯之通報 1)', function() {
         //25 = 24 + #26 修正時於 /main 新增之「請求封包無效」事件
-        let n = countAll(src.server, /eeEmit\('error'/g)
-        assert.strict.deepEqual(n, 25, `R5 ${hint}`)
+        //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
+        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 23, `R5 即時派發之站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 1, `R5 建構期脫勾派發之站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
     })
 
     it('CLAUDE.md 之「規則帳本」一節須存在且涵蓋本檔之全部規則', function() {

@@ -6,6 +6,9 @@ import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
 import genPm from 'wsemi/src/genPm.mjs'
 import evem from 'wsemi/src/evem.mjs'
+import evEmitBase from 'wsemi/src/evEmit.mjs'
+import evEmitDelayBase from 'wsemi/src/evEmitDelay.mjs'
+import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
@@ -62,7 +65,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。監聽器同步拋錯或async reject皆由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流
  * @example
  *
  * import fs from 'fs'
@@ -220,6 +223,7 @@ function WConverhpServer(opt = {}) {
     if (!ispint(port, optSafe) || cint(port) > maxPort) {
         port = 8080
     }
+    port = cint(port) //檢核與正規化須成對: ispint亦接受數字字串
 
     //useInert
     let useInert = get(opt, 'useInert')
@@ -255,10 +259,13 @@ function WConverhpServer(opt = {}) {
     }
 
     //sizeSlice, 交予hapi之payload.maxBytes, 其要求為safe number
+    //檢核與正規化須成對: ispint亦接受數字字串('1048576'), 而本值會原樣回傳給client並由其以!==比對(見client之sendDataSlice),
+    //未正規化時兩端縱使組態為同一個值, 字串與數值仍判為mismatch而使上傳整個失敗
     let sizeSlice = get(opt, 'sizeSlice')
     if (!ispint(sizeSlice, optSafe)) {
         sizeSlice = 1024 * 1024 //1m
     }
+    sizeSlice = cint(sizeSlice)
 
     //sizeMsg, 單次請求本體上限, 適用於除切片(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)
     //why: 此類請求須整包讀入記憶體再反序列化(/main實測記憶體約為本體5至6倍), 上限若給到遠超RAM之值(原為1tb), 單一請求即可令整個行程OOM;
@@ -267,6 +274,7 @@ function WConverhpServer(opt = {}) {
     if (!ispint(sizeMsg, optSafe)) {
         sizeMsg = 100 * 1024 * 1024 //100m
     }
+    sizeMsg = cint(sizeMsg) //檢核與正規化須成對: ispint亦接受數字字串
 
     //verifyConn
     let verifyConn = get(opt, 'verifyConn')
@@ -331,27 +339,56 @@ function WConverhpServer(opt = {}) {
 
     }
 
-    //ee, 採wsemi evem之safe型: 應用端監聽器同步拋錯或async reject一律攔截, 事件為setTimeout派發, 不攔截即為uncaughtException/unhandledRejection, 整個伺服器行程會崩潰;
-    //不採其預設政策(取args[0].pm), 本套件之pm為execute/upload/download事件之最後一個參數, 故自訂funGetListenerError: 一併reject使前端收到回應而非永久懸置; 細節(含stack)僅以error事件通知應用端, 回前端不含細節
-    let ee = evem({
-        type: 'safe',
-        funGetListenerError: (name, err, args) => {
-            console.log(`listener of event[${name}] error`, err)
-            if (name !== 'error') { //error事件之監聽器出錯不再發error事件, 避免無限遞迴
-                eeEmit('error', `listener of event[${name}] error: ${get(err, 'message', err)}`)
-            }
-            let pm = args[args.length - 1]
-            if (ispm(pm)) {
-                pm.reject(`listener of event[${name}] error`)
-            }
-        },
-    })
+    //ev, 原生eventemitter3(wsemi 1.8.91起evem不再包裝監聽器, 其語意完全遵循EventEmitter規範)
+    let ev = evem()
 
-    //eeEmit
-    let eeEmit = (name, ...args) => {
-        setTimeout(() => {
-            ee.emit(name, ...args)
-        }, 1)
+    //optEv, 交予wsemi之evEmit/evEmitDelay之共用設定
+    //why 派發交由wsemi: 其evEmit即為「於呼叫端堆疊上直接ev.emit並以try攔截」之單一擁有者, 且把本套件所需之紀律
+    //(settle排在通報之前、通報自身亦包try並留痕、脫勾後仍於新堆疊內攔截、ms夾至計時器上限)全部寫成明文契約;
+    //自行手寫等於把同一條規則寫第二遍, 而規則寫兩遍正是本帳本各條重複出現之形狀
+    let optEv = {
+        tag: 'w-converhp',
+    }
+
+    //evEmit, 於呼叫端之堆疊上派發
+    //funSettle, settle該次請求之pm使流程不懸置; 本套件之pm為execute/upload/download事件之最後一個參數,
+    //  wsemi不猜測pm之位置(其JSDoc明載), 故由此處指定
+    //funEmit, wsemi之通報形狀為{fun,name,msg,args}物件, 而本套件error事件之對外契約為**字串訊息**, 於此轉換為本套件形狀;
+    //  該轉換須經funEmit而非另發一則, 否則同一次失敗會有兩則事件(違反帳本R5)
+    let evEmit = (name, ...args) => {
+        return evEmitBase(ev, name, args, {
+            ...optEv,
+            funSettle: () => {
+                let pm = args[args.length - 1]
+                if (ispm(pm)) {
+                    pm.reject(`listener of event[${name}] error`)
+                }
+            },
+            funEmit: funEmitOfPkg,
+        })
+    }
+
+    //evEmitDelay, 以timer脫勾後派發(脫勾後仍由wsemi於新堆疊內以try攔截); **僅供建構期之失敗事件使用**
+    //why: startServer()於建構期執行, 其失敗須以error事件通知, 而應用端於`new`回傳後才有機會呼叫wsv.on('error', ...)
+    //實測(tmp/probe_r8_defer.mjs): 建構後同步註冊者直接派發亦收得到(該.catch本就在promise鏈上), 但隔一個await才註冊者收不到;
+    //其餘32個派發站點皆於請求進來後才觸發, 脫勾對其毫無作用故一律不脫勾
+    let evEmitDelay = (name, ...args) => {
+        return evEmitDelayBase(ev, name, args, {
+            ...optEv,
+            funEmit: funEmitOfPkg,
+        })
+    }
+
+    //funEmitOfPkg, 把wsemi之物件型通報轉為本套件之字串型error事件; 其餘一律原樣派發
+    //取因一律經getErrorMessage: err為應用端throw之任意值, 其message可為拋錯之getter、toString可拋錯(見帳本R10)
+    function funEmitOfPkg(nm, ...a) {
+        if (nm === 'error' && iseobj(a[0]) && a[0].fun === 'listener') {
+            let nmL = get(a[0], 'name', '')
+            let errL = get(a[0], 'msg')
+            console.log(`listener of event[${nmL}] error`, errL)
+            return ev.emit('error', `listener of event[${nmL}] error: ${getErrorMessage(errL)}`)
+        }
+        return ev.emit(nm, ...a)
     }
 
     //checkConn, 各路由呼叫verifyConn之唯一出口, 拋錯或reject一律視為未通過, 各路由不得再自行呼叫verifyConn
@@ -366,9 +403,15 @@ function WConverhpServer(opt = {}) {
             }
         }
         catch (err) {
-            console.log(`verifyConn error for apiType[${get(inp, 'apiType', '')}]`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
-            eeEmit('error', `verifyConn error for apiType[${get(inp, 'apiType', '')}]: ${get(err, 'message', err)}`)
+
+            //m先歸false再回報: 以往回報寫在前面, 而取因以get(err,'message',err)配樣板字面量組訊息 ——
+            //應用端verifyConn拋出message為拋錯getter之值時, 該行於catch內再拋, 例外逸出checkConn而由各路由上拋至hapi, 回裸HTTP 500且0則事件;
+            //而本函數存在之理由正是「六路由對同一種失敗一律回permission denied」. 先歸false使該保證在結構上成立
             m = false
+
+            //取因一律經getErrorMessage(見帳本R10)
+            console.log(`verifyConn error for apiType[${get(inp, 'apiType', '')}]`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            evEmit('error', `verifyConn error for apiType[${get(inp, 'apiType', '')}]: ${getErrorMessage(err)}`)
         }
         return m === true
     }
@@ -406,7 +449,7 @@ function WConverhpServer(opt = {}) {
             let input = get(data, 'input', null)
 
             //execute 執行
-            eeEmit('execute', func, input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
+            evEmit('execute', func, input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
 
         }
 
@@ -436,7 +479,7 @@ function WConverhpServer(opt = {}) {
         if (true) {
 
             //upload, 上傳檔案
-            eeEmit('upload', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
+            evEmit('upload', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
 
         }
 
@@ -466,7 +509,7 @@ function WConverhpServer(opt = {}) {
         if (true) {
 
             //download, 下載檔案
-            eeEmit('download', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
+            evEmit('download', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
 
         }
 
@@ -522,8 +565,8 @@ function WConverhpServer(opt = {}) {
 
             }
 
-            //eeEmit
-            eeEmit('handler', {
+            //evEmit
+            evEmit('handler', {
                 api: 'apiMain',
                 headers,
                 query,
@@ -606,8 +649,8 @@ function WConverhpServer(opt = {}) {
                 //error
                 req.payload.on('error', (err) => {
                     console.log(`apiMain req.payload err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
-                    eeEmit('error', `receive payload error: ${err.message}`)
-                    pm.reject(`receive payload error: ${err.message}`)
+                    evEmit('error', `receive payload error: ${getErrorMessage(err)}`)
+                    pm.reject(`receive payload error: ${getErrorMessage(err)}`)
                 })
 
                 return pm
@@ -641,7 +684,7 @@ function WConverhpServer(opt = {}) {
             //改為解不出或非有效物件即回錯誤封包並**不觸發任何應用端事件**; 屬傳輸不穩(截斷、中間層改寫), 依重試原則不標示retryable
             let rdInp = u8arr2obj(u8aInp, { returnWithStateAndMsg: true })
             if (get(rdInp, 'state') !== 'success' || !iseobj(rdInp.msg)) {
-                eeEmit('error', `invalid request packet for apiMain: ${get(rdInp, 'msg', 'not an effective object')}`)
+                evEmit('error', `invalid request packet for apiMain: ${get(rdInp, 'msg', 'not an effective object')}`)
                 return responseU8aStreamWithError(res, 'invalid request packet')
             }
             let inp = rdInp.msg
@@ -666,7 +709,7 @@ function WConverhpServer(opt = {}) {
 
             //u8aOut, 應用端execute事件之回傳值(或拒絕值)無法序列化時不可宣稱成功, 見encodeOut
             let u8aOut = encodeOut(out, (msg) => {
-                eeEmit('error', `execute func[${get(inp, 'func', '')}] output can not be serialized: ${msg}`)
+                evEmit('error', `execute func[${get(inp, 'func', '')}] output can not be serialized: ${msg}`)
             })
             if (u8aOut === null) {
                 return responseU8aStreamWithError(res, 'output can not be serialized')
@@ -725,8 +768,8 @@ function WConverhpServer(opt = {}) {
 
             }
 
-            //eeEmit
-            eeEmit('handler', {
+            //evEmit
+            evEmit('handler', {
                 api: 'apiUploadCheck',
                 headers,
                 query,
@@ -852,7 +895,7 @@ function WConverhpServer(opt = {}) {
                             })
                         },
                         funLog: (msg) => {
-                            eeEmit('error', msg)
+                            evEmit('error', msg)
                         },
                     })
 
@@ -866,7 +909,7 @@ function WConverhpServer(opt = {}) {
 
                     //check, 失敗細節(含伺服器路徑)僅以error事件通知應用端, 不回傳前端; 格式為「<msg> for fileHash[...]: <reason>」
                     if (r.state === 'error' && isestr(r.reason)) {
-                        eeEmit('error', `${r.msg} for fileHash[${fileHash}]: ${r.reason}`)
+                        evEmit('error', `${r.msg} for fileHash[${fileHash}]: ${r.reason}`)
                     }
 
                 }
@@ -894,7 +937,7 @@ function WConverhpServer(opt = {}) {
 
             //u8aOut, 應用端upload事件之回傳值(經merge-slices-get之msg)無法序列化時不可宣稱成功, 見encodeOut
             let u8aOut = encodeOut(out, (msg) => {
-                eeEmit('error', `upload-controller mode[${mode}] output can not be serialized: ${msg}`)
+                evEmit('error', `upload-controller mode[${mode}] output can not be serialized: ${msg}`)
             })
             if (u8aOut === null) {
                 return responseU8aStreamWithError(res, 'output can not be serialized')
@@ -953,8 +996,8 @@ function WConverhpServer(opt = {}) {
 
             }
 
-            //eeEmit
-            eeEmit('handler', {
+            //evEmit
+            evEmit('handler', {
                 api: 'apiUploadSlice',
                 headers,
                 query,
@@ -1016,7 +1059,7 @@ function WConverhpServer(opt = {}) {
                     req.payload.unpipe(streamWrite)
                     req.payload.resume() //持續讀完剩餘本體, 使錯誤回應能回到前端
                     console.log(`apiUploadSlice streamWrite chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err)
-                    eeEmit('error', `write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${err.message}`)
+                    evEmit('error', `write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${getErrorMessage(err)}`)
                     pm.reject(`write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error`)
                 })
                 streamWrite.on('close', () => {
@@ -1074,14 +1117,14 @@ function WConverhpServer(opt = {}) {
                     }
                     bAbort = true
                     streamWrite.destroy()
-                    eeEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${msg}`)
+                    evEmit('error', `receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${msg}`)
                     pm.reject(`receive chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${msg}`)
                 }
 
                 //error
                 req.payload.on('error', (err) => {
                     console.log(`apiUploadSlice req.payload chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
-                    onAbort(err.message)
+                    onAbort(getErrorMessage(err))
                 })
 
                 //close, 未end即close亦視為中斷(部分中斷路徑只發close不發error); 正常路徑end先於close, 由bEnded擋下
@@ -1183,8 +1226,8 @@ function WConverhpServer(opt = {}) {
 
             }
 
-            //eeEmit
-            eeEmit('handler', {
+            //evEmit
+            evEmit('handler', {
                 api: 'apiDownloadGetFilename',
                 headers,
                 query,
@@ -1238,7 +1281,7 @@ function WConverhpServer(opt = {}) {
             //本路由只取檔名與串流兩欄, 不讀fileSize/fileType, 以免其getter拋錯影響本路由(維持既有行為)
             let rf = readDownloadFields(r, ['streamRead', 'filename'])
             if (!rf.ok) {
-                eeEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+                evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
                 return responseU8aStreamWithError(res, 'invalid streamRead')
             }
 
@@ -1252,7 +1295,7 @@ function WConverhpServer(opt = {}) {
             let filename = rf.fields.filename
             if (!isestr(filename)) {
                 //已於前面destroy
-                eeEmit('error', `download fileId[${fileId}] output error: invalid filename`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
                 return responseU8aStreamWithError(res, 'invalid filename')
             }
 
@@ -1267,7 +1310,7 @@ function WConverhpServer(opt = {}) {
             //why: filename來自應用端而非套件自產字串 —— wsemi之isestr以Object.prototype.toString判定, 帶Symbol.toStringTag='String'之物件可通過上方檢核,
             //其toJSON若回BigInt則序列化拋錯、回undefined則filename鍵消失, 兩者於直接obj2u8arr下皆是「宣稱成功之壞封包」且0則事件
             let u8aOut = encodeOut(out, (msg) => {
-                eeEmit('error', `download fileId[${fileId}] output can not be serialized: ${msg}`)
+                evEmit('error', `download fileId[${fileId}] output can not be serialized: ${msg}`)
             })
             if (u8aOut === null) {
                 return responseU8aStreamWithError(res, 'output can not be serialized')
@@ -1330,8 +1373,8 @@ function WConverhpServer(opt = {}) {
 
             }
 
-            //eeEmit
-            eeEmit('handler', {
+            //evEmit
+            evEmit('handler', {
                 api: 'apiDownloadGetFile',
                 headers,
                 query,
@@ -1376,7 +1419,7 @@ function WConverhpServer(opt = {}) {
             //本路由需四欄; 讀取失敗時尚未取得串流引用, 無從清理(屬呼叫端責任, 見JSDoc)
             let rf = readDownloadFields(r, ['streamRead', 'fileSize', 'fileType', 'filename'])
             if (!rf.ok) {
-                eeEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+                evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
                 return responseU8aStreamWithError(res, 'invalid streamRead')
             }
             let streamRead = rf.fields.streamRead
@@ -1385,7 +1428,7 @@ function WConverhpServer(opt = {}) {
             let fileSize = rf.fields.fileSize
             if (!isValidFileSize(fileSize)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                eeEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
             fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
@@ -1394,7 +1437,7 @@ function WConverhpServer(opt = {}) {
             let fileType = rf.fields.fileType
             if (!isestr(fileType) || !isValidHeaderValue('Content-Type', fileType)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                eeEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
                 return responseU8aStreamWithError(res, 'invalid fileType')
             }
             fileType = cstr(fileType)
@@ -1408,11 +1451,11 @@ function WConverhpServer(opt = {}) {
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
             //forHead, 本路由為GET, hapi對GET路由自動支援HEAD; HEAD不送本體故不建計數串流(見buildDownloadSource之forHead)
             let bs = buildDownloadSource(streamRead, fileSize, (msg) => {
-                eeEmit('error', `download fileId[${fileId}] stream error: ${msg}`)
+                evEmit('error', `download fileId[${fileId}] stream error: ${msg}`)
             }, { forHead: cstr(get(req, 'method', '')).toLowerCase() === 'head' })
             if (bs.error) {
                 destroyStreamRead(streamRead)
-                eeEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
+                evEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
                 return responseU8aStreamWithError(res, bs.error)
             }
 
@@ -1485,8 +1528,8 @@ function WConverhpServer(opt = {}) {
 
             }
 
-            //eeEmit
-            eeEmit('handler', {
+            //evEmit
+            evEmit('handler', {
                 api: 'apiDownload',
                 headers,
                 query,
@@ -1531,7 +1574,7 @@ function WConverhpServer(opt = {}) {
             //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
             let rf = readDownloadFields(r, ['streamRead', 'filename', 'fileSize', 'fileType'])
             if (!rf.ok) {
-                eeEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+                evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
                 return responseU8aStreamWithError(res, 'invalid streamRead')
             }
 
@@ -1542,7 +1585,7 @@ function WConverhpServer(opt = {}) {
             let filename = rf.fields.filename
             if (!isestr(filename)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                eeEmit('error', `download fileId[${fileId}] output error: invalid filename`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
                 return responseU8aStreamWithError(res, 'invalid filename')
             }
             filename = str2b64(filename) //headers內對中文支援度不佳須用base64傳
@@ -1551,7 +1594,7 @@ function WConverhpServer(opt = {}) {
             let fileSize = rf.fields.fileSize
             if (!isValidFileSize(fileSize)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                eeEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
             fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
@@ -1560,7 +1603,7 @@ function WConverhpServer(opt = {}) {
             let fileType = rf.fields.fileType
             if (!isestr(fileType) || !isValidHeaderValue('Content-Type', fileType)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                eeEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
                 return responseU8aStreamWithError(res, 'invalid fileType')
             }
             fileType = cstr(fileType)
@@ -1568,11 +1611,11 @@ function WConverhpServer(opt = {}) {
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
             //forHead, 本路由為POST故一般不會收到HEAD; 與/dwgf同式處理, 使兩路由對此不對稱不再由「寫法差異」產生
             let bs = buildDownloadSource(streamRead, fileSize, (msg) => {
-                eeEmit('error', `download fileId[${fileId}] stream error: ${msg}`)
+                evEmit('error', `download fileId[${fileId}] stream error: ${msg}`)
             }, { forHead: cstr(get(req, 'method', '')).toLowerCase() === 'head' })
             if (bs.error) {
                 destroyStreamRead(streamRead)
-                eeEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
+                evEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
                 return responseU8aStreamWithError(res, bs.error)
             }
 
@@ -1649,7 +1692,7 @@ function WConverhpServer(opt = {}) {
             .catch((err) => {
                 //埠被占用(EADDRINUSE)等啟動失敗須攔截: 未await之promise被reject即為unhandledRejection, 整個行程會崩潰且應用端無從得知; 改以error事件通知, 由應用端決定處置
                 console.log(`start server error`, err)
-                eeEmit('error', `start server error: ${get(err, 'message', err)}`)
+                evEmitDelay('error', `start server error: ${getErrorMessage(err)}`) //建構期, 應用端尚未註冊監聽器
             })
     }
 
@@ -1659,9 +1702,9 @@ function WConverhpServer(opt = {}) {
     }
 
     //save
-    ee.stop = stop
+    ev.stop = stop
 
-    return ee
+    return ev
 }
 
 
