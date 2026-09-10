@@ -3,9 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import stream from 'stream'
 import w from 'wsemi'
-import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import { downloadRouteKeysByBody, fetchDownload } from './api-axes.mjs'
 
 
 /**
@@ -157,40 +157,19 @@ describe('api-downloadShape', function() {
     })
 
     //call, 直接打路由並解析封包; 以 3 秒為限, 逾時即視為懸置(修正前 streamRead 缺失之徵狀)
+    //call, 請求形狀取自路由軸(test/api-axes.mjs); timeoutMs 使「懸置」成為可斷言之觀察值而非測試逾時
     let call = async(route, fileId) => {
-        let ac = new AbortController()
-        let tm = setTimeout(() => ac.abort(), 3000)
-        try {
-            let r = null
-            if (route === 'dw') {
-                r = await fetch(`http://127.0.0.1:${port}/api/dw`, {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fileId }),
-                    signal: ac.signal,
-                })
-            }
-            else {
-                r = await fetch(`http://127.0.0.1:${port}/api/dwgf?fileId=${encodeURIComponent(fileId)}&token=t`, { signal: ac.signal })
-            }
-            let buf = Buffer.from(await r.arrayBuffer())
-            let o = { status: r.status, returnType: r.headers.get('return-type'), retryable: r.headers.get('return-retryable'), bytes: buf.length, text: buf.toString('utf8') }
-            if (o.returnType === 'error') {
-                o.error = u8arr2obj(new Uint8Array(buf)).error
-            }
-            return o
-        }
-        catch (err) {
-            return { hang: true, msg: err.message }
-        }
-        finally {
-            clearTimeout(tm)
-        }
+        return fetchDownload(port, route, fileId, { timeoutMs: 3000 })
     }
 
-    //expectShapeError, 兩路由皆須: 不懸置、HTTP 200、Return-Type error、指定錯誤訊息、不標示 retryable、恰一則含 fileId 之 error 事件
+    //routes, 本檔驗「交付檔案本體」之契約(fileSize/fileType/Content-Length/逐位元組正確),
+    //故取本體形式為 stream 之成員 —— /dwgfn 只回檔名封包、不讀 fileSize/fileType, 取得檔名後即銷毀來源,
+    //其形狀檢核由 api-downloadEvents(事件與訊息)與 api-sourceTraps(欄位階段)覆蓋
+    let routes = downloadRouteKeysByBody('stream')
+
+    //expectShapeError, 各路由皆須: 不懸置、HTTP 200、Return-Type error、指定錯誤訊息、不標示 retryable、恰一則含 fileId 之 error 事件
     let expectShapeError = async(fileId, msg) => {
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             errs = []
             let r = await call(route, fileId)
             let tag = `${route}/${fileId}: ${JSON.stringify(r)}`
@@ -221,11 +200,27 @@ describe('api-downloadShape', function() {
         await expectShapeError('destroyed-stream', 'invalid streamRead')
     })
 
-    it('fileSize 為 NaN/Infinity/負數/小數/數字字串時須回 invalid fileSize 並銷毀來源(修正前前四者通過 isNumber, 連線直接斷且無回應標頭)', async function() {
+    it('fileSize 為 NaN/Infinity/負數/小數時須回 invalid fileSize 並銷毀來源(修正前前二者通過 isNumber, 連線直接斷且無回應標頭)', async function() {
         this.timeout(30000)
-        for (let id of ['size-nan', 'size-infinity', 'size-negative', 'size-fractional', 'size-string']) {
+        for (let id of ['size-nan', 'size-infinity', 'size-negative', 'size-fractional']) {
             await expectShapeError(id, 'invalid fileSize')
             assert.strict.deepEqual(tracked[id].destroyed, true, id)
+        }
+    })
+
+    it('fileSize 為數字字串時須被接受並正常下載(isValidFileSize 採 wsemi 之 isp0int, 呼叫端以 cint 正規化後才寫標頭與比對長度)', async function() {
+        this.timeout(20000)
+        //此為使用者裁示之契約: 檢核用 isp0int(接受數字字串)+ cint 正規化成對。
+        //正規化不可省 —— fileSize 會以 === 與實際位元組數比較, 字串會使長度正確之下載反被判為 fileSize mismatch
+        for (let route of routes) {
+            errs = []
+            let r = await call(route, 'size-string')
+            let tag = `${route}: ${JSON.stringify({ status: r.status, returnType: r.returnType, bytes: r.bytes })}`
+            assert.strict.deepEqual(r.status, 200, tag)
+            assert.strict.deepEqual(r.returnType, null, tag)
+            assert.strict.deepEqual(r.bytes, sizeSrc, tag)
+            await w.delay(100)
+            assert.strict.deepEqual(errs, [])
         }
     })
 
@@ -248,7 +243,7 @@ describe('api-downloadShape', function() {
             { id: 'number', text: '42' },
             { id: 'boolean', text: 'true' },
         ]
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             for (let c of cases) {
                 errs = []
                 let r = await call(route, c.id)
@@ -275,7 +270,7 @@ describe('api-downloadShape', function() {
             { id: 'string', text: 'abc' },
             { id: 'plain-object', text: '{"x":1}' },
         ]
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             for (let c of cases) {
                 errs = []
                 let r = await call(route, c.id)
@@ -291,7 +286,7 @@ describe('api-downloadShape', function() {
 
     it('對照組: 正常串流須 200 且長度與來源一致, 不發 error 事件', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             errs = []
             let r = await call(route, 'ok')
             assert.strict.deepEqual(r.status, 200, JSON.stringify(r))

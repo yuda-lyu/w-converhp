@@ -2,8 +2,8 @@ import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
-import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import { downloadRouteKeys, downloadRouteKeysRequiring, downloadRouteKeysNotRequiring, fetchDownload } from './api-axes.mjs'
 
 
 /**
@@ -72,33 +72,16 @@ describe('api-downloadEvents', function() {
         catch (err) {}
     })
 
-    let call = async(route, fileId) => {
-        let r = null
-        if (route === 'dw') {
-            r = await fetch(`http://127.0.0.1:${port}/api/dw`, { method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId }) })
-        }
-        else if (route === 'dwgfn') {
-            r = await fetch(`http://127.0.0.1:${port}/api/dwgfn`, { method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId }) })
-        }
-        else {
-            r = await fetch(`http://127.0.0.1:${port}/api/dwgf?fileId=${encodeURIComponent(fileId)}&token=t`)
-        }
-        let buf = Buffer.from(await r.arrayBuffer())
-        let rt = r.headers.get('return-type')
-        return { status: r.status, returnType: rt, error: rt === 'error' ? u8arr2obj(new Uint8Array(buf)).error : undefined }
-    }
-
-    //probe, 取某路由某案例之回應與 error 事件數
+    //probe, 取某路由某案例之回應與 error 事件數; 請求形狀取自路由軸(test/api-axes.mjs)
     let probe = async(route, fileId) => {
         errs = []
-        let r = await call(route, fileId)
-        await w.delay(200) //eeEmit 為 setTimeout 發送
+        let r = await fetchDownload(port, route, fileId, { settleMs: 200 }) //eeEmit 為 setTimeout 發送
         return { ...r, nErrs: errs.length, errs: [...errs] }
     }
 
     it('應用端 reject 時, 三路由之錯誤訊息須一致為 can not get file from fileId(修正前 /dwgfn 回 invalid filename)', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf', 'dwgfn']) {
+        for (let route of downloadRouteKeys()) {
             let r = await probe(route, 'reject')
             assert.strict.deepEqual(r.returnType, 'error', `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.error, 'can not get file from fileId', `${route}: ${JSON.stringify(r)}`)
@@ -107,19 +90,33 @@ describe('api-downloadEvents', function() {
 
     it('應用端 reject 時, 三路由之 error 事件皆須為 0 則(此為既有對稱行為, 不得因本次修正而改變)', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf', 'dwgfn']) {
+        for (let route of downloadRouteKeys()) {
             let r = await probe(route, 'reject')
             assert.strict.deepEqual(r.nErrs, 0, `${route}: ${JSON.stringify(r)}`)
         }
     })
 
-    it('應用端形狀錯誤(缺 filename)時, /dwgfn 與 /dw 皆須發恰好一則 error 事件(修正前 /dwgfn 為 0 則)', async function() {
+    it('應用端形狀錯誤(缺 filename)時, 以 filename 為必要欄位之路由皆須發恰好一則 error 事件(修正前 /dwgfn 為 0 則)', async function() {
         this.timeout(20000)
-        for (let route of ['dwgfn', 'dw']) {
+        for (let route of downloadRouteKeysRequiring('filename')) {
             let r = await probe(route, 'no-filename')
             assert.strict.deepEqual(r.error, 'invalid filename', `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.nErrs, 1, `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.errs[0].includes('download fileId[no-filename]'), true, r.errs[0])
+        }
+    })
+
+    it('缺 filename 時, 以 filename 為選用欄位之路由須照常回 200 全量本體且不帶 Content-Disposition、不發事件', async function() {
+        //why: /dwgf 之 filename 為選用(未給則由 <a download> 或 URL 命名, 向後相容), 故缺 filename 對它不是形狀錯誤。
+        //此為三路由唯一之欄位必要性差異, 原本以「不寫進上一條的路由陣列」表達, 現改為軸上之 requiredFields 並在此正面斷言其應然
+        this.timeout(20000)
+        for (let route of downloadRouteKeysNotRequiring('filename')) {
+            let r = await probe(route, 'no-filename')
+            assert.strict.deepEqual(r.status, 200, `${route}: ${JSON.stringify(r)}`)
+            assert.strict.deepEqual(r.returnType, null, `${route}: ${JSON.stringify(r)}`)
+            assert.strict.deepEqual(r.contentDisposition, null, `${route}: ${JSON.stringify(r)}`)
+            assert.strict.deepEqual(r.bytes, sizeSrc, `${route}: ${JSON.stringify(r)}`)
+            assert.strict.deepEqual(r.nErrs, 0, `${route}: ${JSON.stringify(r)}`)
         }
     })
 
@@ -132,7 +129,7 @@ describe('api-downloadEvents', function() {
 
     it('監聽器同步拋錯時, 三路由皆須恰好一則 error 事件, 不得因補發而變兩則', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf', 'dwgfn']) {
+        for (let route of downloadRouteKeys()) {
             let r = await probe(route, 'listener-throw')
             assert.strict.deepEqual(r.error, 'can not get file from fileId', `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.nErrs, 1, `${route}: ${JSON.stringify(r)} errs=${JSON.stringify(r.errs)}`)
@@ -142,7 +139,7 @@ describe('api-downloadEvents', function() {
 
     it('對照組: 正常下載三路由皆不發 error 事件', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf', 'dwgfn']) {
+        for (let route of downloadRouteKeys()) {
             let r = await probe(route, 'ok')
             assert.strict.deepEqual(r.nErrs, 0, `${route}: ${JSON.stringify(r)}`)
         }

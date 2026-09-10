@@ -4,6 +4,7 @@ import path from 'path'
 import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import { downloadRouteKeysByBody, fetchDownload } from './api-axes.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 
 
@@ -87,34 +88,17 @@ describe('api-downloadFraming', function() {
         }
     })
 
-    //call, 直接打路由並取回應標頭; 一律帶 Accept-Encoding 以重現 axios 與瀏覽器之預設行為
+    //routes, 本檔驗 Content-Length 之框幀, 故取本體形式為 stream 之成員(見 test/api-axes.mjs)
+    let routes = downloadRouteKeysByBody('stream')
+
+    //call, 請求形狀取自路由軸; 一律帶 Accept-Encoding 以重現 axios 與瀏覽器之預設行為
     let call = async(route, fileId) => {
-        let r = null
-        if (route === 'dw') {
-            r = await fetch(`http://127.0.0.1:${port}/api/dw`, {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json', 'Accept-Encoding': 'gzip, deflate, br' },
-                body: JSON.stringify({ fileId }),
-            })
-        }
-        else {
-            r = await fetch(`http://127.0.0.1:${port}/api/dwgf?fileId=${encodeURIComponent(fileId)}&token=t`, {
-                headers: { 'Accept-Encoding': 'gzip, deflate, br' },
-            })
-        }
-        let buf = Buffer.from(await r.arrayBuffer())
-        return {
-            status: r.status,
-            contentLength: r.headers.get('content-length'),
-            contentEncoding: r.headers.get('content-encoding'),
-            bytes: buf.length,
-            text: buf.length <= 64 ? buf.toString('utf8') : null,
-        }
+        return fetchDownload(port, route, fileId, { acceptEncoding: 'gzip, deflate, br', textLimit: 64 })
     }
 
     it('fileSize 為 0 時兩路由皆須回 HTTP 200 與 Content-Length: 0, 不得回 204(修正前 hapi 依 emptyStatusCode 改為 204 並刪除長度)', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             for (let id of ['empty', 'empty-stream']) {
                 let r = await call(route, id)
                 let tag = `${route}/${id}: ${JSON.stringify(r)}`
@@ -127,7 +111,7 @@ describe('api-downloadFraming', function() {
 
     it('可壓縮 fileType 於前端帶 Accept-Encoding 時仍須保留 Content-Length(修正前被 hapi 壓縮並刪除該標頭)', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             for (let id of ['text', 'json']) {
                 let r = await call(route, id)
                 let tag = `${route}/${id}: ${JSON.stringify(r)}`
@@ -141,7 +125,7 @@ describe('api-downloadFraming', function() {
 
     it('對照組: 不可壓縮型別本就保留 Content-Length, 行為不得改變', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             let r = await call(route, 'bin')
             assert.strict.deepEqual(r.status, 200, JSON.stringify(r))
             assert.strict.deepEqual(r.contentLength, String(sizeTxt), JSON.stringify(r))
@@ -177,7 +161,7 @@ describe('api-downloadFraming', function() {
 
     it('錯誤封包不受影響: 應用端 reject 時仍為 200 + 可解析之錯誤封包', async function() {
         this.timeout(20000)
-        for (let route of ['dw', 'dwgf']) {
+        for (let route of routes) {
             let r = await call(route, 'nope')
             assert.strict.deepEqual(r.status, 200, JSON.stringify(r))
             assert.strict.deepEqual(r.bytes > 0, true, JSON.stringify(r))

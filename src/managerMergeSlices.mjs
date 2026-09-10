@@ -7,6 +7,8 @@ import genID from 'wsemi/src/genID.mjs'
 import sep from 'wsemi/src/sep.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import haskey from 'wsemi/src/haskey.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
@@ -80,12 +82,29 @@ let verifyMerged = async(fileHash, ps) => {
     }
 }
 
-//readStored, 讀取本隊列儲存之結果; 讀取或解析失敗視為未儲存並記錄, 交由後續狀態判定
+//readStored, 讀取本隊列儲存之結果; 讀取或解析失敗視為未儲存並記錄, 交由後續狀態判定(落到 S2 重新消費)
+//why(須用嚴格模式且要求自有 ro 鍵): 寬鬆之 u8arr2obj 對壞封包回 {} 而不報錯, 再經 get(o,'ro',null) 就成了「一個值為 null 的成功結果」——
+//實測(第五輪複審)隨機壞包、缺 ro 鍵之封包、二進位區截尾三種情形, 皆回 state success 且 msg 為 null 或截短之值, 應用端 upload 呼叫數為 0,
+//亦即壞掉的 .ro 不但被當成成功, 還「擋住」了本可正常進行的重新消費, 使應用端永遠拿不到真結果
 let readStored = (ps, funLog) => {
     try {
         let u8a = new Uint8Array(fs.readFileSync(ps.fpr))
-        let o = u8arr2obj(u8a)
-        return { ok: true, ro: get(o, 'ro', null) }
+
+        //check, 嚴格模式取狀態: 封包損毀者視為未儲存
+        let rd = u8arr2obj(u8a, { returnWithStateAndMsg: true })
+        if (get(rd, 'state') !== 'success') {
+            funLog(`stored result ${ps.fpr} is corrupted, treat as not stored: ${get(rd, 'msg', 'unknown error')}`)
+            return { ok: false }
+        }
+
+        //check, 須為物件且自有 ro 鍵: 缺鍵者代表寫入時序列化已失真, 不可當成「結果為 null」
+        let o = rd.msg
+        if (!isobj(o) || !haskey(o, 'ro')) {
+            funLog(`stored result ${ps.fpr} has no own 'ro' key, treat as not stored`)
+            return { ok: false }
+        }
+
+        return { ok: true, ro: o.ro }
     }
     catch (err) {
         funLog(`can not read stored result ${ps.fpr}: ${get(err, 'message', String(err))}`)
@@ -110,14 +129,23 @@ let consume = (id, ps, funConsume, funLog) => {
 
                 //check, 應用端結果須能序列化才可儲存: 不能者(如含BigInt或循環參照)寬鬆模式會落地成解不出ro鍵之空封包,
                 //使首次回應為原值、重送回應變成null —— 同一queueId兩種結果, 破壞本檔之「重送得同一結果」保證.
-                //故序列化失敗時不落地, 只記錄; 之後重送會依S2再呼叫一次應用端(與儲存失敗同一處置), 至少結果一致
+                //故序列化失敗時不落地; 之後重送會依S2再呼叫一次應用端(與儲存失敗同一處置), 至少結果一致.
+                //此處刻意不記錄: 同一個「應用端結果無法序列化」之失敗, 外層組回應時亦會偵測到並發一則error事件,
+                //兩層各報一次即同一失敗兩則事件(與/slc曾修過之情形同型), 故由外層唯一持有此失敗之回報
                 let re = obj2u8arr({ ro }, { returnWithStateAndMsg: true })
                 if (get(re, 'state') !== 'success') {
-                    funLog(`can not serialize consumed result for ${ps.fpr}: ${get(re, 'msg', 'unknown error')}`)
                     return ro
                 }
 
                 fs.writeFileSync(ps.fpr, Buffer.from(re.msg))
+
+                //canonical, 回傳「解回之值」而非原物件
+                //why: 原本落地一次(鍵為ro)、外層組回應時又序列化一次(鍵為msg), 帶toJSON或有狀態getter之結果會被呼叫兩次且兩次結果可不同 ——
+                //實測首次回應得seq=2而重送得seq=1, 同一queueId兩種結果. 改回傳解回之canonical值後, 首次與重送必然相同, 且toJSON只執行一次
+                let rd = u8arr2obj(re.msg, { returnWithStateAndMsg: true })
+                if (get(rd, 'state') === 'success' && isobj(rd.msg) && haskey(rd.msg, 'ro')) {
+                    return rd.msg.ro
+                }
             }
             catch (err) {
                 funLog(`can not store consumed result to ${ps.fpr}: ${get(err, 'message', String(err))}`)

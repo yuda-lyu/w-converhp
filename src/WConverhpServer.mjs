@@ -1,7 +1,6 @@
 import path from 'path'
 import fs from 'fs'
 import stream from 'stream'
-import { validateHeaderValue } from 'http'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
@@ -25,6 +24,14 @@ import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
+import isValidFileSize from './isValidFileSize.mjs'
+import isValidHeaderValue from './isValidHeaderValue.mjs'
+import destroyStreamRead from './destroyStreamRead.mjs'
+import readDownloadFields from './readDownloadFields.mjs'
+import encodeOut from './encodeOut.mjs'
+import buildDownloadSource from './buildDownloadSource.mjs'
+import responseU8aStream from './responseU8aStream.mjs'
+import responseU8aStreamWithError from './responseU8aStreamWithError.mjs'
 import encodeRfc5987 from './encodeRfc5987.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
@@ -466,229 +473,6 @@ function WConverhpServer(opt = {}) {
         return pm
     }
 
-    //responseU8aStream
-    function responseU8aStream(res, u8a, opt = {}) {
-
-        //stream
-        let smr = new stream.Readable()
-        smr._read = () => {}
-        smr.push(u8a)
-        smr.push(null)
-
-        //returnType
-        let returnType = get(opt, 'returnType', '')
-
-        //returnMsg
-        let returnMsg = get(opt, 'returnMsg', '')
-
-        //r
-        let r = res.response(smr)
-            .header('Cache-Control', 'no-cache, no-store, must-revalidate')
-            .header('Content-Type', 'application/octet-stream')
-            .header('Content-Length', smr.readableLength)
-        if (isestr(returnType)) {
-            r.header('Return-Type', returnType)
-        }
-        if (isestr(returnMsg)) {
-            r.header('Return-Msg', returnMsg)
-        }
-
-        return r
-    }
-
-    //responseU8aStreamWithError
-    function responseU8aStreamWithError(res, msg, opt = {}) {
-
-        //check
-        if (!isestr(msg)) {
-            console.log('msg', msg)
-            console.log(`msg is not an effective string, set msg=''`)
-            msg = ''
-        }
-
-        //retryable, 預設true; 給false者限「可證明不需重試」之錯誤: 結果僅由client自行建構之請求內容(mode、fileHash、chunkTotal、chunkIndex、packageId、fileId)決定, 重送同一請求必得同一結果;
-        //凡涉及權限(permission denied)、應用端reject、應用端回傳形狀不合、磁碟、網路者皆為狀態不穩, 不得標示, 依重試原則由前端照常重試
-        //標示同時置於封包(供execute/upload/dwgfn之本體解析)與標頭Return-Retryable(供download之串流路徑, 該路徑只讀標頭不解析本體)
-        let retryable = get(opt, 'retryable', true)
-
-        //out
-        let out = {
-            error: msg,
-        }
-        if (retryable === false) {
-            out.retryable = false
-        }
-
-        //u8aOut
-        let u8aOut = obj2u8arr(out)
-        // console.log('download u8aOut', u8aOut)
-
-        //str2b64
-        // msg = str2b64(msg) //預期程式內調用皆為英文, 不須轉base64來支援中文
-
-        //r
-        let r = responseU8aStream(res, u8aOut, { returnType: 'error', returnMsg: msg })
-        if (retryable === false) {
-            r.header('Return-Retryable', 'false')
-        }
-
-        return r
-    }
-
-    //isValidFileSize, 應用端給之fileSize會原樣寫入Content-Length(HTTP分框依據), 須為安全非負整數之primitive number
-    //why: 原以lodash isNumber檢核, 其對NaN、Infinity、負數、小數皆回true, 此類值交給node寫標頭即拋錯, hapi於送標頭階段失敗只能直接斷線:
-    //前端連回應標頭都收不到(fetch failed), 伺服器亦不發error事件, 應用端無從得知是自己給錯值
-    //另須為安全整數: 超出者(如Number.MAX_SAFE_INTEGER+1或1e21)雖為Number.isInteger所接受, 但其字串形式帶指數記號(如'1e+21'),
-    //不合Content-Length之1*DIGIT語法, 實測同樣是連線懸置且無回應標頭 —— 與原缺陷同一徵狀
-    let isValidFileSize = (v) => {
-        return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
-    }
-
-    //encodeOut, 序列化回應封包之唯一出口; 應用端回傳值若無法序列化(如含BigInt、循環參照), wsemi之obj2u8arr以state=error回報,
-    //此時不可送出解不出success鍵之空封包卻宣稱成功(前端只會收到無意義之'data is not an effective object'且伺服器不發任何事件),
-    //改回錯誤封包並以error事件通知應用端. 回傳Uint8Array或null(null代表序列化失敗, 已呼叫funError)
-    let encodeOut = (out, funError) => {
-        let r = obj2u8arr(out, { returnWithStateAndMsg: true })
-        if (get(r, 'state') !== 'success') {
-            funError(get(r, 'msg', 'unknown error'))
-            return null
-        }
-        return r.msg
-    }
-
-    //isValidHeaderValue, 以node之低階標頭驗證(同setHeader之判定, 禁CR/LF與其他控制字元)檢核應用端給之標頭值(fileType)
-    //why: 原只以isestr檢核, 含CR/LF者交給hapi設定標頭時拋錯而回裸HTTP 500, 非套件之錯誤封包, 前端無法解析且伺服器不發error事件
-    let isValidHeaderValue = (name, value) => {
-        try {
-            validateHeaderValue(name, value)
-            return true
-        }
-        catch (err) {
-            return false
-        }
-    }
-
-    //destroyStreamRead, 清理應用端交出之串流: 只對「像串流(有pipe)且可destroy」者呼叫, 不對任意物件(Buffer、字串、plain object)盲呼叫destroy
-    //why(try須包住屬性讀取本身): 應用端物件之pipe/destroy可能是會拋錯之getter或Proxy, 只包v.destroy()時該例外會逸出handler,
-    //hapi只能回裸HTTP 500且伺服器不發error事件 —— 與本輪要收斂之其他形狀錯誤同一徵狀
-    let destroyStreamRead = (v) => {
-        try {
-            if (v && isfun(v.pipe) && isfun(v.destroy)) {
-                v.destroy()
-            }
-        }
-        catch (err) {}
-    }
-
-    //hasPipe, 安全判定是否像串流; 屬性讀取拋錯者視為不像串流(其值本就不可用, 由呼叫端收斂為錯誤封包)
-    let hasPipe = (v) => {
-        try {
-            return isfun(v.pipe)
-        }
-        catch (err) {
-            return null //null代表判定失敗(getter拋錯), 與false(確定不像串流)區分
-        }
-    }
-
-    //buildDownloadSource, 將應用端交出之streamRead收斂為可交給hapi之回應本體, 並保證實送位元組數與fileSize一致; 回傳{ source }或{ error, reason }(error為回前端之訊息, reason供error事件)
-    //why: 伺服器以fileSize寫Content-Length, 應用端給錯時hapi與node皆不會替套件擋:
-    //  缺streamRead、非串流物件 → 本體不完整而連線懸置至前端閒置逾時(預設5分鐘, 再乘retryDownload); 宣告大於實送 → 同樣懸置;
-    //  宣告小於實送 → 回200且前端存下被截斷之檔案並判成功(靜默毀損); stream-like、objectMode → hapi拒收回裸500且來源未被銷毀; 已destroy之串流(如瀏覽器兩階段下載重用同一串流) → 懸置
-    //作法: 可事前具體化者(Buffer、Uint8Array、字串、可JSON化物件, 皆為hapi現已接受之本體型別, 維持相容)先算實際長度, 不符即回錯誤封包(標頭尚未送出);
-    //真串流則以計數串流(pipeline接於其後)包住: 超量立即以錯誤終止, 來源正常結束但不足則於flush產生錯誤 —— 兩者皆令hapi中止回應(res.destroy), 前端收到不完整而失敗, 不會把壞檔當成功;
-    //來源自身出錯者沿用其錯誤不另報; pipeline亦使hapi於前端中斷時銷毀計數串流後連帶銷毀來源(維持原有收尾)
-    //不採instanceof Readable之白名單: 會擋掉目前可正常下載之Buffer與plain object用法
-    //取捨(須知): 可事前具體化者由本函數以JSON.stringify產生bytes後交hapi, 故該route之json政策(replacer/space/suffix/escape)不套用於下載本體.
-    //代價是外部serverHapi若設有json.replacer(如移除敏感欄位), 對download本體不生效; 換得的是本體長度可於送標頭前確知並與fileSize比對(#20之前提).
-    //應用端若需套用自訂序列化政策, 應自行序列化後以字串或Buffer交出
-    let buildDownloadSource = (streamRead, fileSize, funError) => {
-
-        //check
-        if (streamRead === undefined || streamRead === null) {
-            return { error: 'invalid streamRead', reason: 'streamRead is null or undefined' }
-        }
-
-        //stream
-        if (streamRead instanceof stream.Readable) {
-
-            //check
-            if (streamRead.readableObjectMode) {
-                return { error: 'invalid streamRead', reason: 'streamRead is in object mode' }
-            }
-            if (streamRead.destroyed || streamRead.readableEnded) {
-                return { error: 'invalid streamRead', reason: 'streamRead is already destroyed or ended (each download event must provide a new stream)' }
-            }
-
-            //counter, 計數並於不符時以錯誤終止
-            let n = 0
-            let bMismatch = false
-            let counter = new stream.Transform({
-                transform(chunk, encoding, cb) {
-                    n += chunk.length
-                    if (n > fileSize) {
-                        bMismatch = true
-                        cb(new Error(`streamRead sent more than fileSize[${fileSize}] bytes`))
-                        return
-                    }
-                    cb(null, chunk)
-                },
-                flush(cb) {
-                    if (n !== fileSize) {
-                        bMismatch = true
-                        cb(new Error(`streamRead ended at ${n} bytes but fileSize is ${fileSize}`))
-                        return
-                    }
-                    cb()
-                },
-            })
-
-            //pipeline, 任一方出錯或提前關閉皆銷毀雙方; 長度不符者另以error事件通知應用端, 來源自身出錯或前端中斷則不另報
-            stream.pipeline(streamRead, counter, (err) => {
-                if (err && bMismatch) {
-                    funError(err.message)
-                }
-            })
-
-            return { source: counter }
-        }
-
-        //buf, 可事前具體化者
-        let buf = null
-        if (Buffer.isBuffer(streamRead)) {
-            buf = streamRead
-        }
-        else if (streamRead instanceof Uint8Array) {
-            buf = Buffer.from(streamRead)
-        }
-        else if (typeof streamRead === 'string') {
-            buf = Buffer.from(streamRead, 'utf8')
-        }
-        else if (typeof streamRead === 'number' || typeof streamRead === 'boolean' || (typeof streamRead === 'object' && hasPipe(streamRead) === false)) {
-            //number與boolean為hapi原生即接受之本體型別(其marshal以JSON序列化, 如42得'42'), 須維持相容;
-            //物件則須先確認不像串流(hasPipe回false), 回null者代表其pipe為會拋錯之getter, 落到最後一支收斂為錯誤封包
-            let s = null
-            try {
-                s = JSON.stringify(streamRead)
-            }
-            catch (err) {
-                return { error: 'invalid streamRead', reason: `streamRead can not be serialized: ${err.message}` }
-            }
-            if (typeof s !== 'string') {
-                return { error: 'invalid streamRead', reason: 'streamRead can not be serialized' }
-            }
-            buf = Buffer.from(s, 'utf8')
-        }
-        else {
-            return { error: 'invalid streamRead', reason: 'streamRead must be a readable stream, buffer, string, number, boolean or plain object' }
-        }
-
-        //check
-        if (buf.length !== fileSize) {
-            return { error: 'fileSize mismatch', reason: `streamRead has ${buf.length} bytes but fileSize is ${fileSize}` }
-        }
-
-        return { source: buf }
-    }
 
     //apiMain
     let apiMain = {
@@ -851,8 +635,16 @@ function WConverhpServer(opt = {}) {
             let u8aInp = new Uint8Array(bbInp)
             // console.log('u8aInp', u8aInp)
 
-            //u8arr2obj
-            let inp = u8arr2obj(u8aInp)
+            //u8arr2obj, 以嚴格模式取狀態並檢核請求封包之形狀
+            //why: 寬鬆模式對壞封包回{}而不報錯, procDeal隨即以func為空字串、input為null觸發應用端execute事件,
+            //之後把output寫進該空物件並回200+Return-Type success —— 畸形或截斷之請求本體被「回報為成功」, 且應用端被一次不存在的呼叫驚動。
+            //改為解不出或非有效物件即回錯誤封包並**不觸發任何應用端事件**; 屬傳輸不穩(截斷、中間層改寫), 依重試原則不標示retryable
+            let rdInp = u8arr2obj(u8aInp, { returnWithStateAndMsg: true })
+            if (get(rdInp, 'state') !== 'success' || !iseobj(rdInp.msg)) {
+                eeEmit('error', `invalid request packet for apiMain: ${get(rdInp, 'msg', 'not an effective object')}`)
+                return responseU8aStreamWithError(res, 'invalid request packet')
+            }
+            let inp = rdInp.msg
             // console.log('inp', inp)
 
             //procDeal
@@ -1442,14 +1234,22 @@ function WConverhpServer(opt = {}) {
             //r
             let r = get(out, 'success')
 
+            //rf, 欄位擷取須經attempt: 應用端回傳物件之欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件(見規則帳本 R1)
+            //本路由只取檔名與串流兩欄, 不讀fileSize/fileType, 以免其getter拋錯影響本路由(維持既有行為)
+            let rf = readDownloadFields(r, ['streamRead', 'filename'])
+            if (!rf.ok) {
+                eeEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+                return responseU8aStreamWithError(res, 'invalid streamRead')
+            }
+
             //streamRead
-            let streamRead = get(r, 'streamRead')
+            let streamRead = rf.fields.streamRead
 
             //destroy, 本路由只取檔名不提供stream故須預先destroy; 瀏覽器下載管理器路徑接著會以同一fileId再觸發一次download事件取串流, 應用端每次皆須交出新串流
             destroyStreamRead(streamRead)
 
             //filename, 形狀錯誤須發error事件使應用端能觀察(與/dw、/dwgf對稱); 屬應用端狀態, 依重試原則不標示retryable
-            let filename = get(r, 'filename')
+            let filename = rf.fields.filename
             if (!isestr(filename)) {
                 //已於前面destroy
                 eeEmit('error', `download fileId[${fileId}] output error: invalid filename`)
@@ -1463,8 +1263,15 @@ function WConverhpServer(opt = {}) {
                 },
             }
 
-            //u8aOut
-            let u8aOut = obj2u8arr(out)
+            //u8aOut, 須經encodeOut而非直接obj2u8arr
+            //why: filename來自應用端而非套件自產字串 —— wsemi之isestr以Object.prototype.toString判定, 帶Symbol.toStringTag='String'之物件可通過上方檢核,
+            //其toJSON若回BigInt則序列化拋錯、回undefined則filename鍵消失, 兩者於直接obj2u8arr下皆是「宣稱成功之壞封包」且0則事件
+            let u8aOut = encodeOut(out, (msg) => {
+                eeEmit('error', `download fileId[${fileId}] output can not be serialized: ${msg}`)
+            })
+            if (u8aOut === null) {
+                return responseU8aStreamWithError(res, 'output can not be serialized')
+            }
             // console.log('u8aOut', u8aOut)
 
             return responseU8aStream(res, u8aOut, { returnType, returnMsg })
@@ -1565,18 +1372,26 @@ function WConverhpServer(opt = {}) {
             let r = get(out, 'success')
 
             //streamRead
-            let streamRead = get(r, 'streamRead')
+            //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
+            //本路由需四欄; 讀取失敗時尚未取得串流引用, 無從清理(屬呼叫端責任, 見JSDoc)
+            let rf = readDownloadFields(r, ['streamRead', 'fileSize', 'fileType', 'filename'])
+            if (!rf.ok) {
+                eeEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+                return responseU8aStreamWithError(res, 'invalid streamRead')
+            }
+            let streamRead = rf.fields.streamRead
 
-            //fileSize, 會原樣寫入Content-Length, 須為有限非負整數(見isValidFileSize); 形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
-            let fileSize = get(r, 'fileSize')
+            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數(見isValidFileSize); 形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
+            let fileSize = rf.fields.fileSize
             if (!isValidFileSize(fileSize)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 eeEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
+            fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
 
             //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證(見isValidHeaderValue)
-            let fileType = get(r, 'fileType')
+            let fileType = rf.fields.fileType
             if (!isestr(fileType) || !isValidHeaderValue('Content-Type', fileType)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 eeEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
@@ -1588,12 +1403,13 @@ function WConverhpServer(opt = {}) {
             //why: 瀏覽器只對同源 URL 採用 <a download> 之檔名, 跨來源時忽略而以 URL 末段(dwgf)命名, 可直接顯示之型別(txt/圖片/pdf)更會改為導頁而非下載;
             //以往不給此標頭之理由(中文於 filename="..." 須 base64, chrome 檔名因而變 base64)是舊寫法之限制, filename* 由瀏覽器直接還原 UTF-8;
             //同源時標頭與 <a download> 為同一檔名, 行為不變. 未給 filename 者維持不帶標頭(向後相容), 由 <a download> 或 URL 命名
-            let filename = get(r, 'filename')
+            let filename = rf.fields.filename
 
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
+            //forHead, 本路由為GET, hapi對GET路由自動支援HEAD; HEAD不送本體故不建計數串流(見buildDownloadSource之forHead)
             let bs = buildDownloadSource(streamRead, fileSize, (msg) => {
                 eeEmit('error', `download fileId[${fileId}] stream error: ${msg}`)
-            })
+            }, { forHead: cstr(get(req, 'method', '')).toLowerCase() === 'head' })
             if (bs.error) {
                 destroyStreamRead(streamRead)
                 eeEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
@@ -1712,11 +1528,18 @@ function WConverhpServer(opt = {}) {
             //r
             let r = get(out, 'success')
 
+            //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
+            let rf = readDownloadFields(r, ['streamRead', 'filename', 'fileSize', 'fileType'])
+            if (!rf.ok) {
+                eeEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+                return responseU8aStreamWithError(res, 'invalid streamRead')
+            }
+
             //streamRead
-            let streamRead = get(r, 'streamRead')
+            let streamRead = rf.fields.streamRead
 
             //filename
-            let filename = get(r, 'filename')
+            let filename = rf.fields.filename
             if (!isestr(filename)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 eeEmit('error', `download fileId[${fileId}] output error: invalid filename`)
@@ -1724,16 +1547,17 @@ function WConverhpServer(opt = {}) {
             }
             filename = str2b64(filename) //headers內對中文支援度不佳須用base64傳
 
-            //fileSize, 會原樣寫入Content-Length, 須為有限非負整數(見isValidFileSize); 形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
-            let fileSize = get(r, 'fileSize')
+            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數(見isValidFileSize); 形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
+            let fileSize = rf.fields.fileSize
             if (!isValidFileSize(fileSize)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 eeEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
+            fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
 
             //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證(見isValidHeaderValue)
-            let fileType = get(r, 'fileType')
+            let fileType = rf.fields.fileType
             if (!isestr(fileType) || !isValidHeaderValue('Content-Type', fileType)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 eeEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
@@ -1742,9 +1566,10 @@ function WConverhpServer(opt = {}) {
             fileType = cstr(fileType)
 
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
+            //forHead, 本路由為POST故一般不會收到HEAD; 與/dwgf同式處理, 使兩路由對此不對稱不再由「寫法差異」產生
             let bs = buildDownloadSource(streamRead, fileSize, (msg) => {
                 eeEmit('error', `download fileId[${fileId}] stream error: ${msg}`)
-            })
+            }, { forHead: cstr(get(req, 'method', '')).toLowerCase() === 'head' })
             if (bs.error) {
                 destroyStreamRead(streamRead)
                 eeEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
