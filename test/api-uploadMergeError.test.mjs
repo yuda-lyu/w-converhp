@@ -115,7 +115,8 @@ describe('api-uploadMergeError', function() {
             getToken: () => 'token-for-test',
             retryUpload: 0,
         })
-        wo.on('error', () => {})
+        let evs = []
+        wo.on('error', (e) => evs.push(e)) //須計數: 合併失敗之 state:error 為第十輪 F6 之站點, 其事件由 checkMerging 直接發(不經 callApi 之重試迴圈), 收斂為單一擁有者時最容易悄悄掉回 0 則(A 卷 §③-3.3)
 
         let u8a = new Uint8Array(sizeSlice * 2)
 
@@ -133,6 +134,7 @@ describe('api-uploadMergeError', function() {
         //須為reject而非resolve, 否則呼叫端會把錯誤訊息當成上傳成功之結果
         assert.strict.deepEqual(state, 'reject')
         assert.strict.deepEqual(msg, 'merge slices failed')
+        assert.strict.deepEqual(evs, ['merge slices failed'], '合併失敗須恰一則 error 事件')
 
         //確定性失敗須停止輪詢
         let n0 = nGet

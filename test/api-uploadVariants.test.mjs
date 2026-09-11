@@ -216,6 +216,15 @@ describe('api-uploadVariants', function() {
         assert.strict.deepEqual(rec.evs.length > 0, true)
         assert.strict.deepEqual([...new Set(rec.evs.map((v) => v.m))], ['upload'])
         assert.strict.deepEqual(rec.evs[rec.evs.length - 1].prog, 100)
+
+        //第2次上傳同一空內容須走去重路徑
+        //why: 原以 n = 1 假報 fileSize, 伺服器去重以 fileSize === stats.size 比對, 1 !== 0 使空檔永不去重(第十一輪 N5)
+        let r2 = await wo.upload('empty.bin', u8a, () => {})
+        let last2 = rsv[rsv.length - 1]
+        assert.strict.deepEqual(rsv.length, n0 + 2)
+        assert.strict.deepEqual(last2.from, 'check-total-hash')
+        assert.strict.deepEqual(last2.size, 0)
+        assert.strict.deepEqual(r2, { filename: 'empty.bin', size: 0 })
     })
 
     it('權限驗證失敗時, upload須收到permission denied', async function() {

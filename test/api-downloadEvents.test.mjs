@@ -106,15 +106,16 @@ describe('api-downloadEvents', function() {
         }
     })
 
-    it('缺 filename 時, 以 filename 為選用欄位之路由須照常回 200 全量本體且不帶 Content-Disposition、不發事件', async function() {
-        //why: /dwgf 之 filename 為選用(未給則由 <a download> 或 URL 命名, 向後相容), 故缺 filename 對它不是形狀錯誤。
+    it('缺 filename 時, 以 filename 為選用欄位之路由須照常回 200 全量本體、帶 Content-Disposition: attachment(無 filename*)、不發事件', async function() {
+        //why: /dwgf 之 filename 為選用(未給則由 <a download> 或 URL 命名), 故缺 filename 對它不是形狀錯誤。
         //此為三路由唯一之欄位必要性差異, 原本以「不寫進上一條的路由陣列」表達, 現改為軸上之 requiredFields 並在此正面斷言其應然
+        //attachment 一律帶(第十一輪 N6): 下載端點不得因未給檔名而讓瀏覽器依型別改為導頁; 原本不帶標頭
         this.timeout(20000)
         for (let route of downloadRouteKeysNotRequiring('filename')) {
             let r = await probe(route, 'no-filename')
             assert.strict.deepEqual(r.status, 200, `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.returnType, null, `${route}: ${JSON.stringify(r)}`)
-            assert.strict.deepEqual(r.contentDisposition, null, `${route}: ${JSON.stringify(r)}`)
+            assert.strict.deepEqual(r.contentDisposition, 'attachment', `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.bytes, sizeSrc, `${route}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.nErrs, 0, `${route}: ${JSON.stringify(r)}`)
         }

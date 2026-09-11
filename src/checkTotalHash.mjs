@@ -81,7 +81,10 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         // console.log(`check hash for pathFile[${pathFile}] done`, bAllHash)
     }
 
-    //slks, 若完整檔hash值不一致, 則紀錄各切片滿足切片大小時之代號(chunkIndex)
+    //slks, 若完整檔hash值不一致, 則紀錄各實存切片之代號(chunkIndex), 供前端就這些索引算雜湊後以 check-slices-hash 逐片確認
+    //本階段只是「候選」而非「已確認」: 「這片已在伺服器上」之判定由第二階段之雜湊定奪, 本階段之大小述詞只排除結構上不可能之檔(0 byte、超過 sizeSlice)
+    //why 不用 === sizeSlice(第十一輪 A3, 優化): 末片(fileSize 非 sizeSlice 之整數倍時)之合法大小小於 sizeSlice, 以 === 判定即結構上永不進候選,
+    //每次續傳皆重送末片; 而被截斷之片與合法之短末片以大小不可分辨, 正是第二階段存在的理由, 不該由第一階段先篩掉(A 卷實測: 末片以雜湊問得出來, 只是不在候選內)
     let slks = []
     if (!bAllHash) {
 
@@ -99,7 +102,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
             let b2 = false
             try {
                 let stats = fs.statSync(v.path)
-                b2 = stats.size === sizeSlice
+                b2 = stats.size > 0 && stats.size <= sizeSlice
             }
             catch (err) {
                 //若是有檔案被佔用或鎖定、移動、被刪除等, 可能觸發EPERM: operation not permitted

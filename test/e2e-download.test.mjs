@@ -43,6 +43,9 @@ describe('e2e-download', function() {
     //auths, 記錄 /dwgf 之 verifyConn 實際收到的授權字串與 fileId(皆來自 client 組出的 query)
     let auths = []
 
+    //authsAll, 記錄每一個 apiType 之 verifyConn 收到的授權字串(供驗 getToken 於管理器路徑之取用順序)
+    let authsAll = []
+
     //md5File
     let md5File = (fp) => {
         return crypto.createHash('md5').update(fs.readFileSync(fp)).digest('hex')
@@ -105,6 +108,7 @@ window.tDownloadManager = async (fileId, o) => {
                 if (apiType === 'download-get-file') {
                     auths.push({ authorization, fileId: (query || {}).fileId })
                 }
+                authsAll.push({ apiType, authorization })
                 let token = w.strdelleft(authorization, 7) //刪除 Bearer
                 return w.isestr(token)
             },
@@ -340,6 +344,38 @@ window.tDownloadManager = async (fileId, o) => {
 
         //伺服器 download 事件(/dwgf 那次, 其 token 取自 query)收到的 token 亦須原樣
         assert.strict.deepEqual(rsv[rsv.length - 1].token, token)
+    })
+
+    it('downloadByManager=true時, getToken 回 undefined 不得使 /dwgf 收到字面 undefined(修正前: token=undefined → Bearer undefined 通過 verifyConn)', async function() {
+        let page = await openPage()
+        auths = []
+
+        //getToken 回 undefined: /dwgfn 與 /dwgf 皆以空 token 送出, 本測試之 verifyConn 對空 token 回 false, 故 /dwgfn 即以 permission denied 結束
+        let r = await page.evaluate(() => window.tDownloadManager('ascii', { retryDownload: 0, getToken: () => undefined }))
+        assert.strict.deepEqual(r, { state: 'reject', msg: 'permission denied' })
+
+        //對照: 修正前之 URL 帶 token=undefined 會通過本 verifyConn(isestr('undefined') 為真)而觸發下載; 現須無任何 /dwgf 請求, 或其授權字串不含 undefined
+        assert.strict.deepEqual(auths.every((v) => !/undefined|null/.test(v.authorization)), true, JSON.stringify(auths))
+    })
+
+    it('downloadByManager=true時, 交給瀏覽器之 token 須為 /dwgfn 成功後重取之當下值(修正前: 於 /dwgfn 之前取, 一次性 token 拿到的是較舊者)', async function() {
+        let page = await openPage()
+        authsAll = []
+
+        let pmDownload = page.waitForEvent('download', { timeout: 60000 })
+        let r = await page.evaluate(() => {
+            let getToken = () => {
+                window.__nTk = (window.__nTk || 0) + 1
+                return `tk${window.__nTk}`
+            }
+            return window.tDownloadManager('ascii', { getToken })
+        })
+        assert.strict.deepEqual(r.state, 'resolve')
+        await pmDownload
+
+        //順序: /dwgfn 帶第 1 次之 token, /dwgf(瀏覽器打的)帶第 2 次之 token
+        let seq = authsAll.filter((v) => v.apiType === 'download-get-filename' || v.apiType === 'download-get-file').map((v) => `${v.apiType}:${v.authorization}`)
+        assert.strict.deepEqual(seq, ['download-get-filename:Bearer tk1', 'download-get-file:Bearer tk2'])
     })
 
     it('downloadByManager=true時, 可直接顯示之型別(text/plain)亦須進下載管理器且頁面不得被導走', async function() {

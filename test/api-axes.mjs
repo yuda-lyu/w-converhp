@@ -47,7 +47,7 @@ export let downloadRoutes = {
         body: 'stream',
         //stages, 本路由會走到之下載來源階段(對應 src/buildDownloadSource.mjs 之階段名)
         stages: ['field', 'identify', 'state', 'pipeline', 'materialize'],
-        //fields, 本路由會讀取之應用端回傳欄位
+        //fields, 本路由會讀取之應用端回傳欄位; **順序即讀取與檢核之順序**(契約, 三路由各不相同, 見 src/routeSpec.mjs 與 test/unit-routeSpec.test.mjs 之對照)
         fields: ['streamRead', 'filename', 'fileSize', 'fileType'],
         //requiredFields, 缺少即視為應用端形狀錯誤之欄位(fields 之子集)
         requiredFields: ['streamRead', 'filename', 'fileSize', 'fileType'],
@@ -69,9 +69,10 @@ export let downloadRoutes = {
         },
         body: 'stream',
         stages: ['field', 'identify', 'state', 'pipeline', 'materialize'],
-        fields: ['streamRead', 'filename', 'fileSize', 'fileType'],
-        //filename 對本路由為選用: 未給則不帶 Content-Disposition, 由 <a download> 或 URL 命名(向後相容,
-        //見 src/WConverhpServer.mjs 之 /dwgf filename 註解). 這是三路由唯一之欄位必要性差異, 故寫成資料
+        //fields 之順序即本路由讀取與檢核之順序(契約: 多重形狀錯誤時回哪一個訊息由此決定, api-characterization 鎖住); 本路由與 /dw 不同, 原本此處誤寫成與 /dw 相同之順序(第十一輪 B2)
+        fields: ['streamRead', 'fileSize', 'fileType', 'filename'],
+        //filename 對本路由為選用: 未給則仍以 Content-Disposition: attachment 交付(無 filename*), 由 <a download> 或 URL 命名
+        //(見 src/WConverhpServer.mjs 之 /dwgf filename 註解). 這是三路由唯一之欄位必要性差異, 故寫成資料
         requiredFields: ['streamRead', 'fileSize', 'fileType'],
         //errorStatus, 本路由之唯一消費者為瀏覽器下載管理器(只看狀態碼), 錯誤以非 2xx 表達, 使其顯示下載失敗而不把錯誤封包存成檔案(帳本 R6 之例外, 第十輪 A9)
         //本體封包與 Return-Type/Return-Msg 標頭仍同其他路由
@@ -102,6 +103,83 @@ export let downloadRoutes = {
         errorStatus: { permission: 200, param: 200, app: 200, output: 200 },
     },
 
+}
+
+
+//allRoutes, 六路由軸(供「同一種失敗 × 六路由」之行為表, 見 test/api-errorEventOnce.test.mjs)
+//  apiType: verifyConn 所見之 apiType; api: handler 事件所見之 api; authFrom: 應用端所見之 authorization 來源(header 原樣 / query 之 token 由套件合成為 `<tokenType> <token>`, 第十一輪 B4)
+//  parse: 本體是否由 hapi 解析(為 true 者其解析失敗須回套件錯誤封包, 第十一輪 A1; /main 為 parse:false 自行解碼亦同); appEvent: 本路由直接觸發之應用端事件(無者為 null)
+//  errorStatus: 各種錯誤之 HTTP 狀態碼(同 downloadRoutes); requestOf(port, scn): 正常形狀之請求, scn 為交予應用端之 func / fileId(以之決定應用端行為); malformedOf(port): 本體無法解析之請求(不適用者為 null)
+let st200 = { permission: 200, param: 200, app: 200, output: 200, packet: 200 }
+let jsonInit = (body) => ({ method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' }, body })
+let octetInit = (body, extraHeaders = {}) => ({ method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/octet-stream', ...extraHeaders }, body })
+export let allRoutes = {
+    main: {
+        key: 'main',
+        apiType: 'main',
+        api: 'apiMain',
+        authFrom: 'header',
+        parse: false,
+        appEvent: 'execute',
+        errorStatus: st200,
+        requestOf: (port, scn) => ({ url: `http://127.0.0.1:${port}/api/main`, init: octetInit(Buffer.from(w.obj2u8arr({ func: scn, input: {} }))) }),
+        malformedOf: (port) => ({ url: `http://127.0.0.1:${port}/api/main`, init: octetInit(Buffer.from('not a packet')) }),
+    },
+    ulctr: {
+        key: 'ulctr',
+        apiType: 'upload-controller',
+        api: 'apiUploadCheck',
+        authFrom: 'header',
+        parse: true,
+        appEvent: null,
+        errorStatus: st200,
+        requestOf: (port) => ({ url: `http://127.0.0.1:${port}/api/ulctr`, init: jsonInit(JSON.stringify({ mode: 'check-slices-hash', fileHash: 'abcdef0123456789', fileSliceHashs: [{ i: 0, h: 'x' }] })) }),
+        malformedOf: (port) => ({ url: `http://127.0.0.1:${port}/api/ulctr`, init: jsonInit('{"mode":"check-slices-hash",') }),
+    },
+    slc: {
+        key: 'slc',
+        apiType: 'upload-slice',
+        api: 'apiUploadSlice',
+        authFrom: 'header',
+        parse: false,
+        appEvent: null,
+        errorStatus: st200,
+        requestOf: (port) => ({ url: `http://127.0.0.1:${port}/api/slc`, init: octetInit(Buffer.alloc(16, 1), { 'chunk-index': '0', 'chunk-total': '1', 'package-id': 'net01' }) }),
+        malformedOf: () => null,
+    },
+    dwgfn: {
+        key: 'dwgfn',
+        apiType: 'download-get-filename',
+        api: 'apiDownloadGetFilename',
+        authFrom: 'header',
+        parse: true,
+        appEvent: 'download',
+        errorStatus: st200,
+        requestOf: (port, scn) => ({ url: `http://127.0.0.1:${port}/api/dwgfn`, init: jsonInit(JSON.stringify({ fileId: scn })) }),
+        malformedOf: (port) => ({ url: `http://127.0.0.1:${port}/api/dwgfn`, init: jsonInit('{"fileId":') }),
+    },
+    dwgf: {
+        key: 'dwgf',
+        apiType: 'download-get-file',
+        api: 'apiDownloadGetFile',
+        authFrom: 'query',
+        parse: false,
+        appEvent: 'download',
+        errorStatus: { permission: 403, param: 400, app: 404, output: 500, packet: 500 },
+        requestOf: (port, scn) => ({ url: `http://127.0.0.1:${port}/api/dwgf?fileId=${encodeURIComponent(scn)}&token=t`, init: { method: 'GET', headers: {} } }),
+        malformedOf: () => null,
+    },
+    dw: {
+        key: 'dw',
+        apiType: 'download',
+        api: 'apiDownload',
+        authFrom: 'header',
+        parse: true,
+        appEvent: 'download',
+        errorStatus: st200,
+        requestOf: (port, scn) => ({ url: `http://127.0.0.1:${port}/api/dw`, init: jsonInit(JSON.stringify({ fileId: scn })) }),
+        malformedOf: (port) => ({ url: `http://127.0.0.1:${port}/api/dw`, init: jsonInit('{"fileId":') }),
+    },
 }
 
 

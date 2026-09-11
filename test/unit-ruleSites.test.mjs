@@ -139,11 +139,13 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(nSafe, 11, `R4 安全模式站點數 ${hint}(10 個刻意寬鬆者之理由見 CLAUDE_rulebook.md 之 R4)`)
     })
 
-    it('R4 fileSize 之檢核與正規化須成對: isValidFileSize 採 isp0int 故接受數字字串, 須以 cint 轉換 —— 兩條下載路由皆經 validDownloadField', function() {
+    it('R4 fileSize 之檢核與正規化須成對: isValidFileSize 採 isp0int 故接受數字字串, 須以 cint 轉換 —— 下載欄位之判定只由 readOutput 呼叫 validDownloadField, 而 /dwgf 與 /dw 之 fields 皆含 fileSize', function() {
         //why: fileSize 會以 === 與實際位元組數比較(buf.length !== fileSize、計數串流之 n !== fileSize),
         //字串未經 cint 會使長度正確之下載反被判為 fileSize mismatch
         //第十輪: 判定與正規化收歸 validDownloadField(判定本身會觸碰應用端值而須在 attempt 內, 見帳本 R1), 兩路由不再各自手寫
-        assert.strict.deepEqual(countAll(src.server, /validDownloadField\('fileSize'/g), 2, `R4 /dwgf 與 /dw 須各經一次 validDownloadField('fileSize') ${hint}`)
+        //第十一輪: 呼叫者收斂為 readOutput 一處(擁有者鎖), 「哪些路由會驗 fileSize」改由 src/routeSpec.mjs 之 fields 表達(與 test/api-axes.mjs 對照, 見 unit-routeSpec); 行為面由 api-sourceTraps / api-downloadShape 逐路由驗
+        assert.strict.deepEqual(countAll(src.server, /validDownloadField\(/g), 1, `R4 validDownloadField 之呼叫者須恰為 readOutput 一處 ${hint}`)
+        assert.strict.deepEqual(countAll(readCode('src/routeSpec.mjs'), /\{ name: 'fileSize' \}/g), 2, `R4 /dwgf 與 /dw 之 fields 皆須含 fileSize ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /isValidFileSize\(/g), 0, `R4 server 不得再自行判定 fileSize(須經 validDownloadField) ${hint}`)
         let v = readCode('src/validDownloadField.mjs')
         assert.strict.deepEqual(countAll(v, /isValidFileSize\(v\)/g), 1, `R4 validDownloadField 須以 isValidFileSize 判定 ${hint}`)
@@ -162,7 +164,7 @@ describe('unit-ruleSites', function() {
             .join('\n')
     }
 
-    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 28', function() {
+    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 30', function() {
         //why: err 為應用端 throw/reject 之任意值, 其 message 可為拋錯之 getter、toString 可拋錯。
         //以 err.message / get(err,'message',err) / String(err) 組訊息, 即於 catch 內再拋 —— 保護層自身失效。
         //實測後果: verifyConn 為此形狀 → 裸 HTTP 500 + 0 則事件; 監聽器為此形狀 → 請求永久懸置。
@@ -178,7 +180,8 @@ describe('unit-ruleSites', function() {
             'src/responseU8aStream.mjs',
             'src/responseU8aStreamWithError.mjs',
         ]
-        let reBad = /get\((err|e), 'message'|\b(err|e)\.(message|stack)\b|String\((err|e)\)/g
+        //第十一輪: 錨點加入 res —— client 之 send 原以 get(res, 'stack') 兜底把整段本機 stack 當成呼叫端可見之錯誤值, 變數叫 res 而躲過本正規式(A 卷 §①-1.4)
+        let reBad = /get\((err|e|res), '(message|stack)'|\b(err|e|res)\.(message|stack)\b|String\((err|e|res)\)/g
         let nBad = 0
         let nGood = 0
         let bad = []
@@ -196,7 +199,9 @@ describe('unit-ruleSites', function() {
         //client 之 cbProgressSafe ×1(axios 進度回呼)、client 之 sendDataSlice 進度回呼保護 ×1
         //第十輪 19 → 28: server 之請求端值進樣板 ×3(/main 解碼本體、func、mode)、建構期失敗 ×2(暫存資料夾、外部 serverHapi 之路由註冊)、
         ///ulctr 之 internal ×1; managerMergeSlices 之 removeStateFile ×1 與 invalid queueId 樣板 ×1; client 之 send 之 JSON 序列化 ×1
-        assert.strict.deepEqual(nGood, 28, `R10 站點數 ${hint}`)
+        //第十一輪 28 → 30: server 之 failPayload +1、readOutput 統一三路由之欄位失敗訊息(取代 /dwgf 與 /dw 之 fileSize 樣板, −1);
+        //client 之 classifyFailure +1(取代 get(res,'stack'); attemptFailed 之事件值亦經之)、downloadBrowser 之 getToken 拋錯 +1; 本數為總量鎖(帳本維護提示), 禁用寫法為 0 那條才是擁有者鎖
+        assert.strict.deepEqual(nGood, 30, `R10 站點數 ${hint}`)
     })
 
     it('R10 之擴充: 請求端之任意 JSON 值不得直接進樣板', function() {
@@ -288,24 +293,38 @@ describe('unit-ruleSites', function() {
         }
     })
 
-    it('R5 error 事件發送站點: server 32(即時 28 + 建構期脫勾 3 + 監聽器出錯之通報 1)、client 13', function() {
+    it('R5 error 事件發送站點(總量, 帳本維護提示): server 23(即時 19 + 建構期脫勾 3 + 監聽器出錯之通報 1)、client 10', function() {
         //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
         //第九輪 23 → 26: procApp 之「無人接聽」通報 ×1(R12)、stop 之停止失敗通報 ×1(R11 之建構期同族)、
         ///dwgfn 之 filename 正規化失敗 ×1(R3: 協定鍵內之值亦會靜默消失)
         //第十輪 26 → 28: procApp 之輸出為 function/symbol ×1、/ulctr 之 internal ×1、/dwgf 之 filename 判定拋錯 ×1, 而 /dwgfn 之 filename 兩處判定併為一處 −1
-        //第十輪另納入 client(帳本 R5 原只盤點 server, 而本輪 D6 之缺口正在 client): 以 serverError 為「伺服器回業務錯誤」之唯一處置
-        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 28, `R5 即時派發之站點數 ${hint}`)
+        //第十一輪 28 → 19: 三路由之下載欄位失敗(9 處)收斂為 readOutput 之 2 處、三路由之「回應無法序列化」(3 處)收斂為 replyPacket 之 1 處, 另 failPayload +1
+        //client 13 → 10: serverError 之 emit、callApiCore 三個解析失敗分支、send 之 catch 共 5 處收斂為 attemptFailed 1 處, 另 downloadBrowser 之 getToken 拋錯 +1
+        //總量只能偵測「有人增刪了一處」, 偵測不到「同一次失敗發了兩則」或「某條路由漏了處置」—— 行為面由 test/api-errorEventOnce.test.mjs(失敗種類 × 六路由)與 api-clientAttemptEvents 鎖(B 卷 §③-3.6)
+        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 19, `R5 即時派發之站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 3, `R5 建構期脫勾派發之站點數 ${hint}`)
-        assert.strict.deepEqual(countAll(src.client, /evEmit\('error'/g), 13, `R5 client 之站點數 ${hint}`)
-        assert.strict.deepEqual(src.client.includes('let serverError = ('), true, 'R5 client 找不到 serverError 之定義')
-        assert.strict.deepEqual(countAll(src.client, /serverError\(/g), 3, `R5 client 之 serverError 呼叫站點: callApiCore、downloadStream、checkMerging 各 1 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.client, /evEmit\('error'/g), 10, `R5 client 之站點數 ${hint}`)
+    })
+
+    it('R5 擁有者鎖(有分辨力者): 六路由之 verifyConn 與 handler 事件只由 admit 發; client「一次嘗試失敗」之事件只由 attemptFailed 發, 呼叫點恰為 callApi 迴圈與 checkMerging', function() {
+        //why 擁有者鎖而非總量鎖: 數字若是「擁有者的個數」就鎖, 若是「站點的總量」就降級為帳本維護提示(B 卷 §③-3.6, 帳本維護規則第 6 條)
+        assert.strict.deepEqual(countAll(src.server, /checkConn\(/g), 2, 'R5 checkConn 須只有定義與 admit 內之唯一呼叫, 路由不得直接呼叫')
+        assert.strict.deepEqual(countAll(src.server, /evEmit\('handler'/g), 1, 'R5 handler 事件須只由 admit 發(權限未通過即不發)')
+        assert.strict.deepEqual(countAll(src.server, /admit\(req, ctx, spec, reply\)/g), 6, 'R5 六路由皆須經 admit')
+        assert.strict.deepEqual(countAll(src.server, /ctxOf\(req, spec\)/g), 6, 'R5 六路由之請求脈絡皆須經 ctxOf')
+        assert.strict.deepEqual(countAll(src.server, /replyOf\(res, spec\)/g), 6, 'R5 六路由之錯誤回覆器皆須經 replyOf')
+        assert.strict.deepEqual(countAll(src.server, /readOutput\(/g), 3, 'R5 三條下載路由之欄位處置皆須經 readOutput(擁有者)')
+        assert.strict.deepEqual(countAll(src.server, /replyPacket\(/g), 3, 'R5 控制封包之收尾須經 replyPacket(/main、/ulctr、/dwgfn)')
+        assert.strict.deepEqual(src.client.includes('let attemptFailed = ('), true, 'R5 client 找不到 attemptFailed 之定義')
+        assert.strict.deepEqual(countAll(src.client, /attemptFailed\(/g), 2, 'R5 client 之 attemptFailed 呼叫點: callApi 之重試迴圈、checkMerging 之 state:error 各 1')
+        assert.strict.deepEqual(src.client.includes('serverError'), false, 'R5 client 之 serverError 已由 wrapNoRetry(包裝)與 attemptFailed(事件)取代, 不得再出現(否則同一事實兩個擁有者)')
     })
 
     it('R17 回前端之錯誤訊息不得含伺服器路徑與底層細節: /ulctr 之內部呼叫一律經 internal', function() {
         //why: 內部例外(worker、合併佇列)之訊息常含伺服器絕對路徑; 原本原樣進入錯誤封包 —— 暫存資料夾不在時前端收到
         //`Error: fd[<伺服器絕對路徑>] is not a folder` 且伺服器 0 則事件(實測第十輪 A11/N5)。internal 使細節只進 error 事件
-        assert.strict.deepEqual(countAll(src.server, /internal\('/g), 3, `R17 internal 之站點數(check total hash、check slices hash、push merge task) ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /(?<!\.)internal\('/g), 3, `R17 internal 之站點數(check total hash、check slices hash、push merge task; 不計 reply.internal) ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /await (checkTotalHash|checkSlicesHash|mmg\.push)\(/g), 0, `R17 不得繞過 internal 直接 await 內部呼叫 ${hint}`)
     })
 

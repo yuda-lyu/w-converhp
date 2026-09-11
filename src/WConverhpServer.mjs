@@ -27,6 +27,8 @@ import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
+import sanitizeFilename from './sanitizeFilename.mjs'
+import routeSpec from './routeSpec.mjs'
 import callApp from './callApp.mjs'
 import destroyStreamRead from './destroyStreamRead.mjs'
 import readDownloadFields from './readDownloadFields.mjs'
@@ -60,12 +62,12 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止
- * @param {Integer} [opt.sizeMsg=100*1024*1024] 輸入單次請求本體大小上限整數，單位為Byte，預設為100*1024*1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發事件；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload
+ * @param {Integer} [opt.sizeMsg=100*1024*1024] 輸入單次請求本體大小上限整數，單位為Byte，預設為100*1024*1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發execute/upload/download事件(請求帶Content-Length者於進入路由前即被拒，亦不觸發verifyConn與handler事件；無Content-Length之chunked本體則須讀入後才能判定，故verifyConn與handler事件已觸發)；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；**filename為用戶端所給之原值、未經淨化、不可信**(可含路徑分隔符、`..`、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；**filenameSafe**為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
  * @example
  *
  * import fs from 'fs'
@@ -499,6 +501,146 @@ function WConverhpServer(opt = {}) {
         return procApp('download', [input])
     }
 
+    //路由層之共同部件(第十一輪 G6): 六路由之差異寫在 routeSpec 一張表上(apiType、handler 事件之 api、authorization 來源、錯誤狀態碼、下載欄位順序),
+    //下列函數一律查表而不各自傳參; 原本同一規則手寫展開於六條路由(前置 6 份、token 切割 2 份 + 合成 1 份、下載欄位處置 3 份、/dwgf 狀態碼 8 處),
+    //每加一條規則就得寫六遍而漏其一(第十輪 A5/A6/A9/F10 各改 3–6 處; 第十一輪 N2/N4 皆為「同一規則第二站點沒套」)
+
+    //pfxToken, 授權方案前綴(含尾隨空白), 供自 authorization 切出 token
+    let pfxToken = `${cstr(tokenType)} `
+
+    //ctxOf, 各路由之請求脈絡(headers / query / authorization / token)之唯一取得處, 依 spec.authFrom 決定 authorization 與 token 之來源
+    //  header: authorization 為請求標頭原樣; token 須先確認授權方案前綴相符才切, 不符者視為未帶 token(帳本 R15)
+    //    why: 原以 slice(tokenType.length + 1) 無條件切, 從不驗前綴 —— 實測(tmp/probe_r9_final.mjs 之 Q4, server 設 tokenType='Token'):
+    //    送 `Bearer abc123` 切出 " abc123"(帶前導空白)、送 `Basic dXNlcjpwYXNz` 整段成為 token, 兩者皆為可通過 isestr 之錯誤授權值, 應用端於 download 事件收到後無從察覺
+    //  query: /dwgf 之下載由瀏覽器導覽而無標頭可用, token 走 query string, authorization 由套件合成為 `<tokenType> <token>`(刻意, 使應用端 verifyConn 於六路由所見同一形狀; B 卷 B4)
+    let ctxOf = (req, spec) => {
+        let headers = get(req, 'headers')
+        headers = iseobj(headers) ? headers : ''
+        let query = get(req, 'query')
+        query = iseobj(query) ? query : ''
+        let authorization = ''
+        let token = ''
+        if (spec.authFrom === 'query') {
+            token = get(query, 'token', '')
+            token = isestr(token) ? token : ''
+            if (isestr(token)) {
+                authorization = `${tokenType} ${token}`
+            }
+        }
+        else {
+            authorization = get(headers, 'authorization', '')
+            authorization = isestr(authorization) ? authorization : ''
+            token = authorization.startsWith(pfxToken) ? authorization.slice(pfxToken.length) : ''
+        }
+        return { headers, query, authorization, token }
+    }
+
+    //replyOf, 各路由之錯誤回覆器: 種類(kind)→ HTTP 狀態碼由 spec.statusOf 查表, 本體封包與 Return-Type / Return-Msg 標頭一律經 responseU8aStreamWithError; param 另標示 retryable:false
+    //why 狀態碼與 retryable 為兩張表: 狀態碼依路由之消費者而異(只有 /dwgf 非 2xx, 帳本 R6 之例外), retryable 依錯誤種類而異(只有 param 可證明不需重試, 見專案重試原則);
+    //原本 /dwgf 之 8 處 replyError(code, ...) 各自手寫狀態碼, 其餘五路由 9 處 retryable:false 各自手寫 —— 實為「同一 kind」之兩個面向(B 卷 §③-3.4.2③)
+    let replyOf = (res, spec) => {
+        let send = (kind, msg, opt) => {
+            return responseU8aStreamWithError(res, msg, opt).code(spec.statusOf[kind])
+        }
+        return {
+            permission: () => send('permission', 'permission denied'),
+            param: (msg) => send('param', msg, { retryable: false }),
+            app: (msg) => send('app', msg),
+            output: (msg) => send('output', msg),
+            packet: (msg) => send('packet', msg),
+            internal: (msg) => send('internal', msg),
+        }
+    }
+
+    //admit, 各路由之共同前置: 經 checkConn 呼叫 verifyConn, 未通過即回 permission denied(**不發 handler 事件**); 通過才發 handler 事件。回傳 null 代表放行, 各路由之參數檢核一律在其後
+    //why 函數版而非 hapi route 級之 options.pre / options.ext(A 卷 §③-3.6(a) 允許但要求寫下理由): 兩者對本套件之保證等價(皆為 route 級, 不污染外部 serverHapi 之其他路由);
+    //而 handler 內一行 `if (denied) return denied` 使「先驗權限 → 發 handler 事件 → 檢核參數」之順序於每條路由可直接讀出, 不需追 hapi 生命週期;
+    //且 pre 之 takeover 回應與串流型 payload(/main、/slc 之 output:'stream')之互動未經驗證, 不值得為此承擔。不用 server.ext: 那是伺服器層, 會套到外部 serverHapi 之其他路由
+    let admit = async(req, ctx, spec, reply) => {
+        let m = await checkConn({ apiType: spec.apiType, authorization: ctx.authorization, query: ctx.query, headers: ctx.headers, req })
+        if (m !== true) {
+            return reply.permission()
+        }
+        evEmit('handler', {
+            api: spec.api,
+            headers: ctx.headers,
+            query: ctx.query,
+        })
+        return null
+    }
+
+    //readOutput, 三條下載路由對應用端 download 事件回傳值之逐欄處置: 依 spec.fields 之**順序**讀取(attempt, 見帳本 R1)並判定(validDownloadField), 任一欄失敗即銷毀已取得之串流、發一則帶真因之事件、回錯誤封包
+    //回 { ok: true, v } 或 { ok: false, res }(res 為已組好之錯誤回覆); 應用端拒絕之分流不在此(各路由於呼叫前處理)
+    //why 只抽「逐欄之原子」而不抽整段(B 卷 §③-3.4.2④): 三路由之欄位集合、順序、選用性兩兩不同, 順序是契約(api-characterization 鎖住), 由 spec.fields 表達而非函數參數
+    //fileSize 之值須經 getErrorMessage 而不可直接進樣板(帳本 R10): 其為應用端交出之任意值, 樣板求值時 toString 可拋錯
+    let readOutput = (r, fileId, spec, reply) => {
+        let rf = readDownloadFields(r, spec.fields.map((f) => f.name))
+        if (!rf.ok) {
+            destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead 排在首位, 故後續欄位拋錯時該串流已在套件手上, 不清理即 fd 持續開啟(實測 tmp/probe_r9_rest.mjs 第1節)
+            evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
+            return { ok: false, res: reply.output('invalid streamRead') }
+        }
+        let v = { streamRead: rf.fields.streamRead }
+        for (let f of spec.fields) {
+            if (f.name === 'streamRead') {
+                continue
+            }
+            let vv = validDownloadField(f.name, rf.fields[f.name])
+            if (vv.ok) {
+                v[f.name] = vv.value
+                continue
+            }
+            if (f.optional === true && !isestr(vv.cause)) {
+                v[f.name] = '' //選用欄位: 判定不通過且判定本身未拋錯者視為未給(原本 toString 拋錯者送出空檔名之標頭, 第十輪 A6); 判定時拋錯者與必要欄位同一處置
+                continue
+            }
+            destroyStreamRead(v.streamRead) //提供 stream 前發生錯誤, 得強制 destroy
+            let detail = (f.name === 'fileSize') ? `[${getErrorMessage(rf.fields.fileSize)}]` : ''
+            evEmit('error', `download fileId[${fileId}] output error: invalid ${f.name}${detail}${isestr(vv.cause) ? `: ${vv.cause}` : ''}`)
+            return { ok: false, res: reply.output(`invalid ${f.name}`) }
+        }
+        return { ok: true, v }
+    }
+
+    //replyPacket, 控制封包路由之共同收尾: 以 success / error 鍵包裝結果, 經 encodeOut 嚴格序列化(不能者回錯誤封包 + 一則事件, 不可宣稱成功), 以 responseU8aStream 回應
+    //label 為事件訊息之主詞(如 execute func[...]), 由呼叫端組; 含請求端值者須先經 getErrorMessage(帳本 R10)
+    let replyPacket = async(res, reply, pm, label) => {
+        let out = {}
+        let returnType = ''
+        let returnMsg = 'need to parse'
+        await pm
+            .then((r) => {
+                out.success = r
+                returnType = 'success'
+            })
+            .catch((err) => {
+                out.error = err
+                returnType = 'error'
+            })
+        let u8aOut = encodeOut(out, (msg) => {
+            evEmit('error', `${label} output can not be serialized: ${msg}`)
+        })
+        if (u8aOut === null) {
+            return reply.internal('output can not be serialized')
+        }
+        return responseU8aStream(res, u8aOut, { returnType, returnMsg })
+    }
+
+    //failPayload, parse:true 之路由(/ulctr、/dwgfn、/dw)本體解析失敗之處置: 由套件擁有, 回本套件之錯誤封包 + 一則事件, 而非 hapi 之裸 400
+    //why: JSDoc 承諾「錯誤回應一律為 HTTP 200 + 錯誤封包(唯 /dwgf 例外)」, 而 hapi 對 JSON 語法錯誤(截斷、中間層改寫)於路由前置階段回 400 且 handler 從未執行 ——
+    //前端收到無法解析之本體、兩端 0 則事件、client 照常重試(第十一輪 A1, A 卷實測 tmp/r11A_3_out.txt §D/§E)。
+    ///main 為 parse:false 自行解碼, 早於第四輪即回 invalid request packet + 一則事件(#26); 三條 parse:true 路由為同一規則之未套站點(帳本 R6)
+    //413(本體超過 maxBytes)原樣拋回: client 以狀態碼判定其為可證明不需重試, 該契約不變。解析失敗屬傳輸不穩, 依重試原則不標示 retryable
+    let failPayload = (spec) => {
+        return (req, h, err) => {
+            if (get(err, 'output.statusCode') === 413) {
+                throw err
+            }
+            evEmit('error', `invalid request packet for ${spec.api}: ${getErrorMessage(err)}`)
+            return replyOf(h, spec).packet('invalid request packet').takeover()
+        }
+    }
+
 
     //apiMain
     let apiMain = {
@@ -521,39 +663,14 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //authorization
-            let authorization = get(headers, 'authorization', '')
-            authorization = isestr(authorization) ? authorization : ''
-
-            //check
-            if (true) {
-
-                //checkConn
-                let m = await checkConn({ apiType: 'main', authorization, query, headers, req })
-
-                //check
-                if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
-                }
-
+            //spec, reply, ctx, admit: 路由前置(查表取脈絡與錯誤回覆器, 驗權限, 發 handler 事件), 見 routeSpec / ctxOf / replyOf / admit
+            let spec = routeSpec.main
+            let reply = replyOf(res, spec)
+            let ctx = ctxOf(req, spec)
+            let denied = await admit(req, ctx, spec, reply)
+            if (denied) {
+                return denied
             }
-
-            //evEmit
-            evEmit('handler', {
-                api: 'apiMain',
-                headers,
-                query,
-            })
 
             //receive
             let receive = () => {
@@ -671,38 +788,13 @@ function WConverhpServer(opt = {}) {
                 //[{"toString":1}] 即回裸 HTTP 500 + 0 則事件(實測第十輪 A1, 帳本 R10)
                 let msgInp = getErrorMessage(get(rdInp, 'msg', ''))
                 evEmit('error', `invalid request packet for apiMain: ${isestr(msgInp) ? msgInp : 'not an effective object'}`)
-                return responseU8aStreamWithError(res, 'invalid request packet')
+                return reply.packet('invalid request packet')
             }
             let inp = rdInp.msg
             // console.log('inp', inp)
 
-            //procDeal
-            let out = {}
-            let returnType = ''
-            let returnMsg = ''
-            await procDeal(inp)
-                .then((res) => {
-                    out.success = res
-                    returnType = 'success'
-                    returnMsg = 'need to parse'
-                })
-                .catch((err) => {
-                    out.error = err
-                    returnType = 'error'
-                    returnMsg = 'need to parse'
-                })
-            // console.log('out', out)
-
-            //u8aOut, 應用端execute事件之回傳值(或拒絕值)無法序列化時不可宣稱成功, 見encodeOut
-            let u8aOut = encodeOut(out, (msg) => {
-                evEmit('error', `execute func[${getErrorMessage(get(inp, 'func', ''))}] output can not be serialized: ${msg}`) //func 為請求端任意值, 須經 getErrorMessage(帳本 R10)
-            })
-            if (u8aOut === null) {
-                return responseU8aStreamWithError(res, 'output can not be serialized')
-            }
-            // console.log('u8aOut', u8aOut)
-
-            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
+            //procDeal, 收尾經 replyPacket(應用端execute事件之回傳值或拒絕值無法序列化時不可宣稱成功, 見encodeOut); func 為請求端任意值, 須經 getErrorMessage(帳本 R10)
+            return replyPacket(res, reply, procDeal(inp), `execute func[${getErrorMessage(get(inp, 'func', ''))}]`)
         },
     }
 
@@ -717,6 +809,7 @@ function WConverhpServer(opt = {}) {
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
                 parse: true, //前端送obj過來須自動解析
+                failAction: failPayload(routeSpec.ulctr), //解析失敗回套件錯誤封包(見 failPayload)
             },
             timeout: {
                 server: false, //關閉伺服器超時
@@ -727,39 +820,14 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //authorization
-            let authorization = get(headers, 'authorization', '')
-            authorization = isestr(authorization) ? authorization : ''
-
-            //check
-            if (true) {
-
-                //checkConn
-                let m = await checkConn({ apiType: 'upload-controller', authorization, query, headers, req })
-
-                //check
-                if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
-                }
-
+            //spec, reply, ctx, admit: 路由前置, 見 routeSpec / ctxOf / replyOf / admit
+            let spec = routeSpec.ulctr
+            let reply = replyOf(res, spec)
+            let ctx = ctxOf(req, spec)
+            let denied = await admit(req, ctx, spec, reply)
+            if (denied) {
+                return denied
             }
-
-            //evEmit
-            evEmit('handler', {
-                api: 'apiUploadCheck',
-                headers,
-                query,
-            })
 
             //mode, 從payload接收
             let mode = get(req, 'payload.mode', '')
@@ -768,7 +836,7 @@ function WConverhpServer(opt = {}) {
             if (mode !== 'check-total-hash' && mode !== 'check-slices-hash' && mode !== 'merge-slices-push' && mode !== 'merge-slices-get') {
                 // console.log('invalid mode in payload')
                 //mode 為請求端任意 JSON 值, 於檢核前進樣板須經 getErrorMessage: {"toString":1} 之自有屬性 toString 非函數, 樣板求值即拋 → 裸 HTTP 500 + 0 則事件(實測第十輪 D3)
-                return responseU8aStreamWithError(res, `invalid mode[${getErrorMessage(mode)}] in payload`, { retryable: false })
+                return reply.param(`invalid mode[${getErrorMessage(mode)}] in payload`)
             }
 
             //fileHash, 從payload接收
@@ -778,7 +846,7 @@ function WConverhpServer(opt = {}) {
             //check, fileHash會參與pathUploadTemp下之路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
             if (!isSafeId(fileHash)) {
                 // console.log('invalid fileHash in payload')
-                return responseU8aStreamWithError(res, 'invalid fileHash in payload', { retryable: false })
+                return reply.param('invalid fileHash in payload')
             }
 
             //chunkTotal, 從payload接收, 僅merge-slices-push使用
@@ -787,10 +855,19 @@ function WConverhpServer(opt = {}) {
             if (mode === 'merge-slices-push') {
                 if (!ispint(chunkTotal)) {
                     // console.log('invalid chunkTotal in payload')
-                    return responseU8aStreamWithError(res, 'invalid chunkTotal in payload', { retryable: false })
+                    return reply.param('invalid chunkTotal in payload')
                 }
                 chunkTotal = cint(chunkTotal)
             }
+
+            //filename, 從payload接收, **原樣**交予應用端(check-total-hash 之去重與 merge-slices-get 之消費皆同), 於此讀一次而非各模式各讀一份
+            //filenameSafe, 其淨化值(sanitizeFilename: 只取最末路徑段、去除各平台非法字元與保留裝置名; 未給或全為非法字元者為空字串, 套件不代為發明 unknown), 供應用端組落地路徑
+            //why 兩者皆給而非就地淨化(第十一輪 N4, 兩份複審一致): 本套件自身不以此值組任何路徑(切片與合併檔皆以經 isSafeId 之 fileHash/packageId 命名), 風險只在應用端如何使用;
+            //就地淨化會刪掉合法資料 —— a:b.txt 於 Linux 合法、瀏覽器 webkitdirectory 之 docs/2024/report.pdf 會只剩 report.pdf 且應用端無從得知目錄曾存在。
+            //對標 multer: originalname 原樣且明載不可信, 另給 filename。本套件對另一方向(伺服器交出之檔名, client 之 downloadStream)則就地淨化 ——
+            //因為那個值是套件自己要拿去 path.resolve 落地的; 誰要用它, 誰淨化(帳本 R19)
+            let filename = get(req, 'payload.filename', '')
+            let filenameSafe = sanitizeFilename(filename, '')
 
             //throwIfWorkerError, checkTotalHash與checkSlicesHash以回傳 { error } 表達失敗而非拋錯, 未檢核即會被當成功回給前端
             //why: 原無此檢核 —— checkTotalHash 對非法 fileSize 回 { error: 'invalid fileSize in payload' },
@@ -825,10 +902,6 @@ function WConverhpServer(opt = {}) {
                 let out = null
                 if (mode === 'check-total-hash') {
 
-                    //filename, 從payload接收
-                    let filename = get(req, 'payload.filename', '')
-                    // console.log(mode, 'filename', filename)
-
                     //fileSize, 從payload接收
                     let fileSize = get(req, 'payload.fileSize', '')
                     // console.log(mode, 'fileSize', fileSize)
@@ -850,6 +923,7 @@ function WConverhpServer(opt = {}) {
                         let ri = {
                             from: 'check-total-hash',
                             filename,
+                            filenameSafe,
                             path: out.path, //out.path使用path.resolve為絕對路徑
                         }
 
@@ -903,10 +977,6 @@ function WConverhpServer(opt = {}) {
                 }
                 else if (mode === 'merge-slices-get') {
 
-                    //filename, 從payload接收
-                    let filename = get(req, 'payload.filename', '')
-                    // console.log(mode, 'filename', filename)
-
                     //queueId, 從payload接收
                     let queueId = get(req, 'payload.queueId', '')
                     // console.log(mode, 'queueId', queueId)
@@ -918,6 +988,7 @@ function WConverhpServer(opt = {}) {
                             return await procUpload({
                                 from: 'merge-slices-get',
                                 filename,
+                                filenameSafe,
                                 path: fp, //fp使用path.resolve為絕對路徑
                             })
                         },
@@ -945,33 +1016,8 @@ function WConverhpServer(opt = {}) {
                 return out
             }
 
-            //procCore
-            let out = {}
-            let returnType = ''
-            let returnMsg = ''
-            await procCore()
-                .then((res) => {
-                    out.success = res
-                    returnType = 'success'
-                    returnMsg = 'need to parse'
-                })
-                .catch((err) => {
-                    out.error = err
-                    returnType = 'error'
-                    returnMsg = 'need to parse'
-                })
-            // console.log('out', out)
-
-            //u8aOut, 應用端upload事件之回傳值(經merge-slices-get之msg)無法序列化時不可宣稱成功, 見encodeOut
-            let u8aOut = encodeOut(out, (msg) => {
-                evEmit('error', `upload-controller mode[${mode}] output can not be serialized: ${msg}`)
-            })
-            if (u8aOut === null) {
-                return responseU8aStreamWithError(res, 'output can not be serialized')
-            }
-            // console.log('u8aOut', u8aOut)
-
-            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
+            //procCore, 收尾經 replyPacket(應用端upload事件之回傳值(經merge-slices-get之msg)無法序列化時不可宣稱成功, 見encodeOut); mode 已檢核為四個字面之一
+            return replyPacket(res, reply, procCore(), `upload-controller mode[${mode}]`)
         },
     }
 
@@ -996,59 +1042,34 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //authorization
-            let authorization = get(headers, 'authorization', '')
-            authorization = isestr(authorization) ? authorization : ''
-
-            //check
-            if (true) {
-
-                //checkConn
-                let m = await checkConn({ apiType: 'upload-slice', authorization, query, headers, req })
-
-                //check
-                if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
-                }
-
+            //spec, reply, ctx, admit: 路由前置, 見 routeSpec / ctxOf / replyOf / admit
+            let spec = routeSpec.slc
+            let reply = replyOf(res, spec)
+            let ctx = ctxOf(req, spec)
+            let denied = await admit(req, ctx, spec, reply)
+            if (denied) {
+                return denied
             }
 
-            //evEmit
-            evEmit('handler', {
-                api: 'apiUploadSlice',
-                headers,
-                query,
-            })
-
             //chunkIndex, chunkTotal, packageId, 從headers接收
-            let chunkIndex = get(headers, 'chunk-index', '')
-            let chunkTotal = get(headers, 'chunk-total', '')
-            let packageId = get(headers, 'package-id', '')
+            let chunkIndex = get(ctx.headers, 'chunk-index', '')
+            let chunkTotal = get(ctx.headers, 'chunk-total', '')
+            let packageId = get(ctx.headers, 'package-id', '')
 
             //check
             if (!isp0int(chunkIndex)) {
                 // console.log('invalid chunkIndex in headers')
-                return responseU8aStreamWithError(res, 'invalid chunkIndex in headers', { retryable: false })
+                return reply.param('invalid chunkIndex in headers')
             }
             chunkIndex = cint(chunkIndex)
             if (!isp0int(chunkTotal)) {
                 // console.log('invalid chunkTotal in headers')
-                return responseU8aStreamWithError(res, 'invalid chunkTotal in headers', { retryable: false })
+                return reply.param('invalid chunkTotal in headers')
             }
             chunkTotal = cint(chunkTotal)
             if (!isSafeId(packageId)) { //packageId會參與切片檔路徑組裝, 須為安全識別字(英數字), 否則可 ../ 逸出資料夾
                 // console.log('invalid packageId in headers')
-                return responseU8aStreamWithError(res, 'invalid packageId in headers', { retryable: false })
+                return reply.param('invalid packageId in headers')
             }
 
             //pathFileChunk
@@ -1078,6 +1099,24 @@ function WConverhpServer(opt = {}) {
                 //比照bOver/bWriteErr: destroy後於close刪除不完整切片(續傳本就以大小不等於sizeSlice判定須重傳, 殘留無用); bEnded供close判別「未end即close」之中斷路徑
                 let bAbort = false
                 let bEnded = false
+
+                //done, 成功之唯一終結點, 於寫入串流 close 時判定: 須「request 本體已 end」且「寫入串流已 finish」(writableFinished: end() 正常走完、所有 write 之回呼皆已返回)
+                //why: 原本於 request 之 end 即排程回 done, 而 pipe 於 end 時只是把最後一片**交給**寫入串流, 其 fs.write 尚未完成 ——
+                //慢磁碟下(實測 tmp/probe_r11_a.mjs P1: 每次寫入延後 400ms)前端已收到 done 並送出 merge-slices-push, 合併讀到短切片而整個上傳以 merge slices failed 告終;
+                //且 end 之後(flush 階段)才發生之寫入失敗, 錯誤晚於 delayForSlice 到達時 pm 已 resolve, 不完整之切片被當成功(A 卷 §①-1.3(a) 第 4 點)。
+                //「done」須代表切片已交給 OS(fd 已關; 非持久化, 無 fsync)—— 與帳本 R18「完成標記須證明其所指之內容」同族
+                //why 以 writableFinished 作肯定式證明而非列舉 bOver/bWriteErr/bAbort 之否定式(B 卷 §③-3.1): 被 destroy() 中斷者其 writableFinished 恆為假, 日後新增中斷路徑亦不需改此守衛;
+                //bEnded 必早於 close: pipe 之 onend 與本路由之 end 監聽於同一次 emit 內同步執行, 而 finish/close 至少要到下一個 tick(兩份複審各自推導)
+                let done = () => {
+                    if (!bEnded || streamWrite.writableFinished !== true) {
+                        return
+                    }
+
+                    //setTimeout, 切片上傳添加延遲處理, 避免佔滿伺服器CPU與流量
+                    setTimeout(() => {
+                        pm.resolve(`chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] done`)
+                    }, delayForSlice)
+                }
                 streamWrite.on('error', (err) => {
                     if (bWriteErr || bOver || bAbort) {
                         return
@@ -1092,7 +1131,9 @@ function WConverhpServer(opt = {}) {
                 streamWrite.on('close', () => {
                     if (bOver || bWriteErr || bAbort) {
                         fsDeleteFile(pathFileChunk) //待fd關閉(close)後才刪, 否則Windows下會EBUSY; 檔案不存在視為成功且不拋錯; 寫入失敗與中斷者亦清除殘留之不完整切片
+                        return
                     }
+                    done()
                 })
 
                 //data
@@ -1123,16 +1164,10 @@ function WConverhpServer(opt = {}) {
                         return
                     }
 
-                    //check, 超限者於此reject, 由handler回413
+                    //check, 超限者於此reject, 由handler回413; 成功不於此 resolve, 須待寫入串流 close(見 done)
                     if (bOver) {
                         pm.reject('payload too large')
-                        return
                     }
-
-                    //setTimeout, 切片上傳添加延遲處理, 避免佔滿伺服器CPU與流量
-                    setTimeout(() => {
-                        pm.resolve(`chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] done`)
-                    }, delayForSlice)
 
                 })
 
@@ -1216,6 +1251,7 @@ function WConverhpServer(opt = {}) {
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
                 parse: true, //前端送obj過來須自動解析
+                failAction: failPayload(routeSpec.dwgfn), //解析失敗回套件錯誤封包(見 failPayload)
             },
             timeout: {
                 server: false, //關閉伺服器超時
@@ -1226,39 +1262,14 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //authorization
-            let authorization = get(headers, 'authorization', '')
-            authorization = isestr(authorization) ? authorization : ''
-
-            //check
-            if (true) {
-
-                //checkConn
-                let m = await checkConn({ apiType: 'download-get-filename', authorization, query, headers, req })
-
-                //check
-                if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
-                }
-
+            //spec, reply, ctx, admit: 路由前置, 見 routeSpec / ctxOf / replyOf / admit
+            let spec = routeSpec.dwgfn
+            let reply = replyOf(res, spec)
+            let ctx = ctxOf(req, spec)
+            let denied = await admit(req, ctx, spec, reply)
+            if (denied) {
+                return denied
             }
-
-            //evEmit
-            evEmit('handler', {
-                api: 'apiDownloadGetFilename',
-                headers,
-                query,
-            })
 
             //fileId, 從payload接收
             let fileId = get(req, 'payload.fileId', '')
@@ -1267,34 +1278,20 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in payload')
-                return responseU8aStreamWithError(res, 'invalid fileId in payload', { retryable: false })
+                return reply.param('invalid fileId in payload')
             }
 
-            //token, 自authorization提取供外部download事件進行授權檢查
-            //token, 須先確認授權方案前綴相符才切; 不符者視為未帶token
-            //why: 原以 slice(tokenType.length + 1) 無條件切, 從不驗前綴 —— 實測(tmp/probe_r9_final.mjs之Q4, server設tokenType='Token'):
-            //送 `Bearer abc123` 切出 " abc123"(帶前導空白)、送 `Basic dXNlcjpwYXNz` 整段成為 token, 兩者皆為可通過isestr之錯誤授權值,
-            //應用端於 download 事件收到後無從察覺; 而同為「兩端須一致」之 sizeSlice 早有明確之 mismatch 訊息
-            let pfxToken = `${cstr(tokenType)} `
-            let token = (isestr(authorization) && authorization.startsWith(pfxToken)) ? authorization.slice(pfxToken.length) : ''
-
-            //inp
-            let inp = { fileId, token }
+            //inp, token 自 ctx 取得(來源與前綴檢核見 ctxOf), 供外部download事件進行授權檢查
+            let inp = { fileId, token: ctx.token }
 
             //procDownload
             let out = {}
-            let returnType = ''
-            let returnMsg = ''
             await procDownload(inp)
                 .then((res) => {
                     out.success = res
-                    returnType = 'success'
-                    returnMsg = 'need to parse'
                 })
                 .catch((err) => {
                     out.error = err
-                    returnType = 'error'
-                    returnMsg = 'need to parse'
                 })
             // console.log('out', out)
 
@@ -1303,57 +1300,23 @@ function WConverhpServer(opt = {}) {
             //二是監聽器拋錯時safe emitter(見funGetListenerError)已發過一則error事件, 若再於形狀檢核處補發即成同一次請求兩則. 先分流拒絕, 形狀檢核才只處理「真的resolve了但形狀不對」
             if (haskey(out, 'error')) {
                 // console.log('out.error', out.error)
-                return responseU8aStreamWithError(res, `can not get file from fileId`)
+                return reply.app('can not get file from fileId')
             }
 
-            //r
-            let r = get(out, 'success')
-
-            //rf, 欄位擷取須經attempt: 應用端回傳物件之欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件(見規則帳本 R1)
-            //本路由只取檔名與串流兩欄, 不讀fileSize/fileType, 以免其getter拋錯影響本路由(維持既有行為)
-            let rf = readDownloadFields(r, ['streamRead', 'filename'])
-            if (!rf.ok) {
-                destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
-                evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
-                return responseU8aStreamWithError(res, 'invalid streamRead')
+            //ro, 依 spec.fields 之順序讀取與檢核(streamRead → filename), 失敗即銷毀串流 + 一則事件 + 錯誤回覆(見 readOutput)
+            //本路由只取檔名與串流兩欄, 不讀 fileSize / fileType, 以免其 getter 拋錯影響本路由(維持既有行為, 順序寫在 routeSpec)
+            //filename 須經 validDownloadField 轉為字串基本型才可放進封包(否則帶 Symbol.toStringTag='String' 且 toJSON 回 undefined 之物件會使 filename 鍵於序列化時消失, 第九輪 F2)
+            let ro = readOutput(get(out, 'success'), fileId, spec, reply)
+            if (!ro.ok) {
+                return ro.res
             }
-
-            //streamRead
-            let streamRead = rf.fields.streamRead
 
             //destroy, 本路由只取檔名不提供stream故須預先destroy; 瀏覽器下載管理器路徑接著會以同一fileId再觸發一次download事件取串流, 應用端每次皆須交出新串流
-            destroyStreamRead(streamRead)
+            destroyStreamRead(ro.v.streamRead)
 
-            //filename, 判定與正規化經 validDownloadField: 型別判定本身會觸碰應用端值, 且須轉為字串基本型才可放進封包(否則帶 Symbol.toStringTag='String' 且
-            //toJSON 回 undefined 之物件會使 filename 鍵於序列化時消失, 第九輪 F2), 三條下載路由同一判定(見該模組)
-            //形狀錯誤須發error事件使應用端能觀察(與/dw、/dwgf對稱); 屬應用端狀態, 依重試原則不標示retryable
-            let vn = validDownloadField('filename', rf.fields.filename)
-            if (!vn.ok) {
-                //已於前面destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid filename${isestr(vn.cause) ? `: ${vn.cause}` : ''}`)
-                return responseU8aStreamWithError(res, 'invalid filename')
-            }
-            let filename = vn.value
-
-            //重新提供out
-            out = {
-                success: {
-                    filename,
-                },
-            }
-
-            //u8aOut, 須經encodeOut而非直接obj2u8arr
-            //why: filename來自應用端而非套件自產字串 —— wsemi之isestr以Object.prototype.toString判定, 帶Symbol.toStringTag='String'之物件可通過上方檢核,
-            //其toJSON若回BigInt則序列化拋錯、回undefined則filename鍵消失, 兩者於直接obj2u8arr下皆是「宣稱成功之壞封包」且0則事件
-            let u8aOut = encodeOut(out, (msg) => {
-                evEmit('error', `download fileId[${fileId}] output can not be serialized: ${msg}`)
-            })
-            if (u8aOut === null) {
-                return responseU8aStreamWithError(res, 'output can not be serialized')
-            }
-            // console.log('u8aOut', u8aOut)
-
-            return responseU8aStream(res, u8aOut, { returnType, returnMsg })
+            //重新提供out: 只交出檔名, 應用端回傳物件之其他欄位不外送; 收尾經 replyPacket(須經 encodeOut 而非直接 obj2u8arr:
+            //filename 來自應用端, 其 toJSON 若回 BigInt 則序列化拋錯、回 undefined 則 filename 鍵消失, 兩者於直接 obj2u8arr 下皆是「宣稱成功之壞封包」且 0 則事件)
+            return replyPacket(res, reply, Promise.resolve({ filename: ro.v.filename }), `download fileId[${fileId}]`)
         },
     }
 
@@ -1375,70 +1338,34 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
-            //replyError, 本路由之錯誤回應: 本體封包與標頭同其他路由, 唯 HTTP 狀態碼為非 2xx
+            //spec, reply, ctx, admit: 路由前置, 見 routeSpec / ctxOf / replyOf / admit
+            //本路由之錯誤回應: 本體封包與標頭同其他路由, 唯 HTTP 狀態碼為非 2xx(routeSpec.dwgf.statusOf: 403 權限、400 參數、404 應用端無法提供檔案、500 內容不合契約)
             //why: 本路由之唯一消費者是瀏覽器下載管理器(client 之 downloadByManager 以 a[download] 導覽至此, 無任何 JS 讀其本體或標頭),
             //而下載管理器只以狀態碼判定成敗 —— 原本錯誤一律 HTTP 200, 應用端拒絕、permission denied 皆被存成使用者之檔案
             //(Chromium failure=null, 存下 52B / 41B 之錯誤封包; 實測第十輪 A9), 兩端 0 則事件。
             //帳本 R6「一律 HTTP 200」之前提為「由 JS 解析本體」, 於本路由不成立, 列為 R6 之例外。對標: S3 預簽 URL 以 403/404 使瀏覽器顯示下載失敗
-            //code: 403 權限、400 參數(可證明不需重試者)、404 應用端無法提供檔案、500 應用端交出之內容不合契約
-            let replyError = (code, msg, opt) => {
-                return responseU8aStreamWithError(res, msg, opt).code(code)
+            //token 走 query string(下載由瀏覽器導覽, 無標頭可用), authorization 由 ctxOf 合成
+            let spec = routeSpec.dwgf
+            let reply = replyOf(res, spec)
+            let ctx = ctxOf(req, spec)
+            let denied = await admit(req, ctx, spec, reply)
+            if (denied) {
+                return denied
             }
-
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //token
-            let token = get(query, 'token', '')
-            token = isestr(token) ? token : ''
-            // console.log('token', token)
-
-            //authorization
-            let authorization = ''
-            if (isestr(token)) {
-                authorization = `${tokenType} ${token}`
-            }
-
-            //check
-            if (true) {
-
-                //checkConn
-                let m = await checkConn({ apiType: 'download-get-file', authorization, query, headers, req })
-
-                //check
-                if (m !== true) {
-                    return replyError(403, 'permission denied')
-                }
-
-            }
-
-            //evEmit
-            evEmit('handler', {
-                api: 'apiDownloadGetFile',
-                headers,
-                query,
-            })
 
             //fileId
-            let fileId = get(query, 'fileId', '')
+            let fileId = get(ctx.query, 'fileId', '')
             fileId = isestr(fileId) ? fileId : ''
             // console.log('fileId', fileId)
 
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in query')
-                return replyError(400, 'invalid fileId in query', { retryable: false })
+                return reply.param('invalid fileId in query')
             }
 
             //inp, token供外部download事件進行授權檢查
-            let inp = { fileId, token }
+            let inp = { fileId, token: ctx.token }
 
             //procDownload
             let out = {}
@@ -1454,60 +1381,22 @@ function WConverhpServer(opt = {}) {
             //return
             if (haskey(out, 'error')) {
                 // console.log('out.error', out.error)
-                return replyError(404, `can not get file from fileId`)
+                return reply.app('can not get file from fileId')
             }
 
-            //r
-            let r = get(out, 'success')
-
-            //streamRead
-            //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
-            //本路由需四欄; 讀取失敗時已讀到之欄位由readDownloadFields一併交出, 其中streamRead須清理(原註解稱「尚未取得串流引用」僅對首欄即拋錯者成立, 對後三欄不實)
-            let rf = readDownloadFields(r, ['streamRead', 'fileSize', 'fileType', 'filename'])
-            if (!rf.ok) {
-                destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
-                evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
-                return replyError(500, 'invalid streamRead')
+            //ro, 依 spec.fields 之順序讀取與檢核四欄(streamRead → fileSize → fileType → filename(選用)), 失敗即銷毀串流 + 一則事件 + 錯誤回覆(見 readOutput)
+            //fileSize 會原樣寫入 Content-Length(須為安全非負整數, 經 cint 正規化); fileType 會原樣寫入 Content-Type(須通過標頭值驗證); 形狀錯誤皆屬應用端狀態, 依重試原則不標示 retryable
+            //filename 為選用: 應用端有給則以 RFC 6266 之 filename*(值為 RFC 5987 percent-encoding)回傳, 使瀏覽器不論頁面與 API 是否同源皆以此命名
+            //  why: 瀏覽器只對同源 URL 採用 <a download> 之檔名, 跨來源時忽略而以 URL 末段(dwgf)命名; 以往不給此標頭之理由(中文於 filename="..." 須 base64)是舊寫法之限制, filename* 由瀏覽器直接還原 UTF-8;
+            //  判定不通過者(未給、非字串、toString 拋錯而無法取得字串)一律視為未給(原本 toString 拋錯者送出空檔名之標頭, 第十輪 A6); 判定時拋錯者(Symbol.toStringTag getter 等)與其他欄位同一處置
+            let ro = readOutput(get(out, 'success'), fileId, spec, reply)
+            if (!ro.ok) {
+                return ro.res
             }
-            let streamRead = rf.fields.streamRead
-
-            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數; 判定與正規化(cint)經 validDownloadField(判定本身會觸碰應用端值, 見該模組)
-            //形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
-            let vs = validDownloadField('fileSize', rf.fields.fileSize)
-            if (!vs.ok) {
-                destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                //fileSize須經getErrorMessage而不可直接放進樣板(見帳本R10): 其為應用端交出之任意值,
-                //樣板會對它求值(ToPrimitive→Symbol.toPrimitive→valueOf→toString), 任一步拋錯即逸出handler而回裸HTTP 500且0則事件
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(rf.fields.fileSize)}]${isestr(vs.cause) ? `: ${vs.cause}` : ''}`)
-                return replyError(500, 'invalid fileSize')
-            }
-            let fileSize = vs.value
-
-            //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證; 判定與正規化經 validDownloadField
-            let vt = validDownloadField('fileType', rf.fields.fileType)
-            if (!vt.ok) {
-                destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileType${isestr(vt.cause) ? `: ${vt.cause}` : ''}`)
-                return replyError(500, 'invalid fileType')
-            }
-            let fileType = vt.value
-
-            //filename, 應用端有給則以 RFC 6266 之 filename*(值為 RFC 5987 percent-encoding)回傳, 使瀏覽器不論頁面與 API 是否同源皆以此命名並強制下載(attachment)
-            //why: 瀏覽器只對同源 URL 採用 <a download> 之檔名, 跨來源時忽略而以 URL 末段(dwgf)命名, 可直接顯示之型別(txt/圖片/pdf)更會改為導頁而非下載;
-            //以往不給此標頭之理由(中文於 filename="..." 須 base64, chrome 檔名因而變 base64)是舊寫法之限制, filename* 由瀏覽器直接還原 UTF-8;
-            //同源時標頭與 <a download> 為同一檔名, 行為不變. 未給 filename 者維持不帶標頭(向後相容), 由 <a download> 或 URL 命名
-            //選用欄位: 判定不通過者(未給、非字串、toString 拋錯而無法取得字串)一律視為未給而不帶標頭 —— 原本 toString 拋錯者送出空檔名之標頭(第十輪 A6);
-            //判定時拋錯者(Symbol.toStringTag getter 等)與其他欄位同一處置, 以錯誤結束(原本為裸 HTTP 500, 第十輪 A5)
-            let filename = ''
-            let vn = validDownloadField('filename', rf.fields.filename)
-            if (vn.ok) {
-                filename = vn.value
-            }
-            else if (isestr(vn.cause)) {
-                destroyStreamRead(streamRead)
-                evEmit('error', `download fileId[${fileId}] output error: invalid filename: ${vn.cause}`)
-                return replyError(500, 'invalid filename')
-            }
+            let streamRead = ro.v.streamRead
+            let fileSize = ro.v.fileSize
+            let fileType = ro.v.fileType
+            let filename = ro.v.filename
 
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
             //forHead, 本路由為GET, hapi對GET路由自動支援HEAD; HEAD不送本體故不建計數串流(見buildDownloadSource之forHead)
@@ -1517,17 +1406,17 @@ function WConverhpServer(opt = {}) {
             if (bs.error) {
                 destroyStreamRead(streamRead)
                 evEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
-                return replyError(500, bs.error)
+                return reply.output(bs.error)
             }
 
             //rr
+            //Content-Disposition, 一律 attachment: 本路由為下載端點, 未給 filename 者亦不得由瀏覽器依型別改為導頁(跨來源時 <a download> 之檔名與強制下載皆被忽略, 可直接顯示之型別即導頁, 第十一輪 N6);
+            //有 filename 才加 filename*(對標 nginx / S3 / Express 之 res.download)
             let rr = res.response(bs.source)
                 .type(fileType)
                 .header('Content-Encoding', 'identity') //見/dw之同一設定
                 .header('Content-Length', fileSize)
-            if (isestr(filename)) {
-                rr.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeRfc5987(filename)}`)
-            }
+                .header('Content-Disposition', isestr(filename) ? `attachment; filename*=UTF-8''${encodeRfc5987(filename)}` : 'attachment')
 
             return rr
         },
@@ -1544,6 +1433,7 @@ function WConverhpServer(opt = {}) {
                 timeout: false, //避免請求未完成時中斷
                 // output: 'stream',
                 parse: true, //前端送obj過來須自動解析
+                failAction: failPayload(routeSpec.dw), //解析失敗回套件錯誤封包(見 failPayload)
             },
             timeout: {
                 server: false, //關閉伺服器超時
@@ -1562,39 +1452,14 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
-            //headers
-            let headers = get(req, 'headers')
-            headers = iseobj(headers) ? headers : ''
-            // console.log('headers', headers)
-
-            //query
-            let query = get(req, 'query')
-            query = iseobj(query) ? query : ''
-            // console.log('query', query)
-
-            //authorization
-            let authorization = get(headers, 'authorization', '')
-            authorization = isestr(authorization) ? authorization : ''
-
-            //check
-            if (true) {
-
-                //checkConn
-                let m = await checkConn({ apiType: 'download', authorization, query, headers, req })
-
-                //check
-                if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
-                }
-
+            //spec, reply, ctx, admit: 路由前置, 見 routeSpec / ctxOf / replyOf / admit
+            let spec = routeSpec.dw
+            let reply = replyOf(res, spec)
+            let ctx = ctxOf(req, spec)
+            let denied = await admit(req, ctx, spec, reply)
+            if (denied) {
+                return denied
             }
-
-            //evEmit
-            evEmit('handler', {
-                api: 'apiDownload',
-                headers,
-                query,
-            })
 
             //fileId, 從payload接收
             let fileId = get(req, 'payload.fileId', '')
@@ -1603,19 +1468,11 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in payload')
-                return responseU8aStreamWithError(res, 'invalid fileId in payload', { retryable: false })
+                return reply.param('invalid fileId in payload')
             }
 
-            //token, 自authorization提取供外部download事件進行授權檢查
-            //token, 須先確認授權方案前綴相符才切; 不符者視為未帶token
-            //why: 原以 slice(tokenType.length + 1) 無條件切, 從不驗前綴 —— 實測(tmp/probe_r9_final.mjs之Q4, server設tokenType='Token'):
-            //送 `Bearer abc123` 切出 " abc123"(帶前導空白)、送 `Basic dXNlcjpwYXNz` 整段成為 token, 兩者皆為可通過isestr之錯誤授權值,
-            //應用端於 download 事件收到後無從察覺; 而同為「兩端須一致」之 sizeSlice 早有明確之 mismatch 訊息
-            let pfxToken = `${cstr(tokenType)} `
-            let token = (isestr(authorization) && authorization.startsWith(pfxToken)) ? authorization.slice(pfxToken.length) : ''
-
-            //inp
-            let inp = { fileId, token }
+            //inp, token 自 ctx 取得(來源與前綴檢核見 ctxOf), 供外部download事件進行授權檢查
+            let inp = { fileId, token: ctx.token }
 
             //procDownload
             let out = {}
@@ -1631,53 +1488,20 @@ function WConverhpServer(opt = {}) {
             //return
             if (haskey(out, 'error')) {
                 // console.log('out.error', out.error)
-                return responseU8aStreamWithError(res, `can not get file from fileId`)
+                return reply.app('can not get file from fileId')
             }
 
-            //r
-            let r = get(out, 'success')
-
-            //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
-            let rf = readDownloadFields(r, ['streamRead', 'filename', 'fileSize', 'fileType'])
-            if (!rf.ok) {
-                destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
-                evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
-                return responseU8aStreamWithError(res, 'invalid streamRead')
+            //ro, 依 spec.fields 之順序讀取與檢核四欄(streamRead → filename → fileSize → fileType), 失敗即銷毀串流 + 一則事件 + 錯誤回覆(見 readOutput)
+            //filename 經 validDownloadField 轉為字串基本型並以 U+FFFD 取代孤立代理對(否則 str2b64 之寬鬆模式回空字串而檔名整個消失, 第十輪 A7);
+            //fileSize 會原樣寫入 Content-Length(須為安全非負整數, 經 cint 正規化); fileType 會原樣寫入 Content-Type(須通過標頭值驗證); 形狀錯誤皆屬應用端狀態, 依重試原則不標示 retryable
+            let ro = readOutput(get(out, 'success'), fileId, spec, reply)
+            if (!ro.ok) {
+                return ro.res
             }
-
-            //streamRead
-            let streamRead = rf.fields.streamRead
-
-            //filename, 判定與正規化經 validDownloadField: 型別判定本身會觸碰應用端值; 須轉為字串基本型;
-            //孤立代理對以 U+FFFD 取代, 否則 str2b64 之寬鬆模式回空字串而檔名整個消失(第十輪 A5、A6、A7, 見該模組)
-            let vn = validDownloadField('filename', rf.fields.filename)
-            if (!vn.ok) {
-                destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid filename${isestr(vn.cause) ? `: ${vn.cause}` : ''}`)
-                return responseU8aStreamWithError(res, 'invalid filename')
-            }
-            let filename = str2b64(vn.value) //headers內對中文支援度不佳須用base64傳
-
-            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數; 判定與正規化(cint)經 validDownloadField(判定本身會觸碰應用端值, 見該模組)
-            //形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
-            let vs = validDownloadField('fileSize', rf.fields.fileSize)
-            if (!vs.ok) {
-                destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                //fileSize須經getErrorMessage而不可直接放進樣板(見帳本R10): 其為應用端交出之任意值,
-                //樣板會對它求值(ToPrimitive→Symbol.toPrimitive→valueOf→toString), 任一步拋錯即逸出handler而回裸HTTP 500且0則事件
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(rf.fields.fileSize)}]${isestr(vs.cause) ? `: ${vs.cause}` : ''}`)
-                return responseU8aStreamWithError(res, 'invalid fileSize')
-            }
-            let fileSize = vs.value
-
-            //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證; 判定與正規化經 validDownloadField
-            let vt = validDownloadField('fileType', rf.fields.fileType)
-            if (!vt.ok) {
-                destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileType${isestr(vt.cause) ? `: ${vt.cause}` : ''}`)
-                return responseU8aStreamWithError(res, 'invalid fileType')
-            }
-            let fileType = vt.value
+            let streamRead = ro.v.streamRead
+            let filename = str2b64(ro.v.filename) //headers內對中文支援度不佳須用base64傳
+            let fileSize = ro.v.fileSize
+            let fileType = ro.v.fileType
 
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
             //forHead, 本路由為POST故一般不會收到HEAD; 與/dwgf同式處理, 使兩路由對此不對稱不再由「寫法差異」產生
@@ -1687,7 +1511,7 @@ function WConverhpServer(opt = {}) {
             if (bs.error) {
                 destroyStreamRead(streamRead)
                 evEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
-                return responseU8aStreamWithError(res, bs.error)
+                return reply.output(bs.error)
             }
 
             //Content-Encoding: identity, 使hapi跳過回應壓縮而保留Content-Length

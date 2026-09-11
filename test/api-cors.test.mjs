@@ -162,11 +162,11 @@ describe('api-cors', function() {
         assert.strict.deepEqual(r.headers['content-disposition'], `attachment; filename*=UTF-8''%E4%B8%AD%E6%96%87%20it%27s%20%28v2%29%2A.7z`)
     })
 
-    it('/dwgf 應用端未給 filename 時不帶 Content-Disposition(向後相容, 不因此拒絕)', async function() {
+    it('/dwgf 應用端未給 filename 時仍為 attachment(無 filename*), 不因此拒絕(第十一輪 N6: 下載端點不得因未給檔名而讓瀏覽器依型別改為導頁; 原本不帶標頭)', async function() {
         let r = await req('GET', `/api/dwgf?fileId=noname&token=token-for-test`, null)
         assert.strict.deepEqual(r.status, 200)
         assert.strict.deepEqual(r.headers['content-type'], 'application/x-7z-compressed')
-        assert.strict.deepEqual(r.headers['content-disposition'], undefined)
+        assert.strict.deepEqual(r.headers['content-disposition'], 'attachment')
     })
 
     it('/dwgf 應用端 reject 時回錯誤封包(狀態碼為非 2xx, 使瀏覽器下載管理器顯示失敗), 不帶 Content-Disposition', async function() {

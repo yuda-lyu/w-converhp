@@ -40,12 +40,10 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
     //why 工作量上界取自實際資料而非請求: 原逐筆 readFileSync + 雜湊且不去重, 合法形狀之重複索引 3000 筆(本體 48KB)即耗時 7s 且線性成長(實測第十輪 A4);
     //改為只處理「合法索引 ∈ 實存切片 ∧ 未處理過」者, 雜湊次數之上限為實存切片數, 其餘各筆僅為集合查詢
     //索引須為正規寫法(String(cint(s)) === s): 伺服器寫入切片時已以 cint 正規化, 非正規寫法者(如 00)不會是本套件所產
+    //資料夾不在或不可讀即拋: 與 checkTotalHash 對同一失敗之處置一致(由路由層之 internal 收為一則事件 + 不含路徑之 check-slices-hash failed);
+    //原本吞掉而回 {slks:[]}, 前端遂重傳全部切片後才於 /slc 逐片以寫入失敗告終(第十一輪 N11)
     let pfx = `${fileHash}_`
-    let names = []
-    try {
-        names = fs.readdirSync(pathUploadTemp)
-    }
-    catch (err) {}
+    let names = fs.readdirSync(pathUploadTemp)
     let idsExist = new Set()
     for (let name of names) {
         if (!name.startsWith(pfx)) {

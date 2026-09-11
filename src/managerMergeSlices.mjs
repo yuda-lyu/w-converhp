@@ -44,6 +44,7 @@ import mergeSlices from './mergeSlices.wk.umd.js'
 let merging = new Set()
 
 //consuming, 消費進行中之 queueId → promise, 使同一隊列之併發查詢(client 逾時重送而前一請求仍在應用端處理中)共用同一次應用端呼叫, 不多重觸發
+//以 queueId 而非路徑為鍵即可隔離同行程內多個伺服器實例: queueId 為 <時間>|<6 字亂數>|<fileHash>(見 qPush), 不同 pathUploadTemp 之實例撞號須同秒、同亂數、同 fileHash, 且撞號之後果只是共用一次消費(B 卷 B11)
 let consuming = new Map()
 
 //getPaths

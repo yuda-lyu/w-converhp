@@ -30,6 +30,34 @@ describe('api-startupErrors', function() {
         assert.strict.deepEqual(evs[0].includes('pathUploadTemp'), true, evs[0])
     })
 
+    it('執行期暫存資料夾消失時, check-slices-hash 與 check-total-hash 須同樣以 <mode> failed 回應且各恰一則事件(修正前 check-slices-hash 吞掉 readdir 錯誤而回 slks 空陣列)', async function() {
+        let up = path.join(fd, 'gone')
+        let evs = []
+        let wsv = new WConverhpServer({ port: 8497, useInert: false, pathUploadTemp: up })
+        wsv.on('error', (e) => evs.push(String(e)))
+        await w.delay(700)
+        fs.rmSync(up, { recursive: true, force: true })
+        let call = async(body) => {
+            evs.length = 0
+            let r = await fetch(`http://127.0.0.1:8497/api/ulctr`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+            let o = w.u8arr2obj(new Uint8Array(await r.arrayBuffer()))
+            await w.delay(150)
+            return { status: r.status, error: o.error, nEvs: evs.length, evs: [...evs] }
+        }
+        let rs = await call({ mode: 'check-slices-hash', fileHash: 'abcdef0123456789', fileSliceHashs: [{ i: 0, h: 'x' }] })
+        let rt = await call({ mode: 'check-total-hash', fileHash: 'abcdef0123456789', filename: 'a', fileSize: 1 })
+        await wsv.stop()
+        assert.strict.deepEqual(rs.error, 'check-slices-hash failed', JSON.stringify(rs))
+        assert.strict.deepEqual(rs.nEvs, 1, JSON.stringify(rs))
+        assert.strict.deepEqual(rs.evs[0].includes(path.resolve(up)), true, '細節(含路徑)須在事件內')
+        assert.strict.deepEqual(rt.error, 'check-total-hash failed', JSON.stringify(rt))
+        assert.strict.deepEqual(rt.nEvs, 1, JSON.stringify(rt))
+    })
+
     it('對照組: 埠被占時仍須於建構期恰發一則 error 事件', async function() {
         let a = new WConverhpServer({ port: 8499, useInert: false, pathUploadTemp: path.join(fd, 'a') })
         a.on('error', () => {})

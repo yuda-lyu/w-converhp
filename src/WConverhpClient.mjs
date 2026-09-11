@@ -31,6 +31,113 @@ import retryDelay from './retryDelay.mjs'
 import normalizeUploadInput from './normalizeUploadInput.mjs'
 
 
+//decodeFilenameFromHeader, /dw 之協定解碼: Content-Disposition 之 filename="<base64>" → 還原 → 淨化
+//why 與落檔分開(B 卷 §③-3.5): 解碼是協定, 落檔是 I/O; 混在一起使 'unknow' 拼字錯藏了多輪(N12)。取不到者為 unknown(b642str('unknown') 為空字串, 再經 sanitizeFilename 回 unknown, 行為自洽)
+//淨化(sanitizeFilename): 檔名來自伺服器不可信, 只取最末路徑段並去除非法字元(含可逸出之 Windows 磁碟機相對路徑 C:x)與保留裝置名 ——
+//本值由套件自己拿去 path.resolve 落地, 故就地淨化(帳本 R19: 誰要拿它做危險操作, 誰處理; 只轉交者不得改寫)
+function decodeFilenameFromHeader(contentDisposition) {
+    let fn = 'unknown'
+    try {
+        let matches = /filename="(.+?)"/.exec(contentDisposition)
+        fn = matches ? matches[1] : 'unknown'
+    }
+    catch (err) {}
+    return sanitizeFilename(b642str(fn)) //headers內對中文支援度不佳須用base64傳, 此處解析提取後須反轉
+}
+
+//drainResponse, 離開 downloadStream 前排空對端串流: nodejs 之 responseType:'stream' 時 res.data 為 IncomingMessage, 未消費之回應會使該 socket 於 keep-alive 下直到伺服器 keepAliveTimeout 才釋放,
+//且位於重試鏈內時每次嘗試各留一條(第十一輪 N8、B9、A2); 瀏覽器之 Blob 無 resume 即略過; 已被 pipeline 銷毀者 resume 為 no-op
+function drainResponse(res) {
+    try {
+        let d = get(res, 'data')
+        if (d && isfun(d.resume)) {
+            d.resume()
+        }
+    }
+    catch (err) {}
+}
+
+//saveStreamToFile, nodejs 之落檔: 以 pipeline 把回應串流寫入 fdDownload/filename, 回傳落點絕對路徑
+//path, fs, stream 使用動態 import 且以變數字串給予, 否則用於前端時會被 webpack 偵測而報錯(**不可改為字面量**; 唯一保護為 e2e-download 之真瀏覽器)
+//串流出錯由 pipeline 回報; 其餘同步失敗(路徑判定、mkdir、lstat)直接拋出, 由呼叫端排空對端串流後進重試
+async function saveStreamToFile(streamRecv, fdDownload, filename) {
+    let cImPath = 'path'
+    let cImFs = 'fs'
+    let cImStream = 'stream'
+    let path = await import(cImPath)
+    let fs = await import(cImFs)
+    let stream = await import(cImStream)
+
+    //fdDownload, 只有nodejs下載才使用fdDownload
+    fs.mkdirSync(fdDownload, { recursive: true }) //須使用mkdirSync, 不要用fsIsFolder與fsCreateFolder避免編譯
+
+    //fdReal, 以realpath正規化基準資料夾, 消除符號連結造成之路徑歧異(OWASP: 先正規化再做邊界判定)
+    let fdReal = fs.realpathSync(fdDownload)
+
+    //fp
+    let fp = path.resolve(fdReal, filename)
+
+    //check, 落點須仍在fdDownload之內(檔名已淨化, 此為第二道防線), 以path.relative判定, 不用startsWith(base+sep): 後者於base為磁碟根目錄時誤判
+    if (!isPathInside(fdReal, fp, path)) {
+        throw new Error('invalid filename from server')
+    }
+
+    //check, 目標已存在且為符號連結則拒絕: createWriteStream會穿過連結寫到其指向處, 預先植入之連結可使寫入逸出資料夾
+    let st = null
+    try {
+        st = fs.lstatSync(fp)
+    }
+    catch (err) {}
+    if (st !== null && st.isSymbolicLink()) {
+        throw new Error('invalid filename from server')
+    }
+
+    //streamWriter
+    let streamWriter = fs.createWriteStream(fp)
+
+    //pipeline, 不用streamRecv.pipe(streamWriter): .pipe()不會因源串流出錯或中途斷線而關閉目的串流, 伺服器串流中途失敗時finish永不發生,
+    //本promise永不settle(axios之timeout只涵蓋到回應標頭, 不涵蓋串流本體)、寫入fd開啟、殘留部分檔; pipeline對源與目的任一方出錯或提前關閉皆銷毀雙方並回報,
+    //使失敗能reject而進入send之重試(傳輸不穩須重試, 前提是失敗要被偵測到)
+    return new Promise((resolve, reject) => {
+        stream.pipeline(streamRecv, streamWriter, (err) => {
+            if (err) {
+
+                //不完整檔須刪除, 否則殘留部分內容會被當成已下載之檔案; 刪除失敗不影響reject(重試會以寫入模式覆蓋)
+                try {
+                    fs.unlinkSync(fp)
+                }
+                catch (e) {}
+
+                reject(err)
+                return
+            }
+            resolve(fp)
+        })
+    })
+}
+
+//classifyFailure, send 之最終失敗值: 伺服器回傳值(業務錯誤)原樣交出; 本地失敗(axios、fs、解析)取可讀訊息
+//why 判準採反向(非 Error 即伺服器回傳值): callApiCore 於伺服器回傳業務錯誤(如 'invalid func'、'permission denied', 或應用端 handler 之 reject 值)時是 reject 伺服器給的值本體而非 axios 錯誤物件;
+//本地失敗一律為 Error 實例, 而經序列化自伺服器回來之值結構上不可能是 Error 實例, 故非 Error 者不論形狀(字串、物件、數字、陣列、空字串、null)皆原樣交出; 不可用形狀白名單, 外部應用端之拒絕值列不完
+//訊息: 優先取 HTTP 之 statusText(如 Payload Too Large), 無者經 getErrorMessage(帳本 R10)。以 isestr 判定而非 ||: 空 reason-phrase 之 statusText 為空字串, || 會落到 response.data ——
+//nodejs 串流下載時那是 IncomingMessage 物件(B 卷 B10); 且不再交出 stack: 原以 get(res,'stack') 兜底, 把整段本機 stack 當成呼叫端可見之錯誤值(A 卷 §①-1.3(e))
+//Network Error 除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足無法下載被瀏覽器拒絕
+function classifyFailure(res) {
+    if (!(res instanceof Error)) {
+        return res
+    }
+    let statusText = get(res, 'response.statusText')
+    let data = isestr(statusText) ? statusText : getErrorMessage(res)
+    if (!isestr(data)) {
+        data = 'Can not connect to server.'
+    }
+    if (data === 'Network Error') {
+        data = `Network Error. Make sure your space of hard drive is large enough or blocking by browser plugins.`
+    }
+    return data
+}
+
+
 /**
  * 建立Hapi使用者(Node.js與Browser)端物件
  *
@@ -38,14 +145,14 @@ import normalizeUploadInput from './normalizeUploadInput.mjs'
  * @param {Object} opt 輸入設定參數物件
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
- * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''
+ * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''。可回傳字串或promise；回undefined或null視為未帶token(送出空token，不送字面之undefined)。**每一次請求嘗試各呼叫一次**(含重試，故一次execute為1+retryMain次)，使重試帶當下之token；瀏覽器下載管理器路徑(downloadByManager=true)於取檔名之請求外，另於導覽至下載網址前再呼叫一次，故為(1+retryDownload)+1次(該次拋錯時download以錯誤拒絕並發一則error事件；此時伺服器已因取檔名之請求觸發過一次download事件而沒有下載發生)；快取與否由應用端自行決定
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止。須為安全整數，Infinity與超出安全範圍者視為無效取預設
- * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘。為axios之閒置逾時，0為不逾時；須為安全整數，Infinity與超出安全範圍者視為無效取預設；另受計時器上限2147483647約束，超過者亦取預設。不可用Infinity或超大數字表示不逾時(axios會於請求送出前即拋錯，超大數字則因計時器溢位而立即逾時)，不逾時請給0
+ * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘。交予axios之timeout：於nodejs為socket閒置逾時（有資料往來即不計時），於瀏覽器為XHR之**整個請求**上限（含本體傳輸時間，故瀏覽器以blob模式下載或execute傳輸大檔時須依檔案大小與頻寬調大或給0）；0為不逾時；須為安全整數，Infinity與超出安全範圍者視為無效取預設；另受計時器上限2147483647約束，超過者亦取預設。不可用Infinity或超大數字表示不逾時(axios會於請求送出前即拋錯，超大數字則因計時器溢位而立即逾時)，不逾時請給0
  * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
- * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。伺服器回業務錯誤時(execute、upload、download皆同)每次嘗試各發一則error事件
+ * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload)一則。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器
  * @example
  *
  * import path from 'path'
@@ -216,16 +323,38 @@ function WConverhpClient(opt) {
         return (isobj(msg) && msg[symNoRetry] === true) ? msg.msg : msg
     }
 
-    //serverError, 「伺服器回業務錯誤」之唯一處置: 發一則 error 事件, 並回傳交予 reject 之值(retryable 為 false 者以 symNoRetry 包裝, 交由 callApi 中止重試並解包)
-    //why: 同一個事實原本三種處置 —— 封包協定(callApiCore)發事件、標頭協定(downloadStream, nodejs 之 download 與瀏覽器 blob 模式)不發、
-    //合併查詢之 state:error(checkMerging)亦不發(實測第十輪 D6、N2: 應用端拒絕與 permission denied 時 execute 1 則、download 0 則);
-    //且不重試包裝原本於兩個解碼者各自手寫一份。對標: socket.io-client 之 connect_error 不論傳輸方式皆同樣發出
-    let serverError = (msg, retryable) => {
-        evEmit('error', msg)
+    //fetchToken, 取當下 token 之唯一擁有者: 應用端之 getToken 可回值或 promise; undefined / null 視為未帶 token
+    //why 單一擁有者: 第十輪 F11 於 callApiCore 內補了「每次嘗試重取 + undefined 不送字面」, 而瀏覽器下載管理器路徑(downloadBrowser)另有一份手寫之取 token 且未套 ——
+    //getToken 回 undefined 時 URL 帶 token=undefined, 伺服器 isestr('undefined') 為真而以 Bearer undefined 交 verifyConn(同一規則兩站點只套一處)
+    //拋錯或 reject 原樣向外拋, 由呼叫處決定其為該次嘗試之失敗(callApiCore, 進重試)或入口失敗(downloadBrowser, 一則事件 + 拒絕)
+    let fetchToken = async() => {
+        let token = getToken()
+        if (ispm(token)) {
+            token = await token
+        }
+        if (token === undefined || token === null) {
+            token = ''
+        }
+        return token
+    }
+
+    //wrapNoRetry, 伺服器標示 retryable 為 false 之錯誤以 symNoRetry 包裝, 交由 callApi 中止重試並解包; 不發事件(事件由 attemptFailed 唯一擁有)
+    //why 原本之 serverError 兼做「發事件」: 它只涵蓋業務錯誤(封包 / 標頭 / 合併查詢), 傳輸失敗 0 則 —— 同一個「這次嘗試失敗了」兩種處置(第十一輪 N3)
+    let wrapNoRetry = (msg, retryable) => {
         if (retryable === false) {
             return { [symNoRetry]: true, msg }
         }
         return msg
+    }
+
+    //attemptFailed, 「一次嘗試失敗」之 error 事件唯一擁有者(帳本 R5 client 側): 不分傳輸(連不上、逾時、413、5xx)、業務(伺服器錯誤封包 / Return-Type:error / 合併查詢之 state:error)、
+    //封包解析、getToken 拋錯, 每次嘗試恰一則。呼叫點只有兩個: callApi 之重試迴圈(每次 fun(s) 回 error)與 checkMerging(其 HTTP 請求成功而本體 state 為 error, 不經迴圈; 第十輪 F6 之站點)
+    //why: 原本只有業務錯誤經 serverError 發事件, 傳輸失敗 0 則(實測第十一輪 N3: 連不上、413 皆 0 則), 應用端完全觀察不到斷線; send 之 catch 只在不可達之分支發事件且值為物件。
+    //對標: socket.io-client 之 connect_error 不論傳輸方式、每次嘗試皆發出
+    //事件值經 classifyFailure, 與最終拒絕值同一算法: 非 Error 者(伺服器回傳值)原樣; Error 者取可讀訊息(HTTP statusText 優先, 如 413 為 Payload Too Large; 帳本 R10)
+    //合併輪詢無限(JSDoc 明載持續輪詢直到應用端接受), 故長時間斷線之 upload() 會持續產生事件(每輪最多 1+retryUpload 則, 速率受退避約束); 為「重試導致等待久」同族之刻意, 已於 JSDoc 明載(B 卷 B1)
+    let attemptFailed = (msg) => {
+        evEmit('error', classifyFailure(unwrapNoRetry(msg)))
     }
 
     //getUrlUse
@@ -393,136 +522,40 @@ function WConverhpClient(opt) {
         }
         // console.log('rt', rt)
 
-        //getFilenameByHeader
-        let getFilenameByHeader = (contentDisposition) => {
-            let fn = 'unknow'
-            try {
-                let reg = /filename="(.+?)"/
-                let matches = reg.exec(contentDisposition)
-                fn = matches ? matches[1] : 'unknown'
-            }
-            catch (err) {}
-            return fn
-        }
-
-        //downloadStream
+        //downloadStream, 下載回應之處置: 以標頭協定(Return-Type / Return-Msg / Return-Retryable)判成敗, 成功者瀏覽器交出 Blob、nodejs 經 saveStreamToFile 落檔
+        //離開前一律排空對端串流(drainResponse): 錯誤封包早返、落檔前置失敗(路徑逸出、symlink、mkdir)原本皆未排空(第十一輪 N8、B9、A2)
         let downloadStream = async(res) => {
-            // console.log('res.headers', res.headers)
 
-            //pm
-            let pm = genPm()
-
-            //returnType
+            //returnType, returnMsg
             let returnType = get(res, `headers['return-type']`, '')
-            // console.log('returnType', returnType)
-
-            //returnMsg
             let returnMsg = get(res, `headers['return-msg']`, '')
-            // console.log('returnMsg', returnMsg)
 
             //check, 伺服器於標頭標示Return-Retryable為false者為可證明不需重試之錯誤(下載路徑只讀標頭不解析本體; 瀏覽器跨域時若該標頭未被曝露則讀不到, 退回照常重試)
             if (returnType === 'error') {
+                drainResponse(res)
                 let returnRetryable = get(res, `headers['return-retryable']`, '')
-                pm.reject(serverError(returnMsg, returnRetryable !== 'false')) //發事件與不重試包裝見 serverError
-                return pm
+                return Promise.reject(wrapNoRetry(returnMsg, returnRetryable !== 'false')) //事件由 callApi 之 attemptFailed 發
             }
 
-            //contentDisposition
-            let contentDisposition = get(res, `headers['content-disposition']`, '')
-            // console.log('contentDisposition', contentDisposition)
-
-            //filename
-            let filename = getFilenameByHeader(contentDisposition)
-            filename = b642str(filename) //headers內對中文支援度不佳須用base64傳, 此處解析提取後須反轉
-
-            //sanitizeFilename, 檔名來自伺服器不可信: 只取最末路徑段並去除非法字元(含可逸出之Windows磁碟機相對路徑 C:x)與保留裝置名,
-            //否則nodejs端存檔會逸出fdDownload(瀏覽器與curl對Content-Disposition皆做同等處理)
-            filename = sanitizeFilename(filename)
-            // console.log('filename', filename)
+            //filename, 自 Content-Disposition 解碼並淨化(見 decodeFilenameFromHeader)
+            let filename = decodeFilenameFromHeader(get(res, `headers['content-disposition']`, ''))
 
             //streamRecv
             let streamRecv = get(res, 'data')
-            // console.log(env, 'streamRecv', streamRecv)
 
+            //browser通過axios使用blob接收時會自動把串流接收並組合成blob, 此時streamRecv已是blob
             if (env === 'browser') {
-
-                //browser通過axios使用blob接收時會自動把串流接收並組合成blob, 此時streamRecv已是blob
-                pm.resolve({
-                    filename,
-                    bb: streamRecv,
-                })
-
-            }
-            else {
-
-                //nodejs通過fs與stream接收檔案, 串流出錯由pipeline回報, 此處try catch為攔截其他非串流程式碼錯誤(路徑判定、mkdir、lstat)
-                try {
-
-                    //path, fs, stream, 使用動態import供nodejs使用, 須用變數字串給予載入套件, 否則用於前端時會被webpack偵測而報錯
-                    let cImPath = 'path'
-                    let cImFs = 'fs'
-                    let cImStream = 'stream'
-                    let path = await import(cImPath)
-                    let fs = await import(cImFs)
-                    let stream = await import(cImStream)
-
-                    //fdDownload, 只有nodejs下載才使用fdDownload
-                    let fdDownload = get(opt, 'fdDownload', '')
-                    fs.mkdirSync(fdDownload, { recursive: true }) //須使用mkdirSync, 不要用fsIsFolder與fsCreateFolder避免編譯
-                    // console.log('fdDownload', fdDownload)
-
-                    //fp
-                    //fdReal, 以realpath正規化基準資料夾, 消除符號連結造成之路徑歧異(OWASP: 先正規化再做邊界判定)
-                    let fdReal = fs.realpathSync(fdDownload)
-
-                    //fp
-                    let fp = path.resolve(fdReal, filename)
-
-                    //check, 落點須仍在fdDownload之內(檔名已淨化, 此為第二道防線), 以path.relative判定, 不用startsWith(base+sep): 後者於base為磁碟根目錄時誤判
-                    if (!isPathInside(fdReal, fp, path)) {
-                        throw new Error('invalid filename from server')
-                    }
-
-                    //check, 目標已存在且為符號連結則拒絕: createWriteStream會穿過連結寫到其指向處, 預先植入之連結可使寫入逸出資料夾
-                    let st = null
-                    try {
-                        st = fs.lstatSync(fp)
-                    }
-                    catch (err) {}
-                    if (st !== null && st.isSymbolicLink()) {
-                        throw new Error('invalid filename from server')
-                    }
-                    // console.log('fp', fp)
-
-                    //streamWriter
-                    let streamWriter = fs.createWriteStream(fp)
-
-                    //pipeline, 不用streamRecv.pipe(streamWriter): .pipe()不會因源串流出錯或中途斷線而關閉目的串流, 伺服器串流中途失敗時finish永不發生,
-                    //本promise永不settle(axios之timeout只涵蓋到回應標頭, 不涵蓋串流本體)、寫入fd開啟、殘留部分檔; pipeline對源與目的任一方出錯或提前關閉皆銷毀雙方並回報,
-                    //使失敗能reject而進入send之重試(傳輸不穩須重試, 前提是失敗要被偵測到)
-                    stream.pipeline(streamRecv, streamWriter, (err) => {
-                        if (err) {
-
-                            //不完整檔須刪除, 否則殘留部分內容會被當成已下載之檔案; 刪除失敗不影響reject(重試會以寫入模式覆蓋)
-                            try {
-                                fs.unlinkSync(fp)
-                            }
-                            catch (e) {}
-
-                            pm.reject(err)
-                            return
-                        }
-                        pm.resolve(fp)
-                    })
-
-                }
-                catch (err) {
-                    pm.reject(err)
-                }
-
+                return { filename, bb: streamRecv }
             }
 
-            return pm
+            //nodejs, 落檔(見 saveStreamToFile); 任何失敗皆先排空對端串流再向外拋(進入 send 之重試: 傳輸不穩須重試, 前提是失敗要被偵測到)
+            try {
+                return await saveStreamToFile(streamRecv, get(opt, 'fdDownload', ''), filename)
+            }
+            catch (err) {
+                drainResponse(res)
+                throw err
+            }
         }
 
         //s
@@ -573,17 +606,11 @@ function WConverhpClient(opt) {
         //callApiCore, 處理axios成功then時訊息, catch時直接向外傳遞
         let callApiCore = async() => {
 
-            //token, 每次嘗試重取, 拋錯或 reject 即為本次嘗試之失敗而進入重試
+            //token, 每次嘗試重取(見 fetchToken), 拋錯或 reject 即為本次嘗試之失敗而進入重試
             //why: 原本於重試迴圈外只取一次 —— 重試沿用同一個 token, 「token 已過期、應用端之 getToken 已換發新 token」一類之 permission denied 其重試永遠無效;
             //而權限屬非同步系統、permission denied 須重試(專案重試原則), 重試要有意義就得帶上當下之 token。業界作法同: token 更新後以新 token 重送(axios-auth-refresh)
             //另 getToken 拋錯原本不重試, 與「凡請求失敗一律重試」不一致; getToken 之呼叫次數因此為 1+重試次數, 快取由應用端決定
-            let token = getToken()
-            if (ispm(token)) {
-                token = await token
-            }
-            if (token === undefined || token === null) {
-                token = '' //未取得 token 者不得以樣板求值送出字面之 Bearer undefined / Bearer null(伺服器與應用端會收到一個看似有效之 token 字串; B 卷 tmp/r10B_token.mjs ⑤)
-            }
+            let token = await fetchToken()
             s.headers = {
                 Authorization: `${tokenType} ${token}`,
                 ...ct,
@@ -609,16 +636,13 @@ function WConverhpClient(opt) {
             //u8arr2obj, 以嚴格模式取狀態: 封包損毀(截斷、被中間層改寫)與「伺服器真的回了空物件」在寬鬆模式下都是{}, 分不出來也講不清楚
             let rd = u8arr2obj(u8a, { returnWithStateAndMsg: true })
             if (get(rd, 'state') !== 'success') {
-                let msg = `invalid packet from server: ${get(rd, 'msg', 'unknown error')}`
-                evEmit('error', msg)
-                return Promise.reject(msg) //屬傳輸不穩, 依重試原則不標示不重試
+                return Promise.reject(`invalid packet from server: ${get(rd, 'msg', 'unknown error')}`) //屬傳輸不穩, 依重試原則不標示不重試; 事件由 callApi 之 attemptFailed 發
             }
             let data = rd.msg
             // console.log('data', data)
 
             //check
             if (!iseobj(data)) {
-                evEmit('error', `data is not an effective object`)
                 return Promise.reject(`data is not an effective object`)
             }
 
@@ -627,10 +651,9 @@ function WConverhpClient(opt) {
                 return Promise.resolve(data.success)
             }
             else if (haskey(data, 'error')) {
-                return Promise.reject(serverError(data.error, data.retryable)) //發事件, 且伺服器標示retryable為false者為可證明不需重試之錯誤(見serverError)
+                return Promise.reject(wrapNoRetry(data.error, data.retryable)) //伺服器標示retryable為false者為可證明不需重試之錯誤(見wrapNoRetry); 事件由 attemptFailed 發
             }
             else {
-                evEmit('error', `data does not contain success or error`)
                 return Promise.reject(`data does not contain success or error`)
             }
 
@@ -649,6 +672,9 @@ function WConverhpClient(opt) {
             //while, 退避曲線見src/retryDelay.mjs(其自有封頂, 使延遲不隨retry次數無界成長)
             let n = 0
             while (r.state === 'error') {
+
+                //attemptFailed, 每次嘗試失敗恰一則事件(唯一擁有者, 見其說明)
+                attemptFailed(r.msg)
 
                 //check, 可證明不需重試者直接中止, 減少無效重試(413每次都重送整包本體)
                 if (isNoRetry(r.msg)) {
@@ -683,61 +709,13 @@ function WConverhpClient(opt) {
             }
         }
 
-        //callApi
+        //callApi, 最終失敗值經 classifyFailure(伺服器回傳值原樣, 本地失敗取可讀訊息); 事件已於重試迴圈內逐次發出(attemptFailed), 此處不再發
         await callApi()
             .then((res) => {
                 pm.resolve(res)
             })
-            .catch(async(res) => {
-                // console.log('axios catch', res.toJSON())
-                //Network Error除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足無法下載被瀏覽器拒絕
-
-                //data
-                let data = null
-
-                //check, callApiCore於伺服器回傳業務錯誤(如'invalid func'、'permission denied', 或應用端handler之reject值)時,
-                //是reject伺服器給的值本體而非axios錯誤物件, 故須先攔截並原樣向外傳遞, 否則下方各get皆取不到值而誤判為無法連線
-                //判準採反向: 本地失敗(axios、fs、解析)一律為Error實例, 而經序列化自伺服器回來之值結構上不可能是Error實例,
-                //故非Error者即為伺服器回傳值, 不論其形狀(字串、物件、數字、陣列、空字串、null)皆原樣交出; 不可用形狀白名單, 外部應用端之拒絕值列不完
-                if (!(res instanceof Error)) {
-                    // console.log('res is a value returned by server', res)
-                    data = res
-                }
-                else {
-
-                    //statusText, err
-                    let statusText = get(res, 'response.statusText') || get(res, 'message')
-                    let err = get(res, 'response.data') || get(res, 'stack')
-                    // console.log(`get(res, 'response.statusText')`, get(res, 'response.statusText'))
-                    // console.log(`get(res, 'message')`, get(res, 'message'))
-                    // console.log(`get(res, 'response.data')`, get(res, 'response.data'))
-                    // console.log(`get(res, 'stack')`, get(res, 'stack'))
-
-                    if (statusText) {
-                        // console.log('statusText', statusText)
-                        data = statusText
-                    }
-                    else if (err) {
-                        // console.log('err', err)
-                        data = err
-                    }
-                    else {
-                        try {
-                            res = res.toJSON()
-                        }
-                        catch (err) {}
-                        // console.log('err', res)
-                        evEmit('error', res)
-                        data = 'Can not connect to server.'
-                    }
-                    if (data === 'Network Error') {
-                        data = `Network Error. Make sure your space of hard drive is large enough or blocking by browser plugins.`
-                    }
-
-                }
-                // console.log('data', data)
-
-                pm.reject(data)
+            .catch((res) => {
+                pm.reject(classifyFailure(res))
             })
 
         return pm
@@ -824,18 +802,15 @@ function WConverhpClient(opt) {
         //多位元組型陣列之 length 為元素數而切出之位元組為其倍數(實測第十輪 D2)
         //nodejs用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
         let n = cint(bb.byteLength !== undefined ? bb.byteLength : bb.size)
-        if (n === 0) {
-            // evEmit('error', `can not get size of bb`)
-            // return Promise.reject(`can not get size of bb`)
-            n = 1 //最小給1, 使能支援無大小檔案上傳
-        }
         // console.log('n', n)
 
-        //fileTotalSize
+        //fileTotalSize, 如實(空輸入即 0)
+        //why: 原以 n = 1 假報大小以使切片數不為 0 —— 而伺服器去重以 fileSize === stats.size 比對, 1 !== 0 使空檔永不去重、每次皆重走切片與合併(第十一輪 N5);
+        //切片數之下限另以 chunkTotal 表達
         let fileTotalSize = n
 
-        //chunkTotal
-        let chunkTotal = Math.ceil(fileTotalSize / sizeSlice)
+        //chunkTotal, 空輸入亦須送一片(0 byte)使伺服器有物可合併
+        let chunkTotal = Math.max(1, Math.ceil(fileTotalSize / sizeSlice))
         // console.log('chunkTotal', chunkTotal)
 
         //progCount, progWeightSlice
@@ -1085,8 +1060,9 @@ function WConverhpClient(opt) {
                             //clearInterval
                             clearInterval(t)
 
-                            //reject, state為'error'時會於msg提供錯誤訊息; 為伺服器回之業務錯誤, 須發事件(見serverError)
-                            pm.reject(serverError(res.msg))
+                            //reject, state為'error'時會於msg提供錯誤訊息; 為伺服器回之業務錯誤(HTTP 請求本身成功, 不經 callApi 之迴圈), 於此發事件(見 attemptFailed; 第十輪 F6 之站點)
+                            attemptFailed(res.msg)
+                            pm.reject(res.msg)
 
                         }
 
@@ -1229,13 +1205,6 @@ function WConverhpClient(opt) {
         if (downloadByManager) {
             //由瀏覽器的下載管理器下載, 使用get+stream
 
-            //token
-            let token = getToken()
-            if (ispm(token)) {
-                token = await token
-            }
-            // console.log('token', token)
-
             //send download-get-filename
             let msg = { fileId }
             let resMg = await send('download-get-filename', msg, { dataType: 'json', retry: retryDownload })
@@ -1244,6 +1213,21 @@ function WConverhpClient(opt) {
             //filename
             let filename = get(resMg, 'filename', '')
             // console.log('filename', filename)
+
+            //token, 供組 URL(本路徑之下載由瀏覽器執行, token 只能走 query string); 經 fetchToken 取當下值
+            //why 於 dwgfn 成功後才取: 此 token 是**下一個請求**(瀏覽器導覽至 /dwgf)要用的, 取值點須貼著使用點 ——
+            //原本於 dwgfn 之前取, 中間隔了 dwgfn 之 1+retryDownload 次嘗試與其退避延遲(可達數秒), 短效 token 之應用端交給瀏覽器的是過期值(A 卷 §③-3.2)
+            //拋錯屬入口失敗(不在 send 之重試鏈內), 一則事件 + 拒絕, 不原樣逸出; 處置留在呼叫點而不包進 fetchToken(另一呼叫點之處置為進重試, 兩者不同)
+            let token = ''
+            try {
+                token = await fetchToken()
+            }
+            catch (err) {
+                let msgErr = `getToken error: ${getErrorMessage(err)}`
+                evEmit('error', msgErr)
+                return Promise.reject(msgErr)
+            }
+            // console.log('token', token)
 
             //urlUse
             let urlUse = getUrlUse('download-get')
