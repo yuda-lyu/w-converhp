@@ -124,7 +124,8 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(looseByFile, { server: 1, responseU8aStreamWithError: 1 }, `R3 寬鬆站點之分佈 ${hint}`)
     })
 
-    it('R4 數值述詞: 總 19 站點, 安全模式 10', function() {
+    it('R4 數值述詞: 總 20 站點, 安全模式 11', function() {
+        //第九輪 +1: checkTotalHash 之 fileSize 由 isnum 改為 isp0int 之安全模式(R4b 之未登記站點, 見帳本)
         let re = /(isp0int|ispint)\([^)]*\)/g
         let n = 0
         let nSafe = 0
@@ -133,8 +134,8 @@ describe('unit-ruleSites', function() {
             n += hits.length
             nSafe += hits.filter((v) => v.includes('optSafe') || v.includes('useLimitSafe')).length
         }
-        assert.strict.deepEqual(n, 19, `R4 總站點數 ${hint}`)
-        assert.strict.deepEqual(nSafe, 10, `R4 安全模式站點數 ${hint}(9 個刻意寬鬆者之理由見 CLAUDE.md 之「規則帳本」R4)`)
+        assert.strict.deepEqual(n, 20, `R4 總站點數 ${hint}`)
+        assert.strict.deepEqual(nSafe, 11, `R4 安全模式站點數 ${hint}(9 個刻意寬鬆者之理由見 CLAUDE_rulebook.md 之 R4)`)
     })
 
     it('R4 fileSize 之檢核與正規化須成對: isValidFileSize 採 isp0int 故接受數字字串, 呼叫端須以 cint 轉換', function() {
@@ -156,7 +157,7 @@ describe('unit-ruleSites', function() {
             .join('\n')
     }
 
-    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 14', function() {
+    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 19', function() {
         //why: err 為應用端 throw/reject 之任意值, 其 message 可為拋錯之 getter、toString 可拋錯。
         //以 err.message / get(err,'message',err) / String(err) 組訊息, 即於 catch 內再拋 —— 保護層自身失效。
         //實測後果: verifyConn 為此形狀 → 裸 HTTP 500 + 0 則事件; 監聽器為此形狀 → 請求永久懸置。
@@ -186,7 +187,9 @@ describe('unit-ruleSites', function() {
             nGood += countAll(c, /getErrorMessage\(/g)
         }
         assert.strict.deepEqual(nBad, 0, `R10 出現禁用之取因寫法[${bad.join(' ; ')}]。${hint}`)
-        assert.strict.deepEqual(nGood, 14, `R10 站點數 ${hint}`)
+        //第九輪 14 → 19: server 之 invalid fileSize 樣板 ×2(應用端值不可直接進樣板)、server 之 stop ×1、
+        //client 之 cbProgressSafe ×1(axios 進度回呼)、client 之 sendDataSlice 進度回呼保護 ×1
+        assert.strict.deepEqual(nGood, 19, `R10 站點數 ${hint}`)
     })
 
     it('R10 之結構層: 保護函數內「非做不可」之事須排在回報之前', function() {
@@ -204,6 +207,24 @@ describe('unit-ruleSites', function() {
         let iEmitV = c.indexOf(`evEmit('error', \`verifyConn error for apiType[`)
         assert.strict.deepEqual(iM > 0 && iEmitV > 0, true, '找不到 checkConn 之兩個標記')
         assert.strict.deepEqual(iM < iEmitV, true, 'checkConn: m = false 須早於 error 事件之發送(否則組訊息拋錯即逸出成裸 500)')
+
+        //其三, callApp 之「無人接聽」—— 第九輪新增之站點
+        //  pm.reject 為此處唯一「非做不可」之事; funError 會走到應用端之 error 監聽器, 其若拋錯而排在前面, 該次請求就永遠不會被 settle
+        //  —— 那正是 callApp 存在所要防止的懸置(本模組初版即犯此錯, 由外部複審指出)
+        let ca = readCode('src/callApp.mjs')
+        let iReject = ca.indexOf('pm.reject(msg)')
+        let iFunErr = ca.indexOf('funError(msg)')
+        assert.strict.deepEqual(iReject > 0 && iFunErr > 0, true, '找不到 callApp 之兩個標記')
+        assert.strict.deepEqual(iReject < iFunErr, true, 'callApp: pm.reject 須早於 funError(否則 error 監聽器拋錯時該請求永久懸置)')
+
+        //其四, sendDataSlice 之合併完成 —— 第九輪新增之站點
+        //  原本 cbProgressMerge(呼叫應用端之 cbProgress)排在 pm.resolve 之前, 其拋錯被 checkMerging 之 .catch(() => {}) 吞掉,
+        //  pm 遂永不 settle, upload() 永久懸置(實測 12000ms 未 settle、0 則事件)
+        let cl = readCode('src/WConverhpClient.mjs')
+        let iResolveMsg = cl.indexOf('pm.resolve(res.msg)')
+        let iMerge = cl.indexOf(`cbProgressMerge({ prog: 100, m: 'download' }) //觸發上傳完畢後之下載回應`, iResolveMsg)
+        assert.strict.deepEqual(iResolveMsg > 0 && iMerge > 0, true, '找不到 sendDataSlice 之兩個標記')
+        assert.strict.deepEqual(iResolveMsg < iMerge, true, 'checkMerging: pm.resolve 須早於 cbProgressMerge(否則應用端進度回呼拋錯時 upload() 永久懸置)')
     })
 
     it('R11 派發一律交由 wsemi 之 evEmit / evEmitDelay', function() {
@@ -238,21 +259,32 @@ describe('unit-ruleSites', function() {
         }
     })
 
-    it('R5 error 事件發送站點須為 25(即時 23 + 建構期脫勾 1 + 監聽器出錯之通報 1)', function() {
-        //25 = 24 + #26 修正時於 /main 新增之「請求封包無效」事件
+    it('R5 error 事件發送站點須為 28(即時 26 + 建構期脫勾 1 + 監聽器出錯之通報 1)', function() {
         //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
-        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 23, `R5 即時派發之站點數 ${hint}`)
+        //第九輪 23 → 26: procApp 之「無人接聽」通報 ×1(R12)、stop 之停止失敗通報 ×1(R11 之建構期同族)、
+        ///dwgfn 之 filename 正規化失敗 ×1(R3: 協定鍵內之值亦會靜默消失)
+        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 26, `R5 即時派發之站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 1, `R5 建構期脫勾派發之站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
     })
 
-    it('CLAUDE.md 之「規則帳本」一節須存在且涵蓋本檔之全部規則', function() {
-        let doc = fs.readFileSync('CLAUDE.md', 'utf8')
-        assert.strict.deepEqual(doc.includes('## 規則帳本'), true, 'CLAUDE.md 缺少「規則帳本」一節之標題')
+    it('CLAUDE_rulebook.md 須存在且涵蓋本檔之全部規則', function() {
+        //帳本自 2026-09-10 起獨立為 CLAUDE_rulebook.md(原位於 CLAUDE.md 之「規則帳本」一節);
+        //CLAUDE.md 只留工作規則與指向兩個附檔之說明, 執行經驗另於 CLAUDE_experience.md
+        let doc = fs.readFileSync('CLAUDE_rulebook.md', 'utf8')
+        assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'CLAUDE_rulebook.md 缺少標題')
         for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R5 ', '### R6 ', '### R7 ']) {
-            assert.strict.deepEqual(doc.includes(r), true, `CLAUDE.md 之「規則帳本」一節缺少 ${r.trim()}`)
+            assert.strict.deepEqual(doc.includes(r), true, `CLAUDE_rulebook.md 缺少 ${r.trim()}`)
         }
-        assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE.md 之「規則帳本」一節之盤點指令數不足')
+        assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE_rulebook.md 之盤點指令數不足')
+    })
+
+    it('CLAUDE.md 須指向 CLAUDE_rulebook.md 與 CLAUDE_experience.md', function() {
+        //why: 三檔分工(工作規則 / 規則帳本 / 執行經驗)只有 CLAUDE.md 會被自動載入,
+        //指標斷了等於另兩檔不存在 —— 而那正是「承諾由別處兌現卻無訊號」之同型(見 CLAUDE_experience.md 之 E15)
+        let doc = fs.readFileSync('CLAUDE.md', 'utf8')
+        assert.strict.deepEqual(doc.includes('CLAUDE_rulebook.md'), true, 'CLAUDE.md 未指向 CLAUDE_rulebook.md')
+        assert.strict.deepEqual(doc.includes('CLAUDE_experience.md'), true, 'CLAUDE.md 未指向 CLAUDE_experience.md')
     })
 
 })

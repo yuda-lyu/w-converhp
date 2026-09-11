@@ -27,6 +27,8 @@ import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
+import callApp from './callApp.mjs'
+import attempt from './attempt.mjs'
 import isValidFileSize from './isValidFileSize.mjs'
 import isValidHeaderValue from './isValidHeaderValue.mjs'
 import destroyStreamRead from './destroyStreamRead.mjs'
@@ -65,7 +67,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測
  * @example
  *
  * import fs from 'fs'
@@ -416,104 +418,57 @@ function WConverhpServer(opt = {}) {
         return m === true
     }
 
-    //procDeal
-    async function procDeal(data) {
+    //procApp, 呼叫應用端事件之唯一出口
+    //why 三者合一: procDeal/procUpload/procDownload 原為同一函數之三份複本(procUpload與procDownload逐字相同, 只差事件名),
+    //  故任何加諸於「呼叫應用端」之紀律都得寫三遍 —— 而規則寫多遍正是本帳本各條重複出現之形狀
+    //funThen, 僅execute需要對回傳值再加工(補output鍵、刪input), 以參數表達其差異而非另開一份複本
+    //無人接聽時由callApp拒絕pmm並回報, 使請求不懸置(見src/callApp.mjs與帳本R12)
+    let procApp = (name, args, funThen) => {
 
         //pm, pmm
         let pm = genPm()
         let pmm = genPm()
 
-        //重新處理回傳結果
+        //重新處理回傳結果, 須早於派發以確保拒絕必有處理者
         pmm
             .then((output) => {
-
-                //add output, 監聽器以pm.resolve()不帶值結束時output為undefined, 序列化(obj2u8arr)會把值為undefined之鍵整個省略, 前端收不到output鍵即判為畸形封包而拒絕(invalid msg.output);
-                //故正規化為null, 此為序列化傳輸能表達之極限, 前端收到null而非錯誤; 舊版前端亦相容(null有鍵)
-                data['output'] = (output === undefined) ? null : output
-
-                //delete input, 因input可能很大故回傳數據不包含原input
-                delete data['input']
-
-                pm.resolve(data)
+                pm.resolve(isfun(funThen) ? funThen(output) : output)
             })
             .catch((err) => {
                 pm.reject(err)
             })
 
-        if (true) {
-
-            //func
-            let func = get(data, 'func', '')
-
-            //input
-            let input = get(data, 'input', null)
-
-            //execute 執行
-            evEmit('execute', func, input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
-
-        }
+        //callApp, 派發並保證必定終結
+        callApp(ev, evEmit, name, args, pmm, (msg) => {
+            evEmit('error', msg)
+        })
 
         return pm
+    }
+
+    //procDeal
+    async function procDeal(data) {
+        return procApp('execute', [get(data, 'func', ''), get(data, 'input', null)], (output) => {
+
+            //add output, 監聽器以pm.resolve()不帶值結束時output為undefined, 序列化(obj2u8arr)會把值為undefined之鍵整個省略, 前端收不到output鍵即判為畸形封包而拒絕(invalid msg.output);
+            //故正規化為null, 此為序列化傳輸能表達之極限, 前端收到null而非錯誤; 舊版前端亦相容(null有鍵)
+            data['output'] = (output === undefined) ? null : output
+
+            //delete input, 因input可能很大故回傳數據不包含原input
+            delete data['input']
+
+            return data
+        })
     }
 
     //procUpload
     async function procUpload(input) {
-        // console.log('procUpload', input)
-
-        //pm, pmm
-        let pm = genPm()
-        let pmm = genPm()
-
-        //重新處理回傳結果
-        pmm
-            .then((output) => {
-
-                //resolve
-                pm.resolve(output)
-
-            })
-            .catch((err) => {
-                pm.reject(err)
-            })
-
-        if (true) {
-
-            //upload, 上傳檔案
-            evEmit('upload', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
-
-        }
-
-        return pm
+        return procApp('upload', [input])
     }
 
     //procDownload
     async function procDownload(input) {
-        // console.log('procDownload', input)
-
-        //pm, pmm
-        let pm = genPm()
-        let pmm = genPm()
-
-        //重新處理回傳結果
-        pmm
-            .then((output) => {
-
-                //resolve
-                pm.resolve(output)
-
-            })
-            .catch((err) => {
-                pm.reject(err)
-            })
-
-        if (true) {
-
-            //download, 下載檔案
-            evEmit('download', input, pmm) //emit至外部處理, 藉由pmm取得外部結束狀態
-
-        }
-
-        return pm
+        return procApp('download', [input])
     }
 
 
@@ -805,6 +760,20 @@ function WConverhpServer(opt = {}) {
                 chunkTotal = cint(chunkTotal)
             }
 
+            //throwIfWorkerError, checkTotalHash與checkSlicesHash以回傳 { error } 表達失敗而非拋錯, 未檢核即會被當成功回給前端
+            //why: 原無此檢核 —— checkTotalHash 對非法 fileSize 回 { error: 'invalid fileSize in payload' },
+            //該物件原樣進入 out.success 而以 Return-Type: success 回應; 前端 sendDataSlice 之各項檢核(bAllHash/sizeSlice/bSls)皆為 undefined 而略過,
+            //於切片迴圈首次使用 resUpCkt.slks 時拋 TypeError: Cannot read properties of undefined (reading 'indexOf')(實測 tmp/probe_r9_rest.mjs 第2節)
+            //亦即「伺服器宣稱成功、前端崩在一個看不出原因的地方」, 屬帳本 R6(不得宣稱成功)與 R3(不得把底層沒拋錯當成功)之同型
+            //回非空字串即代表失敗, 由呼叫處以 Promise.reject 交出而成為錯誤封包(值維持純字串, 與其他錯誤封包一致);
+            //不標示 retryable(標示會減少重試, 須另行舉證, 見專案重試原則)
+            let workerError = (o) => {
+                if (iseobj(o) && haskey(o, 'error')) {
+                    return `${mode}: ${cstr(o.error)}`
+                }
+                return ''
+            }
+
             //procCore
             let procCore = async() => {
                 let out = null
@@ -821,6 +790,12 @@ function WConverhpServer(opt = {}) {
                     //checkTotalHash
                     out = await checkTotalHash(fileSize, sizeSlice, fileHash, pathUploadTemp)
                     // console.log(mode, 'out', out)
+
+                    //check, 失敗不得被當成功回給前端(見workerError)
+                    let we = workerError(out)
+                    if (isestr(we)) {
+                        return Promise.reject(we)
+                    }
 
                     //check, 因合併大檔後可能非預期中斷而重傳, 每次偵測有合併完成大檔, 就得調用procUpload讓伺服器攔截函數處理
                     if (out.bAllHash) {
@@ -861,6 +836,12 @@ function WConverhpServer(opt = {}) {
                     //checkSlicesHash
                     out = await checkSlicesHash(fileSliceHashs, fileHash, pathUploadTemp)
                     // console.log(mode, 'out', out)
+
+                    //check, 失敗不得被當成功回給前端(見workerError); 本模式之失敗為 invalid fileHash 與 no fileSliceHashs
+                    let we = workerError(out)
+                    if (isestr(we)) {
+                        return Promise.reject(we)
+                    }
 
                 }
                 else if (mode === 'merge-slices-push') {
@@ -1244,7 +1225,12 @@ function WConverhpServer(opt = {}) {
             }
 
             //token, 自authorization提取供外部download事件進行授權檢查
-            let token = isestr(authorization) ? authorization.slice(cstr(tokenType).length + 1) : ''
+            //token, 須先確認授權方案前綴相符才切; 不符者視為未帶token
+            //why: 原以 slice(tokenType.length + 1) 無條件切, 從不驗前綴 —— 實測(tmp/probe_r9_final.mjs之Q4, server設tokenType='Token'):
+            //送 `Bearer abc123` 切出 " abc123"(帶前導空白)、送 `Basic dXNlcjpwYXNz` 整段成為 token, 兩者皆為可通過isestr之錯誤授權值,
+            //應用端於 download 事件收到後無從察覺; 而同為「兩端須一致」之 sizeSlice 早有明確之 mismatch 訊息
+            let pfxToken = `${cstr(tokenType)} `
+            let token = (isestr(authorization) && authorization.startsWith(pfxToken)) ? authorization.slice(pfxToken.length) : ''
 
             //inp
             let inp = { fileId, token }
@@ -1281,6 +1267,7 @@ function WConverhpServer(opt = {}) {
             //本路由只取檔名與串流兩欄, 不讀fileSize/fileType, 以免其getter拋錯影響本路由(維持既有行為)
             let rf = readDownloadFields(r, ['streamRead', 'filename'])
             if (!rf.ok) {
+                destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
                 evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
                 return responseU8aStreamWithError(res, 'invalid streamRead')
             }
@@ -1298,6 +1285,18 @@ function WConverhpServer(opt = {}) {
                 evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
                 return responseU8aStreamWithError(res, 'invalid filename')
             }
+
+            //normalize, filename須轉為真正之字串基本型才可放進封包
+            //why: isestr以Object.prototype.toString判定, 帶Symbol.toStringTag='String'之物件可通過上方檢核;
+            //其toJSON若回undefined, 該鍵於序列化時整個消失 —— 實測(tmp/probe_r9_final.mjs之F2)回 {"success":{}} 且
+            //Return-Type為success、0則事件, client取得空檔名而以 a.download='' 交給瀏覽器, 最終以URL末段(dwgf)命名。
+            //canonProtocolValue只正規化最外層之協定鍵(success/error), 蓋不到其內之filename, 故R3站點7原記之「已套」只涵蓋BigInt那半
+            let rn = attempt('normalize filename', () => cstr(filename))
+            if (!rn.ok || !isestr(rn.value)) {
+                evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
+                return responseU8aStreamWithError(res, 'invalid filename')
+            }
+            filename = rn.value
 
             //重新提供out
             out = {
@@ -1416,9 +1415,10 @@ function WConverhpServer(opt = {}) {
 
             //streamRead
             //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
-            //本路由需四欄; 讀取失敗時尚未取得串流引用, 無從清理(屬呼叫端責任, 見JSDoc)
+            //本路由需四欄; 讀取失敗時已讀到之欄位由readDownloadFields一併交出, 其中streamRead須清理(原註解稱「尚未取得串流引用」僅對首欄即拋錯者成立, 對後三欄不實)
             let rf = readDownloadFields(r, ['streamRead', 'fileSize', 'fileType', 'filename'])
             if (!rf.ok) {
+                destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
                 evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
                 return responseU8aStreamWithError(res, 'invalid streamRead')
             }
@@ -1428,7 +1428,10 @@ function WConverhpServer(opt = {}) {
             let fileSize = rf.fields.fileSize
             if (!isValidFileSize(fileSize)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
+                //fileSize須經getErrorMessage而不可直接放進樣板(見帳本R10): 其為應用端交出之任意值,
+                //樣板會對它求值(ToPrimitive→Symbol.toPrimitive→valueOf→toString), 任一步拋錯即逸出handler而回裸HTTP 500且0則事件
+                //(實測tmp/probe_r9_hostile.mjs之B1~B3: 拋錯toString、拋錯Symbol.toPrimitive、Object.create(null)三者皆拋)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(fileSize)}]`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
             fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
@@ -1546,7 +1549,12 @@ function WConverhpServer(opt = {}) {
             }
 
             //token, 自authorization提取供外部download事件進行授權檢查
-            let token = isestr(authorization) ? authorization.slice(cstr(tokenType).length + 1) : ''
+            //token, 須先確認授權方案前綴相符才切; 不符者視為未帶token
+            //why: 原以 slice(tokenType.length + 1) 無條件切, 從不驗前綴 —— 實測(tmp/probe_r9_final.mjs之Q4, server設tokenType='Token'):
+            //送 `Bearer abc123` 切出 " abc123"(帶前導空白)、送 `Basic dXNlcjpwYXNz` 整段成為 token, 兩者皆為可通過isestr之錯誤授權值,
+            //應用端於 download 事件收到後無從察覺; 而同為「兩端須一致」之 sizeSlice 早有明確之 mismatch 訊息
+            let pfxToken = `${cstr(tokenType)} `
+            let token = (isestr(authorization) && authorization.startsWith(pfxToken)) ? authorization.slice(pfxToken.length) : ''
 
             //inp
             let inp = { fileId, token }
@@ -1574,6 +1582,7 @@ function WConverhpServer(opt = {}) {
             //rf, 欄位擷取須經attempt(見規則帳本 R1): 欄位可為會拋錯之getter, 直接讀取會使例外逸出而回裸HTTP 500且0則事件
             let rf = readDownloadFields(r, ['streamRead', 'filename', 'fileSize', 'fileType'])
             if (!rf.ok) {
+                destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
                 evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
                 return responseU8aStreamWithError(res, 'invalid streamRead')
             }
@@ -1594,7 +1603,10 @@ function WConverhpServer(opt = {}) {
             let fileSize = rf.fields.fileSize
             if (!isValidFileSize(fileSize)) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${fileSize}]`)
+                //fileSize須經getErrorMessage而不可直接放進樣板(見帳本R10): 其為應用端交出之任意值,
+                //樣板會對它求值(ToPrimitive→Symbol.toPrimitive→valueOf→toString), 任一步拋錯即逸出handler而回裸HTTP 500且0則事件
+                //(實測tmp/probe_r9_hostile.mjs之B1~B3: 拋錯toString、拋錯Symbol.toPrimitive、Object.create(null)三者皆拋)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(fileSize)}]`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
             fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
@@ -1683,12 +1695,18 @@ function WConverhpServer(opt = {}) {
     }
 
     //start
+    //pmStart, 保留建構期之啟動promise供stop等待
+    //why: 原本此promise被丟棄, stop() 於啟動尚未完成時呼叫即落入 hapi 之 initializing 階段而被拒 ——
+    //實測(tmp/probe_r9_final.mjs之F3): `new` 之後立刻 `await stop()` 於46ms回來、發一則
+    //「Cannot stop server while in initializing phase」, 而伺服器隨後照樣起來並持續服務(port可連線且回HTTP 200);
+    //亦即呼叫端以為停了而實際上沒有。本promise已帶catch故恆resolve, stop 內await它不會再拋
+    let pmStart = null
     if (get(opt, 'serverHapi')) {
         // server.route([apiMain, apiUploadCheck, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
         server.route([apiMain, apiUploadCheck, apiUploadSlice, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
     }
     else {
-        startServer()
+        pmStart = startServer()
             .catch((err) => {
                 //埠被占用(EADDRINUSE)等啟動失敗須攔截: 未await之promise被reject即為unhandledRejection, 整個行程會崩潰且應用端無從得知; 改以error事件通知, 由應用端決定處置
                 console.log(`start server error`, err)
@@ -1696,9 +1714,25 @@ function WConverhpServer(opt = {}) {
             })
     }
 
-    //stop
-    let stop = () => {
-        server.stop()
+    //stop, 回傳promise供呼叫端等待真正停止; 其失敗以error事件通知而不外拋
+    //why: 原實作為 `server.stop()` —— 既未await亦未catch, hapi之stop一旦reject即為unhandledRejection而使行程崩潰
+    //(與建構期之startServer().catch為同一條規則之兩個站點, 而只有前者套了, 見帳本R11);
+    //且原實作不回傳promise, 呼叫端無從得知何時真正停止(測試中wo.stop()之後立即結束時伺服器可能仍在關閉)
+    //本函數之promise恆resolve(失敗走error事件), 與建構期失敗之處置方式一致, 呼叫端不需再包try
+    let stop = async() => {
+        try {
+
+            //await pmStart, 須先等啟動完成才停: hapi 於 initializing 階段拒絕 stop, 而其後伺服器仍會起來並持續服務
+            if (ispm(pmStart)) {
+                await pmStart
+            }
+
+            await server.stop()
+        }
+        catch (err) {
+            console.log(`stop server error`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            evEmit('error', `stop server error: ${getErrorMessage(err)}`)
+        }
     }
 
     //save

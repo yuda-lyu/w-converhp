@@ -4,7 +4,6 @@ import each from 'lodash-es/each.js'
 import size from 'lodash-es/size.js'
 import last from 'lodash-es/last.js'
 import sep from 'wsemi/src/sep.mjs'
-import isnum from 'wsemi/src/isnum.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
@@ -28,14 +27,18 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         // console.log(`check exist for pathFile[${pathFile}] done`, bAllExist)
     }
 
-    //check
-    if (!isnum(fileSize)) {
+    //check, 檢核與正規化須成對(見帳本R4b)
+    //why: 原以isnum檢核, 其接受數字字串('1048576'為true)、負數與小數; 而下方以 fileSize === _fileSize 與 fs.statSync().size 比較,
+    //數字字串於嚴格相等下恆為false → bAllSize恆假 → bAllHash恆假 → **整檔去重路徑靜默失效, 已上傳過之大檔每次重傳**
+    //改採與isValidFileSize同一述詞(isp0int之安全模式), 使值域與本套件其他處一致, 再以cint正規化後才可用於嚴格相等
+    if (!isp0int(fileSize, { useLimitSafe: true })) {
         // console.log('invalid fileSize in payload')
         let r = {
             error: 'invalid fileSize in payload',
         }
         return r
     }
+    fileSize = cint(fileSize)
 
     //bAllSize, 確認完整檔大小是否一致
     let bAllSize = false
@@ -88,8 +91,9 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
 
         each(vfps, (v) => {
 
-            //b1
-            let b1 = (v.name).indexOf(`${fileHash}_`) >= 0
+            //b1, 須為startsWith而非indexOf(...)>=0: 後者使 <其他前綴><fileHash>_<n> 亦命中,
+            //而下方以 sep(v.name, `${fileHash}_`) 取末段解析索引時會把它當成本檔之切片
+            let b1 = (v.name).startsWith(`${fileHash}_`)
 
             //b2
             let b2 = false
@@ -109,10 +113,14 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
             if (b) {
                 let s = sep(v.name, `${fileHash}_`)
                 let i = last(s)
+
+                //check, 解析不出索引者略過而非拋錯
+                //why: 原為 throw, 而同一函數之上方對「fileSize非法」是回 { error } —— 同一函數內兩種失敗兩種處置(對稱破缺, 見帳本R6);
+                //且該例外會逸出至路由層, 使整個 check-total-hash 失敗。暫存夾內出現非本套件所產之同前綴檔案不應使去重整個中止,
+                //略過即可(與 checkSlicesHash.mjs:43 對非法切片索引之 continue 一致)
                 if (!isp0int(i)) {
-                    console.log('v.name', v.name)
-                    console.log('s', s)
-                    throw new Error(`can not parse index in v.name[${v.name}]`)
+                    console.log(`skip file[${v.name}]: can not parse chunk index`)
+                    return
                 }
                 i = cint(i)
                 slks.push(i)

@@ -5,6 +5,7 @@ import isWindow from 'wsemi/src/isWindow.mjs'
 import evem from 'wsemi/src/evem.mjs'
 import evEmitBase from 'wsemi/src/evEmit.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
+import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
@@ -293,6 +294,25 @@ function WConverhpClient(opt) {
             cbProgress = () => {}
         }
 
+        //cbProgressSafe, 交予axios之onUploadProgress/onDownloadProgress專用
+        //why: 該兩個回呼由axios於其自己的堆疊上呼叫(axios/lib/helpers/progressEventReducer.js), 不在本函數之try涵蓋範圍內,
+        //其同步拋錯直接成為uncaughtException而**殺掉整個node行程**(實測tmp/probe_r9_verify.mjs第3節);
+        //而server側對應用端監聽器之拋錯早已由evEmit攔截並承諾「不會使伺服器行程崩潰」—— 同型能力只保護了一邊
+        //sendDataSlice內之直接呼叫(cbProgressSlice/cbProgressMerge)不套用: 其落在呼叫鏈之promise內, 拋錯使該次promise reject而非殺行程
+        //只報首次: 進度回呼於單次請求內會觸發數十至數百次, 逐次通報會把error通道灌爆; 「本次請求之進度回呼壞了」為一個事實, 故一則
+        let bCbProgressErr = false
+        let cbProgressSafe = (msg) => {
+            try {
+                cbProgress(msg)
+            }
+            catch (err) {
+                if (!bCbProgressErr) {
+                    bCbProgressErr = true
+                    evEmit('error', `cbProgress error: ${getErrorMessage(err)}`)
+                }
+            }
+        }
+
         //retry
         let retry = get(opt, 'retry')
         if (!isp0int(retry)) {
@@ -519,8 +539,8 @@ function WConverhpClient(opt) {
                     r = (loaded * 100) / total
                 }
 
-                //cbProgress
-                cbProgress({ prog: Math.floor(r), p: loaded, m: 'upload' })
+                //cbProgress, 須經cbProgressSafe: 本回呼由axios於其自己之堆疊上呼叫, 拋錯即uncaughtException(見上方說明)
+                cbProgressSafe({ prog: Math.floor(r), p: loaded, m: 'upload' })
 
             },
             onDownloadProgress: function (ev) {
@@ -535,8 +555,8 @@ function WConverhpClient(opt) {
                     r = (loaded * 100) / total
                 }
 
-                //cbProgress
-                cbProgress({ prog: Math.floor(r), p: loaded, m: 'download' })
+                //cbProgress, 須經cbProgressSafe: 本回呼由axios於其自己之堆疊上呼叫, 拋錯即uncaughtException(見上方說明)
+                cbProgressSafe({ prog: Math.floor(r), p: loaded, m: 'download' })
 
             },
         }
@@ -766,6 +786,26 @@ function WConverhpClient(opt) {
         //「cbProgress is not a function」—— 三個公開方法對同一個選用參數行為不一致
         if (!isfun(cbProgress)) {
             cbProgress = () => {}
+        }
+
+        //cbProgress之保護: 進度回呼為**通知通道**, 其失敗不得決定上傳之成敗
+        //why: 同一個cbProgress原有三種下場 —— 切片進度拋錯使該次promise reject(上傳失敗)、
+        //bAllHash路徑拋錯亦使上傳失敗、而合併完成通知拋錯時例外沿.then傳到checkMerging之.catch(() => {})被吞掉,
+        //pm遂**永不settle**, upload()永久懸置且0則事件、0行console(實測: 前者142ms reject, 後者12000ms未settle)
+        //收斂為一種下場: 一律不影響結果, 只留一則error事件(與send內之cbProgressSafe同一規則, 見帳本R13)
+        //只報首次: 切片進度於單次上傳內會觸發chunkTotal次, 逐次通報會把error通道灌爆
+        let bCbProgErr = false
+        let cbProgressRaw = cbProgress
+        cbProgress = (msg) => {
+            try {
+                cbProgressRaw(msg)
+            }
+            catch (err) {
+                if (!bCbProgErr) {
+                    bCbProgErr = true
+                    evEmit('error', `cbProgress error: ${getErrorMessage(err)}`)
+                }
+            }
         }
 
         //n
@@ -1029,11 +1069,14 @@ function WConverhpClient(opt) {
                             //clearInterval
                             clearInterval(t)
 
+                            //resolve, state為'success'時提取msg回傳
+                            //settle須排在通知應用端之前(帳本R10之結構層): 原本 cbProgressMerge 排在前面, 而它會呼叫應用端之 cbProgress ——
+                            //該回呼拋錯時, 例外沿 .then 傳到下方之 .catch(() => {}) 被吞掉, pm 遂**永不 settle**, upload() 永久懸置且 0 則事件、0 行 console
+                            //(實測: 切片進度回呼拋錯為 142ms reject, 而合併完成回呼拋錯為 12000ms 未 settle —— 同一個 cbProgress 兩種下場)
+                            pm.resolve(res.msg)
+
                             //cbProgressMerge
                             cbProgressMerge({ prog: 100, m: 'download' }) //觸發上傳完畢後之下載回應, 故m須為download
-
-                            //resolve, state為'success'時提取msg回傳
-                            pm.resolve(res.msg)
 
                         }
                         else if (res.state === 'error') {
@@ -1146,6 +1189,18 @@ function WConverhpClient(opt) {
 
     //downloadNodejs
     let downloadNodejs = async(fileId, cbProgress, opt = {}) => {
+
+        //check, fdDownload為nodejs下載之落地資料夾, 未給即必然失敗, 故於入口拒絕
+        //why: 原無此檢核, 未給時直到downloadStream才以 fs.mkdirSync('') 拋 ENOENT(實測 tmp/probe_r9_hostile.mjs 之 E1),
+        //而該處位於send之重試鏈內, 於是要重試retryDownload次(預設2, 含1.0s與1.78s退避)才失敗, 且訊息為ENOENT ——
+        //呼叫端不會知道是自己沒給參數。本錯誤僅由client自身參數決定, 屬「可證明不需重試」, 於入口終止不進重試鏈
+        //(同帳本R9: 公開方法之選用參數, 凡有直接使用之處, 該處須自行補預設或檢核; 原僅盤點cbProgress)
+        let fdDownload = get(opt, 'fdDownload', '')
+        if (!isestr(fdDownload)) {
+            let msg = `invalid fdDownload for download in nodejs`
+            evEmit('error', msg)
+            return Promise.reject(msg)
+        }
 
         //send download
         let msg = { fileId }
