@@ -5,7 +5,7 @@ import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
-import { downloadRouteKeysByBody, fetchDownload } from './api-axes.mjs'
+import { downloadRouteKeysByBody, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
 
 
 /**
@@ -167,14 +167,14 @@ describe('api-downloadShape', function() {
     //其形狀檢核由 api-downloadEvents(事件與訊息)與 api-sourceTraps(欄位階段)覆蓋
     let routes = downloadRouteKeysByBody('stream')
 
-    //expectShapeError, 各路由皆須: 不懸置、HTTP 200、Return-Type error、指定錯誤訊息、不標示 retryable、恰一則含 fileId 之 error 事件
+    //expectShapeError, 各路由皆須: 不懸置、狀態碼依路由軸(/dwgf 為 500, 其餘 200)、Return-Type error、指定錯誤訊息、不標示 retryable、恰一則含 fileId 之 error 事件
     let expectShapeError = async(fileId, msg) => {
         for (let route of routes) {
             errs = []
             let r = await call(route, fileId)
             let tag = `${route}/${fileId}: ${JSON.stringify(r)}`
             assert.strict.deepEqual(r.hang, undefined, tag)
-            assert.strict.deepEqual(r.status, 200, tag)
+            assert.strict.deepEqual(r.status, downloadErrorStatus(route, 'output'), tag)
             assert.strict.deepEqual(r.returnType, 'error', tag)
             assert.strict.deepEqual(r.retryable, null, tag) //應用端狀態, 依重試原則不得標示不重試
             assert.strict.deepEqual(r.error, msg, tag)

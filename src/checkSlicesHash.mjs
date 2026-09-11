@@ -3,7 +3,7 @@ import fs from 'fs'
 import get from 'lodash-es/get.js'
 import size from 'lodash-es/size.js'
 import isp0int from 'wsemi/src/isp0int.mjs'
-import fsIsFile from 'wsemi/src/fsIsFile.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import isSafeId from './isSafeId.mjs'
 
@@ -18,6 +18,16 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
         return r
     }
 
+    //check, 須為陣列
+    //why: 下方以其長度為迴圈上界, 原未確認即使用 —— 請求本體 {"length":1e9} 使請求懸置、worker 空轉; JSON 之 1e999 解為 Infinity 則迴圈永不結束,
+    //請求中止後 worker 仍永久佔用一核(本 worker 於函數 settle 後才 terminate)(實測第十輪 D4/A3)
+    if (!Array.isArray(fileSliceHashs)) {
+        let r = {
+            error: 'invalid fileSliceHashs',
+        }
+        return r
+    }
+
     //check, 前端須檢核, 若之前已回應無切片, 就不能再調用檢測切片hash的API
     if (size(fileSliceHashs) === 0) {
         let r = {
@@ -26,56 +36,66 @@ let checkSlicesHash = async(fileSliceHashs, fileHash, pathUploadTemp) => {
         return r
     }
 
+    //idsExist, 暫存夾內本檔實存之切片索引
+    //why 工作量上界取自實際資料而非請求: 原逐筆 readFileSync + 雜湊且不去重, 合法形狀之重複索引 3000 筆(本體 48KB)即耗時 7s 且線性成長(實測第十輪 A4);
+    //改為只處理「合法索引 ∈ 實存切片 ∧ 未處理過」者, 雜湊次數之上限為實存切片數, 其餘各筆僅為集合查詢
+    //索引須為正規寫法(String(cint(s)) === s): 伺服器寫入切片時已以 cint 正規化, 非正規寫法者(如 00)不會是本套件所產
+    let pfx = `${fileHash}_`
+    let names = []
+    try {
+        names = fs.readdirSync(pathUploadTemp)
+    }
+    catch (err) {}
+    let idsExist = new Set()
+    for (let name of names) {
+        if (!name.startsWith(pfx)) {
+            continue
+        }
+        let s = name.slice(pfx.length)
+        if (isp0int(s) && String(cint(s)) === s) {
+            idsExist.add(cint(s))
+        }
+    }
+
     //slksCfm, 已確定hash值一致的切片
-    // console.log(`check hash for slices fileHash[${fileHash}]...`, fileSliceHashs[0], size(fileSliceHashs))
     let slksCfm = []
-    // let n = Math.max(fileSliceHashs.length, 1)
-    // let nr = Math.floor(n / 100)
+    let idsDone = new Set()
     for (let k = 0; k < fileSliceHashs.length; k++) {
-        // if (k % nr === 0) {
-        //     console.log(`calc hash for slices`, (k / fileSliceHashs.length * 100).toFixed(1), '%')
-        // }
 
         //v
         let v = fileSliceHashs[k]
 
         //check, 切片索引須為非負整數, 否則不視為已確認(略過), 避免非法值參與路徑組裝
-        if (!isp0int(get(v, 'i'))) {
+        let i = get(v, 'i')
+        if (!isp0int(i)) {
             continue
         }
+        i = cint(i)
+
+        //check, 須為實存切片且未處理過
+        if (!idsExist.has(i) || idsDone.has(i)) {
+            continue
+        }
+        idsDone.add(i)
 
         //_pathFile
-        let _pathFile = path.resolve(pathUploadTemp, `${fileHash}_${v.i}`)
-        // console.log('_pathFile', _pathFile)
+        let _pathFile = path.resolve(pathUploadTemp, `${fileHash}_${i}`)
 
-        //check, 切片不存在即視為未確認(略過), 不可讓readFileSync拋錯: 其ENOENT訊息含伺服器絕對路徑, 會隨error回應外洩至前端
-        if (!fsIsFile(_pathFile)) {
+        //_fileHash, 讀取失敗(如與合併並發而切片已被逐片刪除)視為未確認而略過, 不可拋: 例外訊息含伺服器絕對路徑, 會隨error回應外洩至前端
+        let _fileHash = ''
+        try {
+            _fileHash = await getFileXxHash(new Blob([fs.readFileSync(_pathFile)])) //計算切片因檔案很小, 直接用getFileXxHash速度比較快
+        }
+        catch (err) {
             continue
         }
 
-        //_fileHash
-        let _fileHash = ''
-        // await calcFileHash(_pathFile)
-        await getFileXxHash(new Blob([fs.readFileSync(_pathFile)])) //計算切片因檔案很小, 直接用getFileXxHash速度比較快
-            .then((res) => {
-                _fileHash = res
-            })
-            .catch((err) => {
-                console.log(`fsIsFile(_pathFile)`, _pathFile, fsIsFile(_pathFile))
-                console.log(err)
-            })
-        // console.log('_fileHash', _fileHash)
-
         //check
-        if (v.h === _fileHash) {
-            slksCfm.push(v.i)
+        if (get(v, 'h') === _fileHash) {
+            slksCfm.push(i)
         }
-        // else {
-        //     console.log(`hash is not equal`, `hash(front)`, v.h, `hash(backend)`, _fileHash)
-        // }
 
     }
-    // console.log(`check hash for slices fileHash[${fileHash}] done`, slksCfm[0], size(slksCfm))
 
     //r
     let r = {

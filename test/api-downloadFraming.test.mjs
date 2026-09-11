@@ -4,7 +4,7 @@ import path from 'path'
 import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRouteKeysByBody, fetchDownload } from './api-axes.mjs'
+import { downloadRouteKeysByBody, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 
 
@@ -159,11 +159,11 @@ describe('api-downloadFraming', function() {
         assert.strict.deepEqual(fs.statSync(fp).size, 0)
     })
 
-    it('錯誤封包不受影響: 應用端 reject 時仍為 200 + 可解析之錯誤封包', async function() {
+    it('錯誤封包不受影響: 應用端 reject 時仍為可解析之錯誤封包, 狀態碼依路由軸(/dwgf 為非 2xx, 見 test/api-axes.mjs)', async function() {
         this.timeout(20000)
         for (let route of routes) {
             let r = await call(route, 'nope')
-            assert.strict.deepEqual(r.status, 200, JSON.stringify(r))
+            assert.strict.deepEqual(r.status, downloadErrorStatus(route, 'app'), JSON.stringify(r))
             assert.strict.deepEqual(r.bytes > 0, true, JSON.stringify(r))
         }
     })

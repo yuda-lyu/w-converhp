@@ -28,11 +28,9 @@ import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
 import callApp from './callApp.mjs'
-import attempt from './attempt.mjs'
-import isValidFileSize from './isValidFileSize.mjs'
-import isValidHeaderValue from './isValidHeaderValue.mjs'
 import destroyStreamRead from './destroyStreamRead.mjs'
 import readDownloadFields from './readDownloadFields.mjs'
+import validDownloadField from './validDownloadField.mjs'
 import encodeOut from './encodeOut.mjs'
 import buildDownloadSource from './buildDownloadSource.mjs'
 import responseU8aStream from './responseU8aStream.mjs'
@@ -67,7 +65,7 @@ import checkSlicesHash from './checkSlicesHash.wk.umd.js'
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
  * @example
  *
  * import fs from 'fs'
@@ -244,8 +242,15 @@ function WConverhpServer(opt = {}) {
     if (!isestr(pathUploadTemp)) {
         pathUploadTemp = './uploadTemp'
     }
+    //errCreateTemp, 暫存資料夾建立失敗之原因; 於 evEmitDelay 定義後以建構期事件通知
+    //why: wsemi 之 fsCreateFolder 以回傳 { error } 表達失敗而不拋, 原本丟棄回傳值 —— 建構期 0 則事件, 之後每一次上傳才各自失敗
+    //(該路徑為既有檔案、無權限等; 實測第十輪 D7)。與埠被占同為啟動失敗, 依 JSDoc 以 error 事件通知而不拋出
+    let errCreateTemp = ''
     if (!fsIsFolder(pathUploadTemp)) {
-        fsCreateFolder(pathUploadTemp)
+        let rc = fsCreateFolder(pathUploadTemp)
+        if (haskey(rc, 'error')) {
+            errCreateTemp = getErrorMessage(rc.error)
+        }
     }
 
     //apiName
@@ -393,6 +398,11 @@ function WConverhpServer(opt = {}) {
         return ev.emit(nm, ...a)
     }
 
+    //建構期失敗: 暫存資料夾無法建立(見 errCreateTemp); 須於 evEmitDelay 定義之後
+    if (isestr(errCreateTemp)) {
+        evEmitDelay('error', `create pathUploadTemp[${pathUploadTemp}] error: ${errCreateTemp}`)
+    }
+
     //checkConn, 各路由呼叫verifyConn之唯一出口, 拋錯或reject一律視為未通過, 各路由不得再自行呼叫verifyConn
     //why: 原本僅apiMain有try/catch, 其餘五路由於verifyConn拋錯或reject時會回HTTP 500且body不可解析,
     //六路由對同一種失敗之行為不對稱; 收斂於此後一律回permission denied, 並以error事件通知應用端(與其他路由之錯誤回報方式一致)
@@ -432,6 +442,25 @@ function WConverhpServer(opt = {}) {
         //重新處理回傳結果, 須早於派發以確保拒絕必有處理者
         pmm
             .then((output) => {
+
+                //canon, 應用端結果之正規化只在此處(三事件、各交付路徑共用)
+                //undefined → null: 序列化會把值為 undefined 之鍵整個省略, 協定鍵之內之 output/msg 因而消失 ——
+                //原本 execute(procDeal)與合併消費(managerMergeSlices 之 consume)各自正規化, 去重路徑(check-total-hash)沒有,
+                //同一個「應用端 pm.resolve() 不帶值」使 upload() 依伺服器走哪條路徑而回 null 或 undefined(實測第十輪 D5)
+                if (output === undefined) {
+                    output = null
+                }
+
+                //function/symbol: JSON 對其靜默丟鍵而非拋錯, 故 encodeOut 之嚴格模式抓不到 —— 原本 execute 得 invalid msg.output 且兩端 0 則事件,
+                //合併消費之 .ro 缺鍵而同一 queueId 重送再呼叫應用端(實測第十輪 A8); JSDoc 明載「不能序列化者回錯誤封包並發error事件」, 於此兌現
+                //以 typeof 判定而不用 wsemi 之 isfun: 後者經 Object.prototype.toString.call, 會觸發應用端值之 Symbol.toStringTag getter
+                let tp = typeof output
+                if (tp === 'function' || tp === 'symbol') {
+                    pm.reject('output can not be serialized') //settle 排在回報之前(帳本 R10 之結構層)
+                    evEmit('error', `event[${name}] output can not be serialized: output is a ${tp}`)
+                    return
+                }
+
                 pm.resolve(isfun(funThen) ? funThen(output) : output)
             })
             .catch((err) => {
@@ -450,9 +479,8 @@ function WConverhpServer(opt = {}) {
     async function procDeal(data) {
         return procApp('execute', [get(data, 'func', ''), get(data, 'input', null)], (output) => {
 
-            //add output, 監聽器以pm.resolve()不帶值結束時output為undefined, 序列化(obj2u8arr)會把值為undefined之鍵整個省略, 前端收不到output鍵即判為畸形封包而拒絕(invalid msg.output);
-            //故正規化為null, 此為序列化傳輸能表達之極限, 前端收到null而非錯誤; 舊版前端亦相容(null有鍵)
-            data['output'] = (output === undefined) ? null : output
+            //add output, undefined 已由 procApp 正規化為 null(前端收不到 output 鍵即判為畸形封包而拒絕, 見 procApp 之 canon)
+            data['output'] = output
 
             //delete input, 因input可能很大故回傳數據不包含原input
             delete data['input']
@@ -639,7 +667,10 @@ function WConverhpServer(opt = {}) {
             //改為解不出或非有效物件即回錯誤封包並**不觸發任何應用端事件**; 屬傳輸不穩(截斷、中間層改寫), 依重試原則不標示retryable
             let rdInp = u8arr2obj(u8aInp, { returnWithStateAndMsg: true })
             if (get(rdInp, 'state') !== 'success' || !iseobj(rdInp.msg)) {
-                evEmit('error', `invalid request packet for apiMain: ${get(rdInp, 'msg', 'not an effective object')}`)
+                //訊息之值經 getErrorMessage: 解碼成功但非物件者(如頂層陣列)其值來自請求端, 樣板對之求值時元素之 toString 可為非函數值而拋 ——
+                //[{"toString":1}] 即回裸 HTTP 500 + 0 則事件(實測第十輪 A1, 帳本 R10)
+                let msgInp = getErrorMessage(get(rdInp, 'msg', ''))
+                evEmit('error', `invalid request packet for apiMain: ${isestr(msgInp) ? msgInp : 'not an effective object'}`)
                 return responseU8aStreamWithError(res, 'invalid request packet')
             }
             let inp = rdInp.msg
@@ -664,7 +695,7 @@ function WConverhpServer(opt = {}) {
 
             //u8aOut, 應用端execute事件之回傳值(或拒絕值)無法序列化時不可宣稱成功, 見encodeOut
             let u8aOut = encodeOut(out, (msg) => {
-                evEmit('error', `execute func[${get(inp, 'func', '')}] output can not be serialized: ${msg}`)
+                evEmit('error', `execute func[${getErrorMessage(get(inp, 'func', ''))}] output can not be serialized: ${msg}`) //func 為請求端任意值, 須經 getErrorMessage(帳本 R10)
             })
             if (u8aOut === null) {
                 return responseU8aStreamWithError(res, 'output can not be serialized')
@@ -736,7 +767,8 @@ function WConverhpServer(opt = {}) {
             //check
             if (mode !== 'check-total-hash' && mode !== 'check-slices-hash' && mode !== 'merge-slices-push' && mode !== 'merge-slices-get') {
                 // console.log('invalid mode in payload')
-                return responseU8aStreamWithError(res, `invalid mode[${mode}] in payload`, { retryable: false })
+                //mode 為請求端任意 JSON 值, 於檢核前進樣板須經 getErrorMessage: {"toString":1} 之自有屬性 toString 非函數, 樣板求值即拋 → 裸 HTTP 500 + 0 則事件(實測第十輪 D3)
+                return responseU8aStreamWithError(res, `invalid mode[${getErrorMessage(mode)}] in payload`, { retryable: false })
             }
 
             //fileHash, 從payload接收
@@ -774,6 +806,20 @@ function WConverhpServer(opt = {}) {
                 return ''
             }
 
+            //internal, 本路由內部呼叫(worker 與合併佇列)之唯一出口: 其例外為套件內部失敗, 細節只進 error 事件, 回前端之訊息不含細節(帳本 R17)
+            //why: 原本例外原樣進入 procCore 之 catch 而成為錯誤封包之內容 —— 暫存資料夾不在時前端收到 `Error: fd[<伺服器絕對路徑>] is not a folder` 且伺服器 0 則事件
+            //(實測第十輪 A11/N5); 同套件之 /slc 寫入失敗、S5、check-total-hash 之 path 皆已明載不外送伺服器路徑, 唯此處不守
+            //應用端之拒絕值不經本函數(merge-slices-get 之 funConsume 依設計原樣傳回前端)
+            let internal = async(stage, fn) => {
+                try {
+                    return await fn()
+                }
+                catch (err) {
+                    evEmit('error', `upload-controller mode[${mode}] ${stage} error: ${getErrorMessage(err)}`)
+                    return Promise.reject(`${mode} failed`)
+                }
+            }
+
             //procCore
             let procCore = async() => {
                 let out = null
@@ -788,7 +834,7 @@ function WConverhpServer(opt = {}) {
                     // console.log(mode, 'fileSize', fileSize)
 
                     //checkTotalHash
-                    out = await checkTotalHash(fileSize, sizeSlice, fileHash, pathUploadTemp)
+                    out = await internal('check total hash', () => checkTotalHash(fileSize, sizeSlice, fileHash, pathUploadTemp))
                     // console.log(mode, 'out', out)
 
                     //check, 失敗不得被當成功回給前端(見workerError)
@@ -834,7 +880,7 @@ function WConverhpServer(opt = {}) {
                     // console.log(mode, 'fileSliceHashs', fileSliceHashs)
 
                     //checkSlicesHash
-                    out = await checkSlicesHash(fileSliceHashs, fileHash, pathUploadTemp)
+                    out = await internal('check slices hash', () => checkSlicesHash(fileSliceHashs, fileHash, pathUploadTemp))
                     // console.log(mode, 'out', out)
 
                     //check, 失敗不得被當成功回給前端(見workerError); 本模式之失敗為 invalid fileHash 與 no fileSliceHashs
@@ -847,7 +893,7 @@ function WConverhpServer(opt = {}) {
                 else if (mode === 'merge-slices-push') {
 
                     //mmg.push, chunkTotal已於上方檢核為正整數; 合併檔在而.done不在(前次中止)時會先驗證完整性, 故為async
-                    let queueId = await mmg.push(fileHash, chunkTotal, pathUploadTemp)
+                    let queueId = await internal('push merge task', () => mmg.push(fileHash, chunkTotal, pathUploadTemp))
 
                     //out
                     out = {
@@ -1278,25 +1324,16 @@ function WConverhpServer(opt = {}) {
             //destroy, 本路由只取檔名不提供stream故須預先destroy; 瀏覽器下載管理器路徑接著會以同一fileId再觸發一次download事件取串流, 應用端每次皆須交出新串流
             destroyStreamRead(streamRead)
 
-            //filename, 形狀錯誤須發error事件使應用端能觀察(與/dw、/dwgf對稱); 屬應用端狀態, 依重試原則不標示retryable
-            let filename = rf.fields.filename
-            if (!isestr(filename)) {
+            //filename, 判定與正規化經 validDownloadField: 型別判定本身會觸碰應用端值, 且須轉為字串基本型才可放進封包(否則帶 Symbol.toStringTag='String' 且
+            //toJSON 回 undefined 之物件會使 filename 鍵於序列化時消失, 第九輪 F2), 三條下載路由同一判定(見該模組)
+            //形狀錯誤須發error事件使應用端能觀察(與/dw、/dwgf對稱); 屬應用端狀態, 依重試原則不標示retryable
+            let vn = validDownloadField('filename', rf.fields.filename)
+            if (!vn.ok) {
                 //已於前面destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid filename${isestr(vn.cause) ? `: ${vn.cause}` : ''}`)
                 return responseU8aStreamWithError(res, 'invalid filename')
             }
-
-            //normalize, filename須轉為真正之字串基本型才可放進封包
-            //why: isestr以Object.prototype.toString判定, 帶Symbol.toStringTag='String'之物件可通過上方檢核;
-            //其toJSON若回undefined, 該鍵於序列化時整個消失 —— 實測(tmp/probe_r9_final.mjs之F2)回 {"success":{}} 且
-            //Return-Type為success、0則事件, client取得空檔名而以 a.download='' 交給瀏覽器, 最終以URL末段(dwgf)命名。
-            //canonProtocolValue只正規化最外層之協定鍵(success/error), 蓋不到其內之filename, 故R3站點7原記之「已套」只涵蓋BigInt那半
-            let rn = attempt('normalize filename', () => cstr(filename))
-            if (!rn.ok || !isestr(rn.value)) {
-                evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
-                return responseU8aStreamWithError(res, 'invalid filename')
-            }
-            filename = rn.value
+            let filename = vn.value
 
             //重新提供out
             out = {
@@ -1338,6 +1375,16 @@ function WConverhpServer(opt = {}) {
             // console.log(req, res)
             // console.log('payload', req.payload)
 
+            //replyError, 本路由之錯誤回應: 本體封包與標頭同其他路由, 唯 HTTP 狀態碼為非 2xx
+            //why: 本路由之唯一消費者是瀏覽器下載管理器(client 之 downloadByManager 以 a[download] 導覽至此, 無任何 JS 讀其本體或標頭),
+            //而下載管理器只以狀態碼判定成敗 —— 原本錯誤一律 HTTP 200, 應用端拒絕、permission denied 皆被存成使用者之檔案
+            //(Chromium failure=null, 存下 52B / 41B 之錯誤封包; 實測第十輪 A9), 兩端 0 則事件。
+            //帳本 R6「一律 HTTP 200」之前提為「由 JS 解析本體」, 於本路由不成立, 列為 R6 之例外。對標: S3 預簽 URL 以 403/404 使瀏覽器顯示下載失敗
+            //code: 403 權限、400 參數(可證明不需重試者)、404 應用端無法提供檔案、500 應用端交出之內容不合契約
+            let replyError = (code, msg, opt) => {
+                return responseU8aStreamWithError(res, msg, opt).code(code)
+            }
+
             //headers
             let headers = get(req, 'headers')
             headers = iseobj(headers) ? headers : ''
@@ -1367,7 +1414,7 @@ function WConverhpServer(opt = {}) {
 
                 //check
                 if (m !== true) {
-                    return responseU8aStreamWithError(res, 'permission denied')
+                    return replyError(403, 'permission denied')
                 }
 
             }
@@ -1387,7 +1434,7 @@ function WConverhpServer(opt = {}) {
             //check
             if (!isestr(fileId)) {
                 // console.log('invalid fileId in query')
-                return responseU8aStreamWithError(res, 'invalid fileId in query', { retryable: false })
+                return replyError(400, 'invalid fileId in query', { retryable: false })
             }
 
             //inp, token供外部download事件進行授權檢查
@@ -1407,7 +1454,7 @@ function WConverhpServer(opt = {}) {
             //return
             if (haskey(out, 'error')) {
                 // console.log('out.error', out.error)
-                return responseU8aStreamWithError(res, `can not get file from fileId`)
+                return replyError(404, `can not get file from fileId`)
             }
 
             //r
@@ -1420,36 +1467,47 @@ function WConverhpServer(opt = {}) {
             if (!rf.ok) {
                 destroyStreamRead(get(rf.fields, 'streamRead')) //streamRead排在keys之首, 故後續欄位拋錯時該串流已在套件手上, 不清理即fd持續開啟(實測見tmp/probe_r9_rest.mjs第1節)
                 evEmit('error', `download fileId[${fileId}] output error: can not read field[${rf.field}]: ${rf.cause}`)
-                return responseU8aStreamWithError(res, 'invalid streamRead')
+                return replyError(500, 'invalid streamRead')
             }
             let streamRead = rf.fields.streamRead
 
-            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數(見isValidFileSize); 形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
-            let fileSize = rf.fields.fileSize
-            if (!isValidFileSize(fileSize)) {
+            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數; 判定與正規化(cint)經 validDownloadField(判定本身會觸碰應用端值, 見該模組)
+            //形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
+            let vs = validDownloadField('fileSize', rf.fields.fileSize)
+            if (!vs.ok) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 //fileSize須經getErrorMessage而不可直接放進樣板(見帳本R10): 其為應用端交出之任意值,
                 //樣板會對它求值(ToPrimitive→Symbol.toPrimitive→valueOf→toString), 任一步拋錯即逸出handler而回裸HTTP 500且0則事件
-                //(實測tmp/probe_r9_hostile.mjs之B1~B3: 拋錯toString、拋錯Symbol.toPrimitive、Object.create(null)三者皆拋)
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(fileSize)}]`)
-                return responseU8aStreamWithError(res, 'invalid fileSize')
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(rf.fields.fileSize)}]${isestr(vs.cause) ? `: ${vs.cause}` : ''}`)
+                return replyError(500, 'invalid fileSize')
             }
-            fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
+            let fileSize = vs.value
 
-            //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證(見isValidHeaderValue)
-            let fileType = rf.fields.fileType
-            if (!isestr(fileType) || !isValidHeaderValue('Content-Type', fileType)) {
+            //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證; 判定與正規化經 validDownloadField
+            let vt = validDownloadField('fileType', rf.fields.fileType)
+            if (!vt.ok) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
-                return responseU8aStreamWithError(res, 'invalid fileType')
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileType${isestr(vt.cause) ? `: ${vt.cause}` : ''}`)
+                return replyError(500, 'invalid fileType')
             }
-            fileType = cstr(fileType)
+            let fileType = vt.value
 
             //filename, 應用端有給則以 RFC 6266 之 filename*(值為 RFC 5987 percent-encoding)回傳, 使瀏覽器不論頁面與 API 是否同源皆以此命名並強制下載(attachment)
             //why: 瀏覽器只對同源 URL 採用 <a download> 之檔名, 跨來源時忽略而以 URL 末段(dwgf)命名, 可直接顯示之型別(txt/圖片/pdf)更會改為導頁而非下載;
             //以往不給此標頭之理由(中文於 filename="..." 須 base64, chrome 檔名因而變 base64)是舊寫法之限制, filename* 由瀏覽器直接還原 UTF-8;
             //同源時標頭與 <a download> 為同一檔名, 行為不變. 未給 filename 者維持不帶標頭(向後相容), 由 <a download> 或 URL 命名
-            let filename = rf.fields.filename
+            //選用欄位: 判定不通過者(未給、非字串、toString 拋錯而無法取得字串)一律視為未給而不帶標頭 —— 原本 toString 拋錯者送出空檔名之標頭(第十輪 A6);
+            //判定時拋錯者(Symbol.toStringTag getter 等)與其他欄位同一處置, 以錯誤結束(原本為裸 HTTP 500, 第十輪 A5)
+            let filename = ''
+            let vn = validDownloadField('filename', rf.fields.filename)
+            if (vn.ok) {
+                filename = vn.value
+            }
+            else if (isestr(vn.cause)) {
+                destroyStreamRead(streamRead)
+                evEmit('error', `download fileId[${fileId}] output error: invalid filename: ${vn.cause}`)
+                return replyError(500, 'invalid filename')
+            }
 
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
             //forHead, 本路由為GET, hapi對GET路由自動支援HEAD; HEAD不送本體故不建計數串流(見buildDownloadSource之forHead)
@@ -1459,7 +1517,7 @@ function WConverhpServer(opt = {}) {
             if (bs.error) {
                 destroyStreamRead(streamRead)
                 evEmit('error', `download fileId[${fileId}] output error: ${bs.reason}`)
-                return responseU8aStreamWithError(res, bs.error)
+                return replyError(500, bs.error)
             }
 
             //rr
@@ -1590,35 +1648,36 @@ function WConverhpServer(opt = {}) {
             //streamRead
             let streamRead = rf.fields.streamRead
 
-            //filename
-            let filename = rf.fields.filename
-            if (!isestr(filename)) {
+            //filename, 判定與正規化經 validDownloadField: 型別判定本身會觸碰應用端值; 須轉為字串基本型;
+            //孤立代理對以 U+FFFD 取代, 否則 str2b64 之寬鬆模式回空字串而檔名整個消失(第十輪 A5、A6、A7, 見該模組)
+            let vn = validDownloadField('filename', rf.fields.filename)
+            if (!vn.ok) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid filename`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid filename${isestr(vn.cause) ? `: ${vn.cause}` : ''}`)
                 return responseU8aStreamWithError(res, 'invalid filename')
             }
-            filename = str2b64(filename) //headers內對中文支援度不佳須用base64傳
+            let filename = str2b64(vn.value) //headers內對中文支援度不佳須用base64傳
 
-            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數(見isValidFileSize); 形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
-            let fileSize = rf.fields.fileSize
-            if (!isValidFileSize(fileSize)) {
+            //fileSize, 會原樣寫入Content-Length, 須為安全非負整數; 判定與正規化(cint)經 validDownloadField(判定本身會觸碰應用端值, 見該模組)
+            //形狀錯誤皆屬應用端狀態, 依重試原則不標示retryable
+            let vs = validDownloadField('fileSize', rf.fields.fileSize)
+            if (!vs.ok) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
                 //fileSize須經getErrorMessage而不可直接放進樣板(見帳本R10): 其為應用端交出之任意值,
                 //樣板會對它求值(ToPrimitive→Symbol.toPrimitive→valueOf→toString), 任一步拋錯即逸出handler而回裸HTTP 500且0則事件
-                //(實測tmp/probe_r9_hostile.mjs之B1~B3: 拋錯toString、拋錯Symbol.toPrimitive、Object.create(null)三者皆拋)
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(fileSize)}]`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileSize[${getErrorMessage(rf.fields.fileSize)}]${isestr(vs.cause) ? `: ${vs.cause}` : ''}`)
                 return responseU8aStreamWithError(res, 'invalid fileSize')
             }
-            fileSize = cint(fileSize) //isValidFileSize採isp0int故亦接受數字字串, 須正規化為數值後才可寫Content-Length並與實送位元組數以===比較
+            let fileSize = vs.value
 
-            //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證(見isValidHeaderValue)
-            let fileType = rf.fields.fileType
-            if (!isestr(fileType) || !isValidHeaderValue('Content-Type', fileType)) {
+            //fileType, 會原樣寫入Content-Type, 須通過標頭值驗證; 判定與正規化經 validDownloadField
+            let vt = validDownloadField('fileType', rf.fields.fileType)
+            if (!vt.ok) {
                 destroyStreamRead(streamRead) //提供stream前發生錯誤, 得強制destroy
-                evEmit('error', `download fileId[${fileId}] output error: invalid fileType`)
+                evEmit('error', `download fileId[${fileId}] output error: invalid fileType${isestr(vt.cause) ? `: ${vt.cause}` : ''}`)
                 return responseU8aStreamWithError(res, 'invalid fileType')
             }
-            fileType = cstr(fileType)
+            let fileType = vt.value
 
             //bs, 收斂streamRead並保證實送位元組數與fileSize一致(見buildDownloadSource)
             //forHead, 本路由為POST故一般不會收到HEAD; 與/dwgf同式處理, 使兩路由對此不對稱不再由「寫法差異」產生
@@ -1702,8 +1761,19 @@ function WConverhpServer(opt = {}) {
     //亦即呼叫端以為停了而實際上沒有。本promise已帶catch故恆resolve, stop 內await它不會再拋
     let pmStart = null
     if (get(opt, 'serverHapi')) {
-        // server.route([apiMain, apiUploadCheck, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
-        server.route([apiMain, apiUploadCheck, apiUploadSlice, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+
+        //route, 註冊於外部伺服器之失敗(路由衝突、apiName 非法)須以建構期事件通知而不拋出
+        //why: 自建伺服器之同一失敗於 async 之 startServer 內發生而走 error 事件, 外部伺服器原本於建構子內同步拋出 ——
+        //同一種失敗依部署方式兩種通道, 與 JSDoc「啟動失敗時不拋出，以error事件通知」不合(實測第十輪 A13)
+        try {
+            // server.route([apiMain, apiUploadCheck, apiUploadSlice, apiUploadSliceMerge, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+            server.route([apiMain, apiUploadCheck, apiUploadSlice, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
+        }
+        catch (err) {
+            console.log(`register routes error`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            evEmitDelay('error', `register routes error: ${getErrorMessage(err)}`) //建構期, 應用端尚未註冊監聽器
+        }
+
     }
     else {
         pmStart = startServer()

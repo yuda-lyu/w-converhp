@@ -51,6 +51,8 @@ export let downloadRoutes = {
         fields: ['streamRead', 'filename', 'fileSize', 'fileType'],
         //requiredFields, 缺少即視為應用端形狀錯誤之欄位(fields 之子集)
         requiredFields: ['streamRead', 'filename', 'fileSize', 'fileType'],
+        //errorStatus, 各種錯誤之 HTTP 狀態碼: 本路由由 JS 解析回應, 錯誤一律 200 並以 Return-Type: error 與錯誤封包表達(帳本 R6)
+        errorStatus: { permission: 200, param: 200, app: 200, output: 200 },
     },
 
     dwgf: {
@@ -71,6 +73,9 @@ export let downloadRoutes = {
         //filename 對本路由為選用: 未給則不帶 Content-Disposition, 由 <a download> 或 URL 命名(向後相容,
         //見 src/WConverhpServer.mjs 之 /dwgf filename 註解). 這是三路由唯一之欄位必要性差異, 故寫成資料
         requiredFields: ['streamRead', 'fileSize', 'fileType'],
+        //errorStatus, 本路由之唯一消費者為瀏覽器下載管理器(只看狀態碼), 錯誤以非 2xx 表達, 使其顯示下載失敗而不把錯誤封包存成檔案(帳本 R6 之例外, 第十輪 A9)
+        //本體封包與 Return-Type/Return-Msg 標頭仍同其他路由
+        errorStatus: { permission: 403, param: 400, app: 404, output: 500 },
     },
 
     dwgfn: {
@@ -94,6 +99,7 @@ export let downloadRoutes = {
         stages: ['field'],
         fields: ['streamRead', 'filename'],
         requiredFields: ['streamRead', 'filename'],
+        errorStatus: { permission: 200, param: 200, app: 200, output: 200 },
     },
 
 }
@@ -151,6 +157,21 @@ export let downloadRouteKeysByStage = (stage) => {
         throw new Error(`downloadRouteKeysByStage: 無任何路由走到階段[${stage}]`)
     }
     return ks
+}
+
+
+//downloadErrorStatus, 取某下載路由於某種錯誤之 HTTP 狀態碼
+//kind: permission(verifyConn 未通過)、param(請求參數錯誤, 可證明不需重試)、app(應用端拒絕或無監聽器)、output(應用端交出之內容不合契約)
+//why 寫成軸上的資料: 三路由對錯誤狀態碼之差異是契約(見 errorStatus 之註解), 不是某個測試檔之例外; 各檔取自此處而不各自手寫 200 或 404
+export let downloadErrorStatus = (route, kind) => {
+    let df = downloadRoutes[route]
+    if (!df) {
+        throw new Error(`downloadErrorStatus: [${route}]不是下載路由軸之成員`)
+    }
+    if (!Object.prototype.hasOwnProperty.call(df.errorStatus, kind)) {
+        throw new Error(`downloadErrorStatus: 錯誤種類[${kind}]不存在(可用: ${Object.keys(df.errorStatus).join(', ')})`)
+    }
+    return df.errorStatus[kind]
 }
 
 

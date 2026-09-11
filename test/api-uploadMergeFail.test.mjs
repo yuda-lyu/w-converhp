@@ -23,8 +23,15 @@ describe('api-uploadMergeFail', function() {
     //nUpload, 記錄 upload 事件被觸發次數
     let nUpload = 0
 
-    //hash, 本測試之檔案雜湊(伺服器以此為切片與合併檔之檔名)
-    let hash = 'a1b2c3d4e5f60718'
+    //bufs, 本測試之檔案內容(三片)
+    let bufs = [Buffer.alloc(sizeSlice, 1), Buffer.alloc(sizeSlice, 2), Buffer.alloc(100, 3)]
+
+    //hash, 本測試之檔案雜湊(伺服器以此為切片與合併檔之檔名), 須為內容之真實雜湊: 伺服器於合併完成時核對雜湊, 不符即判合併失敗(第十輪 F1)
+    let hash = ''
+
+    //hash2, 第三條之檔案雜湊, 同理須為其內容之真實雜湊, 使失敗點落在「輸出路徑不可寫」而非雜湊不符
+    let buf2 = Buffer.alloc(100, 9)
+    let hash2 = ''
 
     //parse, 解析本套件之 octet-stream 回應
     let parse = async(r) => {
@@ -72,6 +79,9 @@ describe('api-uploadMergeFail', function() {
         fs.rmSync(pathUploadTemp, { recursive: true, force: true })
         fs.mkdirSync(pathUploadTemp, { recursive: true })
 
+        hash = await w.getFileXxHash(new Blob([Buffer.concat(bufs)]))
+        hash2 = await w.getFileXxHash(new Blob([buf2]))
+
         wsv = new WConverhpServer({
             port,
             apiName: 'api',
@@ -99,7 +109,7 @@ describe('api-uploadMergeFail', function() {
         this.timeout(30000)
 
         //宣稱 3 片, 只送第 0 片
-        await slc(0, 3, Buffer.alloc(sizeSlice, 1))
+        await slc(0, 3, bufs[0])
         let rp = await ulctr({ mode: 'merge-slices-push', chunkTotal: 3 })
         let queueId = w.iseobj(rp.success) ? rp.success.queueId : ''
         assert.strict.deepEqual(w.isestr(queueId), true, JSON.stringify(rp))
@@ -124,9 +134,6 @@ describe('api-uploadMergeFail', function() {
 
     it('合併失敗後依協定重傳(check-total-hash 決定缺哪些片 → 補傳 → push), 須成功且舊失敗態須被清除', async function() {
         this.timeout(30000)
-
-        //bufs, 三片之內容
-        let bufs = [Buffer.alloc(sizeSlice, 1), Buffer.alloc(sizeSlice, 2), Buffer.alloc(100, 3)]
 
         //與 client 相同: 先問伺服器現況。失敗的合併可能已消耗部分切片並留下不完整合併檔, 伺服器須據實回報
         let rc = await ulctr({ mode: 'check-total-hash', filename: 'x.bin', fileSize: sizeSlice * 2 + 100 })
@@ -158,10 +165,9 @@ describe('api-uploadMergeFail', function() {
 
         //此案例依賴 wsemi fsMergeFilesCore 之修正(見 ./建議wsemi修正.md):
         //修正前 write stream 開檔失敗之 error 無人監聽, worker 崩潰、promise 永不 settle, 伺服器無從記錄失敗態
-        let hash2 = 'b2c3d4e5f6071829'
         fs.mkdirSync(path.resolve(pathUploadTemp, hash2))
 
-        await slc(0, 1, Buffer.alloc(100, 9), hash2)
+        await slc(0, 1, buf2, hash2)
         let rp = await ulctr({ mode: 'merge-slices-push', chunkTotal: 1 }, hash2)
         let queueId = w.iseobj(rp.success) ? rp.success.queueId : ''
         assert.strict.deepEqual(w.isestr(queueId), true, JSON.stringify(rp))

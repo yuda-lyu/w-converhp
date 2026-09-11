@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRoutes, downloadRouteKeys, downloadRouteKeysByStage, fetchDownload } from './api-axes.mjs'
+import { downloadRoutes, downloadRouteKeys, downloadRouteKeysByStage, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
 
 
 /**
@@ -131,7 +131,7 @@ describe('api-sourceTraps', function() {
     let expectTrapped = async(route, fileId, cause) => {
         let r = await call(route, fileId)
         let tag = `${route}/${fileId}: ${JSON.stringify(r)}`
-        assert.strict.deepEqual(r.status, 200, `${tag} —— 不得為裸 HTTP 500`)
+        assert.strict.deepEqual(r.status, downloadErrorStatus(route, 'output'), `${tag} —— 狀態碼須依路由軸(/dwgf 之 500 帶套件錯誤封包, 與 hapi 之裸 500 以 Return-Type 區分)`)
         assert.strict.deepEqual(r.returnType, 'error', tag)
         assert.strict.deepEqual(r.error, 'invalid streamRead', tag)
         assert.strict.deepEqual(r.errs.length, 1, `須恰一則事件: ${tag}`)

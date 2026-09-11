@@ -1,4 +1,5 @@
 import assert from 'assert'
+import { downloadErrorStatus } from './api-axes.mjs'
 import fs from 'fs'
 import http from 'http'
 import path from 'path'
@@ -168,9 +169,9 @@ describe('api-cors', function() {
         assert.strict.deepEqual(r.headers['content-disposition'], undefined)
     })
 
-    it('/dwgf 應用端 reject 時回錯誤封包, 不帶 Content-Disposition', async function() {
+    it('/dwgf 應用端 reject 時回錯誤封包(狀態碼為非 2xx, 使瀏覽器下載管理器顯示失敗), 不帶 Content-Disposition', async function() {
         let r = await req('GET', `/api/dwgf?fileId=not-exist&token=token-for-test`, null)
-        assert.strict.deepEqual(r.status, 200)
+        assert.strict.deepEqual(r.status, downloadErrorStatus('dwgf', 'app'))
         assert.strict.deepEqual(r.headers['return-type'], 'error')
         assert.strict.deepEqual(r.headers['content-disposition'], undefined)
     })

@@ -5,7 +5,8 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
 
 
 /**
- * verifyConn 拋錯或 reject 時, 六個路由皆須一致回 HTTP 200 + {error:'permission denied'}
+ * verifyConn 拋錯或 reject 時, 六個路由皆須一致回 {error:'permission denied'} 之錯誤封包; 狀態碼為 HTTP 200, 唯 /dwgf 為 403
+ * (/dwgf 之唯一消費者為瀏覽器下載管理器, 只看狀態碼, 見帳本 R6 之例外與 test/api-axes.mjs 之 errorStatus)
  * (修正前: 僅 /main 有 try/catch, 其餘五路由回 HTTP 500 且 body 不可解析)
  *
  * 不經 client 直接打 HTTP, 因需對 GET /dwgf 與自訂 header 精準控制
@@ -41,7 +42,7 @@ describe('api-verifyConnError', function() {
             { name: '/slc', apiType: 'upload-slice', api: 'apiUploadSlice', url: `${base}/slc`, method: 'POST', ct: 'application/octet-stream', body: Buffer.from('x'), extra: { 'chunk-index': '0', 'chunk-total': '1', 'package-id': 'a1b2c3d4e5f60718' } },
             { name: '/dwgfn', apiType: 'download-get-filename', api: 'apiDownloadGetFilename', url: `${base}/dwgfn`, method: 'POST', ct: 'application/json', body: JSON.stringify({ fileId: 'a' }) },
             { name: '/dw', apiType: 'download', api: 'apiDownload', url: `${base}/dw`, method: 'POST', ct: 'application/json', body: JSON.stringify({ fileId: 'a' }) },
-            { name: '/dwgf', apiType: 'download-get-file', api: 'apiDownloadGetFile', url: `${base}/dwgf?fileId=a&token=t`, method: 'GET' },
+            { name: '/dwgf', apiType: 'download-get-file', api: 'apiDownloadGetFile', url: `${base}/dwgf?fileId=a&token=t`, method: 'GET', deniedStatus: 403 },
         ]
     }
 
@@ -93,10 +94,10 @@ describe('api-verifyConnError', function() {
 
     for (let mode of ['throw', 'reject']) {
         for (let rt of routes()) {
-            it(`verifyConn ${mode} 時, ${rt.name} 須回 HTTP 200 + permission denied, 並 emit 一則 error 事件`, async function() {
+            it(`verifyConn ${mode} 時, ${rt.name} 須回 HTTP ${rt.deniedStatus || 200} + permission denied, 並 emit 一則 error 事件`, async function() {
                 errs = []
                 let r = await call(rt, mode)
-                assert.strict.deepEqual(r.status, 200)
+                assert.strict.deepEqual(r.status, rt.deniedStatus || 200)
                 assert.strict.deepEqual(r.body, { error: 'permission denied' })
 
                 //應用端須能透過 error 事件觀察到 verifyConn 失敗, 訊息須含 apiType 與原始錯誤

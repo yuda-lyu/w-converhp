@@ -3,7 +3,7 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRouteKeys, fetchDownload } from './api-axes.mjs'
+import { downloadRouteKeys, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
 
 
 /**
@@ -106,7 +106,7 @@ describe('api-noListener', function() {
             srv.evs.length = 0
             let r = await fetchDownload(srv.port, route, 'any-id', { timeoutMs: 4000, settleMs: 150 })
             assert.strict.deepEqual(r.hang, undefined, `[${route}] —— 不得懸置`)
-            assert.strict.deepEqual(r.status, 200, `[${route}] —— 須為 HTTP 200`)
+            assert.strict.deepEqual(r.status, downloadErrorStatus(route, 'app'), `[${route}] —— 狀態碼須依路由軸(無人接聽與應用端拒絕同一類)`)
             assert.strict.deepEqual(r.returnType, 'error', `[${route}] —— Return-Type 須為 error`)
         }
     })

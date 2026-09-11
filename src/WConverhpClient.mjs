@@ -28,6 +28,7 @@ import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
 import retryDelay from './retryDelay.mjs'
+import normalizeUploadInput from './normalizeUploadInput.mjs'
 
 
 /**
@@ -44,7 +45,7 @@ import retryDelay from './retryDelay.mjs'
  * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
- * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰
+ * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。伺服器回業務錯誤時(execute、upload、download皆同)每次嘗試各發一則error事件
  * @example
  *
  * import path from 'path'
@@ -215,6 +216,18 @@ function WConverhpClient(opt) {
         return (isobj(msg) && msg[symNoRetry] === true) ? msg.msg : msg
     }
 
+    //serverError, 「伺服器回業務錯誤」之唯一處置: 發一則 error 事件, 並回傳交予 reject 之值(retryable 為 false 者以 symNoRetry 包裝, 交由 callApi 中止重試並解包)
+    //why: 同一個事實原本三種處置 —— 封包協定(callApiCore)發事件、標頭協定(downloadStream, nodejs 之 download 與瀏覽器 blob 模式)不發、
+    //合併查詢之 state:error(checkMerging)亦不發(實測第十輪 D6、N2: 應用端拒絕與 permission denied 時 execute 1 則、download 0 則);
+    //且不重試包裝原本於兩個解碼者各自手寫一份。對標: socket.io-client 之 connect_error 不論傳輸方式皆同樣發出
+    let serverError = (msg, retryable) => {
+        evEmit('error', msg)
+        if (retryable === false) {
+            return { [symNoRetry]: true, msg }
+        }
+        return msg
+    }
+
     //getUrlUse
     let getUrlUse = (type) => {
 
@@ -347,7 +360,16 @@ function WConverhpClient(opt) {
                 'Content-Type': 'application/json',
             }
 
-            dd = JSON.stringify(pkg)
+            //JSON.stringify 須在 try 內: 呼叫端之 fileId 等含 BigInt 或循環參照時會拋, 原本於 try 外而以原生 TypeError 拒絕且 0 則事件,
+            //同形狀之 execute 則為明確訊息 + 1 則(實測第十輪 A10); 屬 client 自身參數決定之失敗, 不進重試
+            try {
+                dd = JSON.stringify(pkg)
+            }
+            catch (err) {
+                let msg = `input can not be serialized: ${getErrorMessage(err)}`
+                evEmit('error', msg)
+                return Promise.reject(msg)
+            }
         }
         // console.log('dd', dd)
 
@@ -370,12 +392,6 @@ function WConverhpClient(opt) {
             }
         }
         // console.log('rt', rt)
-
-        //token
-        let token = getToken()
-        if (ispm(token)) {
-            token = await token
-        }
 
         //getFilenameByHeader
         let getFilenameByHeader = (contentDisposition) => {
@@ -407,11 +423,7 @@ function WConverhpClient(opt) {
             //check, 伺服器於標頭標示Return-Retryable為false者為可證明不需重試之錯誤(下載路徑只讀標頭不解析本體; 瀏覽器跨域時若該標頭未被曝露則讀不到, 退回照常重試)
             if (returnType === 'error') {
                 let returnRetryable = get(res, `headers['return-retryable']`, '')
-                if (returnRetryable === 'false') {
-                    pm.reject({ [symNoRetry]: true, msg: returnMsg })
-                    return pm
-                }
-                pm.reject(returnMsg)
+                pm.reject(serverError(returnMsg, returnRetryable !== 'false')) //發事件與不重試包裝見 serverError
                 return pm
             }
 
@@ -518,11 +530,7 @@ function WConverhpClient(opt) {
             method: 'POST',
             url: urlUse,
             data: dd,
-            headers: {
-                Authorization: `${tokenType} ${token}`,
-                ...ct,
-                ...headers,
-            },
+            headers: {}, //於每次嘗試由 callApiCore 組裝(含每次重取之 token)
             timeout,
             maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
@@ -565,6 +573,23 @@ function WConverhpClient(opt) {
         //callApiCore, 處理axios成功then時訊息, catch時直接向外傳遞
         let callApiCore = async() => {
 
+            //token, 每次嘗試重取, 拋錯或 reject 即為本次嘗試之失敗而進入重試
+            //why: 原本於重試迴圈外只取一次 —— 重試沿用同一個 token, 「token 已過期、應用端之 getToken 已換發新 token」一類之 permission denied 其重試永遠無效;
+            //而權限屬非同步系統、permission denied 須重試(專案重試原則), 重試要有意義就得帶上當下之 token。業界作法同: token 更新後以新 token 重送(axios-auth-refresh)
+            //另 getToken 拋錯原本不重試, 與「凡請求失敗一律重試」不一致; getToken 之呼叫次數因此為 1+重試次數, 快取由應用端決定
+            let token = getToken()
+            if (ispm(token)) {
+                token = await token
+            }
+            if (token === undefined || token === null) {
+                token = '' //未取得 token 者不得以樣板求值送出字面之 Bearer undefined / Bearer null(伺服器與應用端會收到一個看似有效之 token 字串; B 卷 tmp/r10B_token.mjs ⑤)
+            }
+            s.headers = {
+                Authorization: `${tokenType} ${token}`,
+                ...ct,
+                ...headers,
+            }
+
             //axios, catch時直接向外傳遞
             let res = await axios(s)
 
@@ -602,14 +627,7 @@ function WConverhpClient(opt) {
                 return Promise.resolve(data.success)
             }
             else if (haskey(data, 'error')) {
-                evEmit('error', data.error)
-
-                //check, 伺服器標示retryable為false者為可證明不需重試之錯誤, 以symNoRetry包裝交由callApi中止重試並解包
-                if (data.retryable === false) {
-                    return Promise.reject({ [symNoRetry]: true, msg: data.error })
-                }
-
-                return Promise.reject(data.error)
+                return Promise.reject(serverError(data.error, data.retryable)) //發事件, 且伺服器標示retryable為false者為可證明不需重試之錯誤(見serverError)
             }
             else {
                 evEmit('error', `data does not contain success or error`)
@@ -762,15 +780,8 @@ function WConverhpClient(opt) {
     //calcHash
     let calcHash = async(inp) => {
 
-        //bb
-        let bb = null
-        if (env === 'browser') {
-            bb = inp
-        }
-        else {
-            //於nodejs時, 因尚無法提供檔名上傳, 故會是readFileSync讀入的buffer, 再轉成new Blob([buffer]), 供getFileXxHash使用
-            bb = new Blob([inp])
-        }
+        //bb, 一律包成 Blob 供 getFileXxHash 使用: 原本瀏覽器端直接交出 inp, 非 Blob 之位元組視圖即被 getFileXxHash 拒絕; Blob 包 Blob 不複製內容
+        let bb = new Blob([inp])
 
         //hash
         let hash = await getFileXxHash(bb)
@@ -808,22 +819,11 @@ function WConverhpClient(opt) {
             }
         }
 
-        //n
-        let n = 0
-        if (n === 0) {
-            try {
-                n = bb.size //for Blob
-                n = cint(n)
-            }
-            catch (err) {}
-        }
-        if (n === 0) {
-            try {
-                n = bb.length //for ArrayBuffer //nodejs用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
-                n = cint(n)
-            }
-            catch (err) {}
-        }
+        //n, 輸入已由 upload 入口正規化為 Blob(含 File)或位元組視圖(見 normalizeUploadInput), 故大小只有兩種取法
+        //why: 原本以 bb.size、bb.length 依序猜 —— ArrayBuffer 兩者皆無而取 1(雜湊卻以整個 ArrayBuffer 計, 應用端以 success 收到 1 byte),
+        //多位元組型陣列之 length 為元素數而切出之位元組為其倍數(實測第十輪 D2)
+        //nodejs用fs讀有檔案大小上限, 除非改傳入檔名用stream讀, 否則無法支援超大檔
+        let n = cint(bb.byteLength !== undefined ? bb.byteLength : bb.size)
         if (n === 0) {
             // evEmit('error', `can not get size of bb`)
             // return Promise.reject(`can not get size of bb`)
@@ -1085,8 +1085,8 @@ function WConverhpClient(opt) {
                             //clearInterval
                             clearInterval(t)
 
-                            //reject, state為'error'時會於msg提供錯誤訊息
-                            pm.reject(res.msg)
+                            //reject, state為'error'時會於msg提供錯誤訊息; 為伺服器回之業務錯誤, 須發事件(見serverError)
+                            pm.reject(serverError(res.msg))
 
                         }
 
@@ -1179,10 +1179,15 @@ function WConverhpClient(opt) {
     }
 
     //upload
-    let upload = (filename, input, cbProgress) => {
+    let upload = async(filename, input, cbProgress) => {
 
-        //bb
-        let bb = input
+        //bb, 輸入之正規化(見 normalizeUploadInput); 不支援者於入口拒絕, 不進入任何請求與重試(與 download 之 fdDownload 同一作法)
+        let bb = normalizeUploadInput(input)
+        if (bb === null) {
+            let msg = `invalid input for upload: must be a Blob, File, ArrayBuffer, ArrayBufferView or string`
+            evEmit('error', msg)
+            return Promise.reject(msg)
+        }
 
         return sendDataSlice(filename, bb, cbProgress)
     }

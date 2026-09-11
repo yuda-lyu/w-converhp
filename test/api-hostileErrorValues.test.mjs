@@ -2,7 +2,7 @@ import assert from 'assert'
 import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRouteKeys, fetchDownload } from './api-axes.mjs'
+import { downloadRouteKeys, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
 
 
 /**
@@ -156,7 +156,7 @@ describe('api-hostileErrorValues', function() {
         return { ...r, nErrs: errs.length, errs: [...errs] }
     }
 
-    it('verifyConn 拋出各種惡意形狀時, 三路由皆須回 HTTP 200 + permission denied 錯誤封包(修正前為裸 HTTP 500)', async function() {
+    it('verifyConn 拋出各種惡意形狀時, 三路由皆須回 permission denied 錯誤封包, 狀態碼依路由軸(修正前為裸 HTTP 500)', async function() {
         this.timeout(120000)
         for (let k of shapeKeys) {
             modeVerify = k
@@ -164,7 +164,7 @@ describe('api-hostileErrorValues', function() {
                 let r = await call(route, 'any')
                 let tag = `${k} / ${route}: ${JSON.stringify(r)}`
                 assert.strict.deepEqual(r.hang, undefined, `${tag} —— 不得懸置`)
-                assert.strict.deepEqual(r.status, 200, tag)
+                assert.strict.deepEqual(r.status, downloadErrorStatus(route, 'permission'), tag)
                 assert.strict.deepEqual(r.returnType, 'error', tag)
                 assert.strict.deepEqual(r.error, 'permission denied', tag)
             }
@@ -192,7 +192,7 @@ describe('api-hostileErrorValues', function() {
                 let r = await call(route, 'any')
                 let tag = `${k} / ${route}: ${JSON.stringify(r)}`
                 assert.strict.deepEqual(r.hang, undefined, `${tag} —— 不得懸置`)
-                assert.strict.deepEqual(r.status, 200, tag)
+                assert.strict.deepEqual(r.status, downloadErrorStatus(route, 'app'), tag)
                 assert.strict.deepEqual(r.returnType, 'error', tag)
                 assert.strict.deepEqual(r.error, 'can not get file from fileId', tag)
             }

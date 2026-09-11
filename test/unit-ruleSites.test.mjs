@@ -124,8 +124,9 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(looseByFile, { server: 1, responseU8aStreamWithError: 1 }, `R3 寬鬆站點之分佈 ${hint}`)
     })
 
-    it('R4 數值述詞: 總 20 站點, 安全模式 11', function() {
+    it('R4 數值述詞: 總 21 站點, 安全模式 11', function() {
         //第九輪 +1: checkTotalHash 之 fileSize 由 isnum 改為 isp0int 之安全模式(R4b 之未登記站點, 見帳本)
+        //第十輪 +1: checkSlicesHash 以實存切片檔名建索引集合之 isp0int(s) —— 刻意寬鬆(對象為本套件自產之檔名段, 另以 String(cint(s)) === s 要求正規寫法)
         let re = /(isp0int|ispint)\([^)]*\)/g
         let n = 0
         let nSafe = 0
@@ -134,15 +135,19 @@ describe('unit-ruleSites', function() {
             n += hits.length
             nSafe += hits.filter((v) => v.includes('optSafe') || v.includes('useLimitSafe')).length
         }
-        assert.strict.deepEqual(n, 20, `R4 總站點數 ${hint}`)
-        assert.strict.deepEqual(nSafe, 11, `R4 安全模式站點數 ${hint}(9 個刻意寬鬆者之理由見 CLAUDE_rulebook.md 之 R4)`)
+        assert.strict.deepEqual(n, 21, `R4 總站點數 ${hint}`)
+        assert.strict.deepEqual(nSafe, 11, `R4 安全模式站點數 ${hint}(10 個刻意寬鬆者之理由見 CLAUDE_rulebook.md 之 R4)`)
     })
 
-    it('R4 fileSize 之檢核與正規化須成對: isValidFileSize 採 isp0int 故接受數字字串, 呼叫端須以 cint 轉換', function() {
+    it('R4 fileSize 之檢核與正規化須成對: isValidFileSize 採 isp0int 故接受數字字串, 須以 cint 轉換 —— 兩條下載路由皆經 validDownloadField', function() {
         //why: fileSize 會以 === 與實際位元組數比較(buf.length !== fileSize、計數串流之 n !== fileSize),
         //字串未經 cint 會使長度正確之下載反被判為 fileSize mismatch
-        let n = countAll(src.server, /fileSize = cint\(fileSize\)/g)
-        assert.strict.deepEqual(n, 2, `R4 之 cint 正規化須於 /dwgf 與 /dw 兩處各一 ${hint}`)
+        //第十輪: 判定與正規化收歸 validDownloadField(判定本身會觸碰應用端值而須在 attempt 內, 見帳本 R1), 兩路由不再各自手寫
+        assert.strict.deepEqual(countAll(src.server, /validDownloadField\('fileSize'/g), 2, `R4 /dwgf 與 /dw 須各經一次 validDownloadField('fileSize') ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /isValidFileSize\(/g), 0, `R4 server 不得再自行判定 fileSize(須經 validDownloadField) ${hint}`)
+        let v = readCode('src/validDownloadField.mjs')
+        assert.strict.deepEqual(countAll(v, /isValidFileSize\(v\)/g), 1, `R4 validDownloadField 須以 isValidFileSize 判定 ${hint}`)
+        assert.strict.deepEqual(countAll(v, /value: cint\(v\)/g), 1, `R4 validDownloadField 須以 cint 正規化 ${hint}`)
     })
 
     //stripCode, 去除整行註解、JSDoc 與行尾註解(不動 http:// 之雙斜線), 供「禁用寫法」類之掃描使用
@@ -157,7 +162,7 @@ describe('unit-ruleSites', function() {
             .join('\n')
     }
 
-    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 19', function() {
+    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 28', function() {
         //why: err 為應用端 throw/reject 之任意值, 其 message 可為拋錯之 getter、toString 可拋錯。
         //以 err.message / get(err,'message',err) / String(err) 組訊息, 即於 catch 內再拋 —— 保護層自身失效。
         //實測後果: verifyConn 為此形狀 → 裸 HTTP 500 + 0 則事件; 監聽器為此形狀 → 請求永久懸置。
@@ -189,7 +194,21 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(nBad, 0, `R10 出現禁用之取因寫法[${bad.join(' ; ')}]。${hint}`)
         //第九輪 14 → 19: server 之 invalid fileSize 樣板 ×2(應用端值不可直接進樣板)、server 之 stop ×1、
         //client 之 cbProgressSafe ×1(axios 進度回呼)、client 之 sendDataSlice 進度回呼保護 ×1
-        assert.strict.deepEqual(nGood, 19, `R10 站點數 ${hint}`)
+        //第十輪 19 → 28: server 之請求端值進樣板 ×3(/main 解碼本體、func、mode)、建構期失敗 ×2(暫存資料夾、外部 serverHapi 之路由註冊)、
+        ///ulctr 之 internal ×1; managerMergeSlices 之 removeStateFile ×1 與 invalid queueId 樣板 ×1; client 之 send 之 JSON 序列化 ×1
+        assert.strict.deepEqual(nGood, 28, `R10 站點數 ${hint}`)
+    })
+
+    it('R10 之擴充: 請求端之任意 JSON 值不得直接進樣板', function() {
+        //why: 不需 getter —— JSON.parse 產物之自有屬性 toString 為非函數值時, 樣板求值即拋 Cannot convert object to primitive value;
+        //帳本 R10 原記「JSON.parse 產物結構上不可能帶拋錯 getter, 列刻意不套」為假(實測第十輪 D3: /ulctr 之 {"mode":{"toString":1}} → 裸 HTTP 500 + 0 則事件)
+        //分辨力見 test/api-hostileRequestJson.test.mjs(其軸成員自原始碼掃出)
+        let s = stripCode('src/WConverhpServer.mjs')
+        for (let re of [/invalid mode\[\$\{mode\}\]/g, /\$\{get\(inp, 'func'/g, /\$\{get\(rdInp, 'msg'/g]) {
+            assert.strict.deepEqual(countAll(s, re), 0, `R10 請求端值直接進樣板: ${re}`)
+        }
+        let m = stripCode('src/managerMergeSlices.mjs')
+        assert.strict.deepEqual(countAll(m, /invalid id\[\$\{id\}\]/g), 0, 'R10 managerMergeSlices 之 queueId 直接進樣板')
     })
 
     it('R10 之結構層: 保護函數內「非做不可」之事須排在回報之前', function() {
@@ -244,10 +263,20 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(countAll(src.client, /ev\.emit\(/g), 0, `R11 client 無形狀轉接需求, 不得直接 ev.emit ${hint}`)
     })
 
-    it('R11 以 timer 脫勾派發僅限建構期: evEmitDelay 之呼叫站點須恰為 1', function() {
+    it('R11 以 timer 脫勾派發僅限建構期: evEmitDelay 之 3 個呼叫站點皆須位於路由定義之外', function() {
         //why: 建構期之失敗事件須脫勾, 因應用端於 new 回傳後才有機會註冊監聽器(實測 tmp/probe_r8_defer.mjs);
         //其餘派發站點皆於請求進來後才觸發, 脫勾對其毫無作用而只帶來「堆疊被切斷」之代價
-        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('/g), 1, `R11 evEmitDelay 之呼叫站點須恰為 1 ${hint}`)
+        //第十輪 1 → 3: 暫存資料夾建立失敗、外部 serverHapi 之路由註冊失敗(與啟動失敗同為建構期失敗)。
+        //刻意不以一個包裝函數把站點數維持為 1: 那會使本條鎖住的變成「包裝函數存在」, 而日後在請求路徑呼叫該包裝函數不會紅(第十輪兩份外部複審指出)
+        //故直接斷言**每一個**站點之位置: 不得落在 apiMain 至 startServer 之間(六條路由之定義)
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('/g), 3, `R11 evEmitDelay 之呼叫站點數 ${hint}`)
+        let iA = src.server.indexOf('let apiMain = {')
+        let iZ = src.server.indexOf('async function startServer')
+        assert.strict.deepEqual(iA > 0 && iZ > iA, true, '找不到路由定義之起訖標記')
+        let i = -1
+        while ((i = src.server.indexOf(`evEmitDelay('`, i + 1)) >= 0) {
+            assert.strict.deepEqual(i < iA || i > iZ, true, `R11 evEmitDelay 出現於路由定義內(位置 ${i}), 請求期之事件不得脫勾派發`)
+        }
         assert.strict.deepEqual(countAll(src.client, /evEmitDelay\(/g), 0, `R11 client 無建構期事件, 不應有脫勾派發 ${hint}`)
     })
 
@@ -259,21 +288,50 @@ describe('unit-ruleSites', function() {
         }
     })
 
-    it('R5 error 事件發送站點須為 28(即時 26 + 建構期脫勾 1 + 監聽器出錯之通報 1)', function() {
+    it('R5 error 事件發送站點: server 32(即時 28 + 建構期脫勾 3 + 監聽器出錯之通報 1)、client 13', function() {
         //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
         //第九輪 23 → 26: procApp 之「無人接聽」通報 ×1(R12)、stop 之停止失敗通報 ×1(R11 之建構期同族)、
         ///dwgfn 之 filename 正規化失敗 ×1(R3: 協定鍵內之值亦會靜默消失)
-        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 26, `R5 即時派發之站點數 ${hint}`)
-        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 1, `R5 建構期脫勾派發之站點數 ${hint}`)
+        //第十輪 26 → 28: procApp 之輸出為 function/symbol ×1、/ulctr 之 internal ×1、/dwgf 之 filename 判定拋錯 ×1, 而 /dwgfn 之 filename 兩處判定併為一處 −1
+        //第十輪另納入 client(帳本 R5 原只盤點 server, 而本輪 D6 之缺口正在 client): 以 serverError 為「伺服器回業務錯誤」之唯一處置
+        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 28, `R5 即時派發之站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 3, `R5 建構期脫勾派發之站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.client, /evEmit\('error'/g), 13, `R5 client 之站點數 ${hint}`)
+        assert.strict.deepEqual(src.client.includes('let serverError = ('), true, 'R5 client 找不到 serverError 之定義')
+        assert.strict.deepEqual(countAll(src.client, /serverError\(/g), 3, `R5 client 之 serverError 呼叫站點: callApiCore、downloadStream、checkMerging 各 1 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
+    })
+
+    it('R17 回前端之錯誤訊息不得含伺服器路徑與底層細節: /ulctr 之內部呼叫一律經 internal', function() {
+        //why: 內部例外(worker、合併佇列)之訊息常含伺服器絕對路徑; 原本原樣進入錯誤封包 —— 暫存資料夾不在時前端收到
+        //`Error: fd[<伺服器絕對路徑>] is not a folder` 且伺服器 0 則事件(實測第十輪 A11/N5)。internal 使細節只進 error 事件
+        assert.strict.deepEqual(countAll(src.server, /internal\('/g), 3, `R17 internal 之站點數(check total hash、check slices hash、push merge task) ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /await (checkTotalHash|checkSlicesHash|mmg\.push)\(/g), 0, `R17 不得繞過 internal 直接 await 內部呼叫 ${hint}`)
+    })
+
+    it('R18 完成標記須證明其所指之內容: .done 之寫入者只在 managerMergeSlices, 正式名只由 rename 產生, 新一代合併前舊標記失效', function() {
+        //why: 原本 worker 合併完即寫 .done(不核對雜湊), 且新一代合併不清除舊 .done ——
+        //上一代 .done 殘留 + 本代合併中行程中止, 重啟後殘檔以 success 交出(實測 134217728 bytes 之檔交出 3342336 bytes, 第十輪 D1)
+        //行為面之保護見 test/unit-mergeGeneration.test.mjs 與 test/api-uploadMergeIntegrity.test.mjs; 本條鎖住結構
+        let ms = readCode('src/mergeSlices.mjs')
+        assert.strict.deepEqual(countAll(ms, /writeFileSync/g), 0, `R18 worker 不得寫任何狀態標記 ${hint}`)
+        assert.strict.deepEqual(countAll(ms, /fsGetFileXxHash\(fpOut\)/g), 1, `R18 worker 須回傳合併檔之雜湊供核對 ${hint}`)
+        assert.strict.deepEqual(countAll(src.mmg, /writeFileSync\(ps\.fpd/g), 2, `R18 .done 之寫入者須恰為 2(合併後核對相符、verifyMerged 驗證相符) ${hint}`)
+        assert.strict.deepEqual(countAll(src.mmg, /renameSync\(ps\.fpm, ps\.fp\)/g), 1, `R18 合併檔之正式名須只由 rename 產生 ${hint}`)
+        assert.strict.deepEqual(countAll(src.mmg, /removeStateFile\(ps\.fpd\)/g), 1, `R18 新一代合併前須使舊 .done 失效 ${hint}`)
+        let iHash = src.mmg.indexOf('if (h !== fileHash)')
+        let iRename = src.mmg.indexOf('fs.renameSync(ps.fpm, ps.fp)')
+        let iDone = src.mmg.indexOf(`fs.writeFileSync(ps.fpd, '', 'utf8')`, iRename)
+        assert.strict.deepEqual(iHash > 0 && iHash < iRename && iRename < iDone, true, 'R18 順序須為: 核對雜湊 → rename → 寫 .done')
     })
 
     it('CLAUDE_rulebook.md 須存在且涵蓋本檔之全部規則', function() {
         //帳本自 2026-09-10 起獨立為 CLAUDE_rulebook.md(原位於 CLAUDE.md 之「規則帳本」一節);
         //CLAUDE.md 只留工作規則與指向兩個附檔之說明, 執行經驗另於 CLAUDE_experience.md
+        //第十輪: 原清單只列 R1–R7, R8 以後之規則(本檔亦有其斷言)缺頁不會紅 —— 清單範圍比本檔所鎖之規則窄(帳本 R4b 之教訓同型)
         let doc = fs.readFileSync('CLAUDE_rulebook.md', 'utf8')
         assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'CLAUDE_rulebook.md 缺少標題')
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R5 ', '### R6 ', '### R7 ']) {
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ']) {
             assert.strict.deepEqual(doc.includes(r), true, `CLAUDE_rulebook.md 缺少 ${r.trim()}`)
         }
         assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE_rulebook.md 之盤點指令數不足')
