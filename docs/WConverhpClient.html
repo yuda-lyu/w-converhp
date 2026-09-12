@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -80,7 +80,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line100">line 100</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line249">line 249</a>
     </li></ul></dd>
     
 
@@ -127,7 +127,7 @@
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>import path from 'path'import fs from 'fs'import _ from 'lodash-es'import w from 'wsemi'import FormData from 'form-data'import WConverhpClient from './src/WConverhpClient.mjs'let ms = []let opt = {    FormData,    url: 'http://localhost:8080',    apiName: 'api',    getToken: () => {        return 'token-for-test'    },}//newlet wo = new WConverhpClient(opt)wo.on('error', (err) => {    console.log(`error`, err)})function downloadLargeFile() {    let core = async() => {        await wo.download('id-for-file',            function ({ prog, p, m }) {                // console.log('client web: download: prog', prog, p, m)                if (m === 'download') {                    console.log('client web: download: prog', prog)                }            },            {                fdDownload: './', //於nodejs環境才能提供            })            .then(function(res) {                console.log('client web: download: then', res)                ms.push({ 'download output': res })            })            .catch(function (err) {                console.log('client web: download: catch', err)            })        console.log('ms', ms)    }    core()}downloadLargeFile()</code></pre>
+    <pre class="prettyprint"><code>import path from 'path'import fs from 'fs'import _ from 'lodash-es'import w from 'wsemi'import WConverhpClient from './src/WConverhpClient.mjs'let ms = []let opt = {    url: 'http://localhost:8080',    apiName: 'api',    getToken: () => {        return 'token-for-test'    },}//newlet wo = new WConverhpClient(opt)wo.on('error', (err) => {    console.log(`error`, err)})function downloadLargeFile() {    let core = async() => {        await wo.download('id-for-file',            function ({ prog, p, m }) {                // console.log('client web: download: prog', prog, p, m)                if (m === 'download') {                    console.log('client web: download: prog', prog)                }            },            {                fdDownload: './', //於nodejs環境才能提供            })            .then(function(res) {                console.log('client web: download: then', res)                ms.push({ 'download output': res })            })            .catch(function (err) {                console.log('client web: download: catch', err)            })        console.log('ms', ms)    }    core()}downloadLargeFile()</code></pre>
 
 
 
@@ -317,7 +317,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入取得使用者token的回調函數，預設()=&gt;''</p></td>
+            <td class="description last"><p>輸入取得使用者token的回調函數，預設()=&gt;''。可回傳字串或promise；回undefined或null視為未帶token(送出空token，不送字面之undefined)。<strong>每一次請求嘗試各呼叫一次</strong>(含重試，故一次execute為1+retryMain次)，使重試帶當下之token；瀏覽器下載管理器路徑(downloadByManager=true)於取檔名之請求外，另於導覽至下載網址前再呼叫一次，故為(1+retryDownload)+1次(該次拋錯時download以錯誤拒絕並發一則error事件；此時伺服器已因取檔名之請求觸發過一次download事件而沒有下載發生)；快取與否由應用端自行決定</p></td>
         </tr>
 
     
@@ -397,7 +397,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024</p></td>
+            <td class="description last"><p>輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止。須為安全整數，Infinity與超出安全範圍者視為無效取預設</p></td>
         </tr>
 
     
@@ -437,7 +437,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入最長等待時間整數，單位ms，預設為5<em>60</em>1000、為5分鐘</p></td>
+            <td class="description last"><p>輸入最長等待時間整數，單位ms，預設為5<em>60</em>1000、為5分鐘。交予axios之timeout：於nodejs為socket閒置逾時（有資料往來即不計時），於瀏覽器為XHR之<strong>整個請求</strong>上限（含本體傳輸時間，故瀏覽器以blob模式下載或execute傳輸大檔時須依檔案大小與頻寬調大或給0）；0為不逾時；須為安全整數，Infinity與超出安全範圍者視為無效取預設；另受計時器上限2147483647約束，超過者亦取預設。不可用Infinity或超大數字表示不逾時(axios會於請求送出前即拋錯，超大數字則因計時器溢位而立即逾時)，不逾時請給0</p></td>
         </tr>
 
     
@@ -477,7 +477,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入主要控制器傳輸失敗重試次數整數，預設為3</p></td>
+            <td class="description last"><p>輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）</p></td>
         </tr>
 
     
@@ -517,7 +517,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入切片上傳檔案傳輸失敗重試次數整數，預設為10</p></td>
+            <td class="description last"><p>輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20</p></td>
         </tr>
 
     
@@ -557,7 +557,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入下載檔案傳輸失敗重試次數整數，預設為2</p></td>
+            <td class="description last"><p>輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20</p></td>
         </tr>
 
     
@@ -590,7 +590,7 @@
 
         
 <div class="param-desc">
-    <p>回傳事件物件，可使用函數execute、upload</p>
+    <p>回傳事件物件，可使用函數execute、upload、download，可監聽事件error。<strong>監聽器須為同步函數，不可為async函數、亦不可回傳promise</strong>：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。<strong>error事件之契約：每一次請求嘗試失敗恰發一則</strong>(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload)一則。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器</p>
 </div>
 
 
@@ -649,7 +649,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 23:05:45 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 12 2026 13:40:38 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

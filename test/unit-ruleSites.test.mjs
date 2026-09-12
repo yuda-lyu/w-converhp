@@ -19,9 +19,13 @@ import fs from 'fs'
  */
 describe('unit-ruleSites', function() {
 
-    //readCode, 讀原始碼並去除整行註解(避免註解內之範例字串被計入站點)
+    //readCode, 讀原始碼並去除**區塊註解(JSDoc)與整行註解**, 避免註解內之說明範例被計入站點
+    //why 第十一輪加剝區塊註解: 原本只剝行註解, 而 JSDoc 內與盤點正規式同形之表達式會被當成真站點。
+    //同一成因在本輪連中兩次 —— canonProtocolValue 之 JSDoc 使 R3 由 9 變 10、isValidFileSize 之 JSDoc 使 R1b 多一個 buf.length;
+    //併檔時尤其明顯(原檔不在掃描清單內故從未被計入)。第一次以改措辭治標, 再犯即改為治本: 先剝 /* */ 再剝行註解
     let readCode = (fp) => {
         return fs.readFileSync(fp, 'utf8')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
             .split('\n')
             .filter((line) => !/^\s*\/\//.test(line))
             .join('\n')
@@ -39,12 +43,26 @@ describe('unit-ruleSites', function() {
         mmg: readCode('src/managerMergeSlices.mjs'),
         csh: readCode('src/checkSlicesHash.mjs'),
         cth: readCode('src/checkTotalHash.mjs'),
-        buildDownloadSource: readCode('src/buildDownloadSource.mjs'),
-        readDownloadFields: readCode('src/readDownloadFields.mjs'),
-        encodeOut: readCode('src/encodeOut.mjs'),
-        isValidFileSize: readCode('src/isValidFileSize.mjs'),
-        responseU8aStream: readCode('src/responseU8aStream.mjs'),
-        responseU8aStreamWithError: readCode('src/responseU8aStreamWithError.mjs'),
+    }
+
+    //sect, 取 server 內某函式之區段(自其定義起至下一個頂層 function 定義前)
+    //why: 第十一輪把九個「只被 server 使用且無獨立單元測試」之模組併入 server(帳本 R20 之判準:
+    //唯有重要且需獨立測試之函數、或多檔共用之函數才獨立成檔)。原本以「檔」為錨之各條, 改以「函式區段」為錨 ——
+    //本檔各條規則約束的是**那一段邏輯**, 與它住在哪個檔無關; 錨點跟著搬即可, 不得因此放寬斷言
+    let sect = (fnName) => {
+        let i = src.server.indexOf(`function ${fnName}(`)
+        if (i < 0) {
+            return ''
+        }
+        let rest = src.server.slice(i)
+        let j = rest.slice(1).search(/\nfunction \w+\(/)
+        return j < 0 ? rest : rest.slice(0, j + 1)
+    }
+
+    //outside, 取 server 內扣除指定函式區段後之其餘部分(供「此邏輯不得出現於他處」之斷言)
+    let outside = (fnName) => {
+        let s = sect(fnName)
+        return s === '' ? src.server : src.server.split(s).join('')
     }
 
     //hint, 站點數變動時之處置指引(直接寫在斷言訊息裡, 使下一個人不必回頭翻文件)
@@ -53,50 +71,52 @@ describe('unit-ruleSites', function() {
     it('R1 應用端可控值之屬性讀取: handler 內不得再直接讀取應用端回傳物件之欄位', function() {
         //#32 之修正: 三個 download handler 之欄位擷取全部改走 readDownloadFields(其內以 attempt 逐欄收斂)
         //若此數不為 0, 代表有 handler 又開始直接讀 —— 那正是 #32 復發之形狀
-        let n = countAll(src.server, /get\(r, '/g)
+        //第十一輪: encodeOut 併入 server 後其內之 get(r, 'state') / get(r, 'msg') 會命中本樣式, 但那個 r 是**編碼器之回傳值**而非應用端物件,
+        //屬假陽性, 故扣除該函式區段; 本條要擋的是「路由層直接讀應用端交出之 r」
+        let n = countAll(outside('encodeOut'), /get\(r, '/g)
         assert.strict.deepEqual(n, 0, `R1a ${hint}`)
     })
 
-    it('R1 下載來源之觸碰(辨識/狀態/pipeline/具體化)須全部位於 buildDownloadSource 內', function() {
+    it('R1 下載來源之觸碰(辨識/狀態/pipeline/具體化)須全部位於 buildDownloadSource 之區段內', function() {
         let re = /streamRead instanceof|streamRead\.readableObjectMode|streamRead\.destroyed|streamRead\.readableEnded|Buffer\.isBuffer\(streamRead\)|buf\.length|stream\.pipeline\(streamRead/g
 
-        //server 內不得再有任何來源觸碰
-        assert.strict.deepEqual(countAll(src.server, re), 0, `R1b(server) ${hint}`)
+        //buildDownloadSource 以外(路由與其餘函式)不得再有任何來源觸碰
+        assert.strict.deepEqual(countAll(outside('buildDownloadSource'), re), 0, `R1b(buildDownloadSource 以外) ${hint}`)
 
         //buildDownloadSource 內共 9 個觸碰點
-        assert.strict.deepEqual(countAll(src.buildDownloadSource, re), 9, `R1b(buildDownloadSource) ${hint}`)
+        assert.strict.deepEqual(countAll(sect('buildDownloadSource'), re), 9, `R1b(buildDownloadSource) ${hint}`)
     })
 
     it('R1 每個觸碰階段皆須包在 attempt 內: buildDownloadSource 三段 + readDownloadFields 一段', function() {
         //三段分別為 identify streamRead / setup pipeline / materialize streamRead
-        assert.strict.deepEqual(countAll(src.buildDownloadSource, /attempt\(/g), 3, `R1c(buildDownloadSource) ${hint}`)
-        assert.strict.deepEqual(countAll(src.readDownloadFields, /attempt\(/g), 1, `R1c(readDownloadFields) ${hint}`)
+        assert.strict.deepEqual(countAll(sect('buildDownloadSource'), /attempt\(/g), 3, `R1c(buildDownloadSource) ${hint}`)
+        assert.strict.deepEqual(countAll(sect('readDownloadFields'), /attempt\(/g), 1, `R1c(readDownloadFields) ${hint}`)
 
         //三個階段名稱須存在, 使 error 事件之訊息可辨識是哪一階段失敗
         for (let stage of ['identify streamRead', 'setup pipeline', 'materialize streamRead']) {
-            assert.strict.deepEqual(src.buildDownloadSource.includes(stage), true, `缺少階段名稱[${stage}]`)
+            assert.strict.deepEqual(sect('buildDownloadSource').includes(stage), true, `缺少階段名稱[${stage}]`)
         }
     })
 
     it('R1 已套之清理站點: destroyStreamRead 與 hasPipe 之屬性讀取須在 try 內', function() {
-        let d = readCode('src/destroyStreamRead.mjs')
+        //兩者自第十一輪起併入其唯一呼叫者 WConverhpServer(帳本 R20);
+        //本條鎖的是「屬性讀取在 try 內」這件事, 與它住在哪個檔無關, 故錨點改取各自之函式區段
+        let d = sect('destroyStreamRead')
+        assert.strict.deepEqual(d !== '', true, 'server 內找不到 destroyStreamRead')
         assert.strict.deepEqual(d.indexOf('try') < d.indexOf('isfun(v.pipe)'), true, 'destroyStreamRead 之 try 須包住屬性讀取(第四輪 #31 之修正)')
 
-        let h = readCode('src/hasPipe.mjs')
+        let h = sect('hasPipe')
+        assert.strict.deepEqual(h !== '', true, 'server 內找不到 hasPipe')
         assert.strict.deepEqual(h.indexOf('try') < h.indexOf('isfun(v.pipe)'), true, 'hasPipe 之 try 須包住屬性讀取')
     })
 
-    it('R2 寫入回應標頭之站點須為 14(server 8 + responseU8aStream 5 + responseU8aStreamWithError 1)', function() {
+    it('R2 寫入回應標頭之站點須為 14(路由 8 + 併入之 responseU8aStream / WithError 共 6)', function() {
         let re = /\.header\('|\.type\(/g
-        let n = 0
-        for (let k of ['server', 'responseU8aStream', 'responseU8aStreamWithError']) {
-            n += countAll(src[k], re)
-        }
-        assert.strict.deepEqual(n, 14, `R2 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, re), 14, `R2 ${hint}`)
     })
 
     it('R2 Return-Msg 須經值域檢核: 訊息可回顯請求端可控字串, 不合法者須略過該標頭而非使回應失敗(#25)', function() {
-        let s = src.responseU8aStream
+        let s = sect('responseU8aStream')
         assert.strict.deepEqual(s.includes('isValidHeaderValue'), true, 'responseU8aStream 須以 isValidHeaderValue 檢核 Return-Msg')
         //檢核須與送出成對: 出現在同一個 if 條件內
         assert.strict.deepEqual(/isValidHeaderValue\('Return-Msg', returnMsg\)[\s\S]{0,80}Return-Msg/.test(s), true, '檢核須與 header 送出成對')
@@ -105,7 +125,7 @@ describe('unit-ruleSites', function() {
     it('R3 codec 呼叫: 總 9 站點, 嚴格 7, 寬鬆 2 —— 且兩個寬鬆者皆為刻意不套(本條缺口為 0)', function() {
         let re = /(obj2u8arr|u8arr2obj)\([^)]*\)/g
         let all = []
-        for (let k of ['server', 'client', 'mmg', 'encodeOut', 'responseU8aStreamWithError']) {
+        for (let k of ['server', 'client', 'mmg']) { //第十一輪: encodeOut 與 responsePacket 已併入 server
             for (let h of (src[k].match(re) || [])) {
                 all.push({ k, strict: h.includes('returnWithStateAndMsg') })
             }
@@ -113,7 +133,7 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(all.length, 9, `R3 總站點數 ${hint}`)
         assert.strict.deepEqual(all.filter((v) => v.strict).length, 7, `R3 嚴格站點數 ${hint}`)
 
-        //寬鬆之 2 個皆為刻意不套: /slc 之編碼(內容為套件自產字串)、responseU8aStreamWithError(最終退路, 其自身失敗無處可退)
+        //寬鬆之 2 個皆為刻意不套: /slc 之編碼(內容為套件自產字串)、responseU8aStreamWithError(最終退路, 其自身失敗無處可退; 第十一輪起併入 responseU8aStream 同檔)
         //#26 之 /main 請求解碼已於本輪改為嚴格
         let looseByFile = {}
         for (let v of all) {
@@ -121,7 +141,9 @@ describe('unit-ruleSites', function() {
                 looseByFile[v.k] = (looseByFile[v.k] || 0) + 1
             }
         }
-        assert.strict.deepEqual(looseByFile, { server: 1, responseU8aStreamWithError: 1 }, `R3 寬鬆站點之分佈 ${hint}`)
+        //第十一輪: responsePacket 併入 server, 故兩個寬鬆站點皆落在 server(/slc 之編碼、responseU8aStreamWithError 之最終退路)
+        assert.strict.deepEqual(looseByFile, { server: 2 }, `R3 寬鬆站點之分佈 ${hint}`)
+        assert.strict.deepEqual(countAll(sect('responseU8aStreamWithError'), /obj2u8arr\(out\)/g), 1, `R3 最終退路之寬鬆編碼須在 responseU8aStreamWithError 內 ${hint}`)
     })
 
     it('R4 數值述詞: 總 21 站點, 安全模式 11', function() {
@@ -130,7 +152,7 @@ describe('unit-ruleSites', function() {
         let re = /(isp0int|ispint)\([^)]*\)/g
         let n = 0
         let nSafe = 0
-        for (let k of ['server', 'client', 'csh', 'cth', 'isValidFileSize']) {
+        for (let k of ['server', 'client', 'csh', 'cth']) { //第十一輪: isValidFileSize 與 validDownloadField 皆已併入 server
             let hits = src[k].match(re) || []
             n += hits.length
             nSafe += hits.filter((v) => v.includes('optSafe') || v.includes('useLimitSafe')).length
@@ -144,11 +166,21 @@ describe('unit-ruleSites', function() {
         //字串未經 cint 會使長度正確之下載反被判為 fileSize mismatch
         //第十輪: 判定與正規化收歸 validDownloadField(判定本身會觸碰應用端值而須在 attempt 內, 見帳本 R1), 兩路由不再各自手寫
         //第十一輪: 呼叫者收斂為 readOutput 一處(擁有者鎖), 「哪些路由會驗 fileSize」改由 src/routeSpec.mjs 之 fields 表達(與 test/api-axes.mjs 對照, 見 unit-routeSpec); 行為面由 api-sourceTraps / api-downloadShape 逐路由驗
-        assert.strict.deepEqual(countAll(src.server, /validDownloadField\(/g), 1, `R4 validDownloadField 之呼叫者須恰為 readOutput 一處 ${hint}`)
+        //第十一輪: validDownloadField 併入 server, 故全檔為「定義 1 + 呼叫 1」共 2; 呼叫者仍須恰為 readOutput 一處
+        assert.strict.deepEqual(countAll(src.server, /validDownloadField\(/g), 2, `R4 validDownloadField 須為定義 1 + 呼叫 1 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /function validDownloadField\(/g), 1, `R4 validDownloadField 之定義須恰一處 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /vv = validDownloadField\(/g), 1, `R4 validDownloadField 之呼叫者須恰為 readOutput 一處 ${hint}`)
         assert.strict.deepEqual(countAll(readCode('src/routeSpec.mjs'), /\{ name: 'fileSize' \}/g), 2, `R4 /dwgf 與 /dw 之 fields 皆須含 fileSize ${hint}`)
-        assert.strict.deepEqual(countAll(src.server, /isValidFileSize\(/g), 0, `R4 server 不得再自行判定 fileSize(須經 validDownloadField) ${hint}`)
-        let v = readCode('src/validDownloadField.mjs')
-        assert.strict.deepEqual(countAll(v, /isValidFileSize\(v\)/g), 1, `R4 validDownloadField 須以 isValidFileSize 判定 ${hint}`)
+        //第十一輪: isValidFileSize 併入 server, 全檔為「定義 1 + validDownloadField 內之呼叫 1」共 2;
+        //本條要擋的是「路由層自行判定 fileSize」, 故扣除該兩個函式區段後須為 0(併入不得使本條放寬)
+        assert.strict.deepEqual(countAll(src.server, /isValidFileSize\(/g), 2, `R4 isValidFileSize 須為定義 1 + 呼叫 1 ${hint}`)
+        let restFs = src.server.split(sect('isValidFileSize')).join('').split(sect('validDownloadField')).join('')
+        assert.strict.deepEqual(countAll(restFs, /isValidFileSize\(/g), 0, `R4 路由層不得自行判定 fileSize(須經 validDownloadField) ${hint}`)
+        //第十一輪: isValidFileSize 與 validDownloadField 皆併入 server, 錨點改取函式區段; 定義與呼叫各鎖一次
+        let v = sect('validDownloadField') + sect('isValidFileSize')
+        assert.strict.deepEqual(countAll(v, /function isValidFileSize\(v\)/g), 1, `R4 validDownloadField 內須有 isValidFileSize 之唯一定義 ${hint}`)
+        assert.strict.deepEqual(countAll(v, /!isValidFileSize\(v\)/g), 1, `R4 validDownloadField 須以 isValidFileSize 判定 ${hint}`)
+        assert.strict.deepEqual(countAll(v, /isp0int\(v, \{ useLimitSafe: true \}\)/g), 1, `R4 isValidFileSize 須採 isp0int 之安全模式 ${hint}`)
         assert.strict.deepEqual(countAll(v, /value: cint\(v\)/g), 1, `R4 validDownloadField 須以 cint 正規化 ${hint}`)
     })
 
@@ -169,16 +201,11 @@ describe('unit-ruleSites', function() {
         //以 err.message / get(err,'message',err) / String(err) 組訊息, 即於 catch 內再拋 —— 保護層自身失效。
         //實測後果: verifyConn 為此形狀 → 裸 HTTP 500 + 0 則事件; 監聽器為此形狀 → 請求永久懸置。
         //分辨力見 test/api-hostileErrorValues.test.mjs(修正前 5 failing)
+        //第十一輪: attempt / buildDownloadSource / encodeOut / readDownloadFields / responsePacket 五者皆已併入 server(帳本 R20)
         let fps = [
             'src/WConverhpServer.mjs',
             'src/WConverhpClient.mjs',
             'src/managerMergeSlices.mjs',
-            'src/buildDownloadSource.mjs',
-            'src/attempt.mjs',
-            'src/encodeOut.mjs',
-            'src/readDownloadFields.mjs',
-            'src/responseU8aStream.mjs',
-            'src/responseU8aStreamWithError.mjs',
         ]
         //第十一輪: 錨點加入 res —— client 之 send 原以 get(res, 'stack') 兜底把整段本機 stack 當成呼叫端可見之錯誤值, 變數叫 res 而躲過本正規式(A 卷 §①-1.4)
         let reBad = /get\((err|e|res), '(message|stack)'|\b(err|e|res)\.(message|stack)\b|String\((err|e|res)\)/g
@@ -235,7 +262,7 @@ describe('unit-ruleSites', function() {
         //其三, callApp 之「無人接聽」—— 第九輪新增之站點
         //  pm.reject 為此處唯一「非做不可」之事; funError 會走到應用端之 error 監聽器, 其若拋錯而排在前面, 該次請求就永遠不會被 settle
         //  —— 那正是 callApp 存在所要防止的懸置(本模組初版即犯此錯, 由外部複審指出)
-        let ca = readCode('src/callApp.mjs')
+        let ca = sect('callApp') //第十一輪: callApp 併入 server(帳本 R20), 錨點改取函式區段
         let iReject = ca.indexOf('pm.reject(msg)')
         let iFunErr = ca.indexOf('funError(msg)')
         assert.strict.deepEqual(iReject > 0 && iFunErr > 0, true, '找不到 callApp 之兩個標記')

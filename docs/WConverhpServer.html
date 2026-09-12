@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -80,7 +80,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line192">line 192</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line802">line 802</a>
     </li></ul></dd>
     
 
@@ -127,7 +127,140 @@
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>import fs from 'fs'import _ from 'lodash-es'import w from 'wsemi'import WConverhpServer from './src/WConverhpServer.mjs'let ms = []let opt = {    port: 8080,    apiName: 'api',    pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist    verifyConn: async ({ apiType, authorization, query, headers, req }) => {        console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)        let token = w.strdelleft(authorization, 7) //刪除Bearer        if (!w.isestr(token)) {            return false        }        // await w.delay(3000)        return true    },}//newlet wo = new WConverhpServer(opt)wo.on('execute', (func, input, pm) => {    // console.log(`Server[port:${opt.port}]: execute`, func, input)    console.log(`Server[port:${opt.port}]: execute`, func)    try {        if (func === 'add') {            if (_.get(input, 'p.d.u8a', null)) {                console.log('input.p.d.u8a', input.p.d.u8a)                ms.push({ 'input.p.d.u8a': input.p.d.u8a })            }            let r = {                _add: input.p.a + input.p.b,                _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],                _bin: {                    name: 'zdata.b2',                    u8a: new Uint8Array([52, 66, 97, 115]),                },            }            pm.resolve(r)        }        else {            console.log('invalid func')            pm.reject('invalid func')        }    }    catch (err) {        console.log('execute error', err)        pm.reject('execute error')    }})wo.on('upload', (input, pm) => {    console.log(`Server[port:${opt.port}]: upload`, input)    try {        ms.push({ 'receive and return': input })        let output = input        pm.resolve(output)    }    catch (err) {        console.log('upload error', err)        pm.reject('upload error')    }})wo.on('download', (input, pm) => {    console.log(`Server[port:${opt.port}]: download`, input)    let streamRead = null    try {        ms.push({ 'download': input })        //fp        let fp = `./test/1mb.7z`        //check, 檔案存在才往下        //fileSize        let stats = fs.statSync(fp)        let fileSize = stats.size        //streamRead        streamRead = fs.createReadStream(fp)        //filename        let filename = `1mb中文.7z` //測試支援中文        //fileType        let fileType = 'application/x-7z-compressed'        //output        let output = {            streamRead,            filename,            fileSize,            fileType,        }        pm.resolve(output)    }    catch (err) {        console.log('download error', err)        // try {        //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy        // }        // catch (err) {}        pm.reject('download error')    }})wo.on('error', (err) => {    console.log(`Server[port:${opt.port}]: error`, err)})wo.on('handler', (data) => {    // console.log(`Server[port:${opt.port}]: handler`, data)})setTimeout(() => {    console.log('ms', ms)    // console.log('ms', JSON.stringify(ms))    wo.stop()}, 3000)</code></pre>
+    <pre class="prettyprint"><code>import fs from 'fs'
+import _ from 'lodash-es'
+import w from 'wsemi'
+import WConverhpServer from './src/WConverhpServer.mjs'
+
+let ms = []
+
+let opt = {
+    port: 8080,
+    apiName: 'api',
+    pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
+    sizeMsg: 100 * 1024 * 1024, //單次請求本體上限, 預設100mb, 適用於除切片(/slc)外之各API; 切片單次上限為sizeSlice, 大檔案總大小不受限, 請改用upload
+    verifyConn: async ({ apiType, authorization, query, headers, req }) => {
+        console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
+        let token = w.strdelleft(authorization, 7) //刪除Bearer
+        if (!w.isestr(token)) {
+            return false
+        }
+        // await w.delay(3000)
+        return true
+    },
+}
+
+//new
+let wo = new WConverhpServer(opt)
+
+wo.on('execute', (func, input, pm) => {
+    // console.log(`Server[port:${opt.port}]: execute`, func, input)
+    console.log(`Server[port:${opt.port}]: execute`, func)
+
+    try {
+
+        if (func === 'add') {
+
+            if (_.get(input, 'p.d.u8a', null)) {
+                console.log('input.p.d.u8a', input.p.d.u8a)
+                ms.push({ 'input.p.d.u8a': input.p.d.u8a })
+            }
+
+            let r = {
+                _add: input.p.a + input.p.b,
+                _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
+                _bin: {
+                    name: 'zdata.b2',
+                    u8a: new Uint8Array([52, 66, 97, 115]),
+                },
+            }
+
+            pm.resolve(r)
+
+        }
+        else {
+            console.log('invalid func')
+            pm.reject('invalid func')
+        }
+
+    }
+    catch (err) {
+        console.log('execute error', err)
+        pm.reject('execute error')
+    }
+
+})
+wo.on('upload', (input, pm) => {
+    console.log(`Server[port:${opt.port}]: upload`, input)
+
+    try {
+        ms.push({ 'receive and return': input })
+        let output = input
+        pm.resolve(output)
+    }
+    catch (err) {
+        console.log('upload error', err)
+        pm.reject('upload error')
+    }
+
+})
+wo.on('download', (input, pm) => {
+    console.log(`Server[port:${opt.port}]: download`, input)
+
+    let streamRead = null
+    try {
+        ms.push({ 'download': input })
+
+        //fp
+        let fp = `./test/1mb.7z`
+
+        //check, 檔案存在才往下
+
+        //fileSize
+        let stats = fs.statSync(fp)
+        let fileSize = stats.size
+
+        //streamRead
+        streamRead = fs.createReadStream(fp)
+
+        //filename
+        let filename = `1mb中文.7z` //測試支援中文
+
+        //fileType
+        let fileType = 'application/x-7z-compressed'
+
+        //output
+        let output = {
+            streamRead,
+            filename,
+            fileSize,
+            fileType,
+        }
+
+        pm.resolve(output)
+    }
+    catch (err) {
+        console.log('download error', err)
+        // try {
+        //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy
+        // }
+        // catch (err) {}
+        pm.reject('download error')
+    }
+
+})
+wo.on('error', (err) => {
+    console.log(`Server[port:${opt.port}]: error`, err)
+})
+wo.on('handler', (data) => {
+    // console.log(`Server[port:${opt.port}]: handler`, data)
+})
+
+setTimeout(() => {
+    console.log('ms', ms)
+    // console.log('ms', JSON.stringify(ms))
+    wo.stop()
+}, 3000)</code></pre>
 
 
 
@@ -257,7 +390,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入Hapi伺服器所在port正整數，預設8080</p></td>
+            <td class="description last"><p>輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設</p></td>
         </tr>
 
     
@@ -377,7 +510,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'</p></td>
+            <td class="description last"><p>輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'。資料夾內除切片與合併檔外另有狀態標記檔(<fileHash>.done為合併完成、<fileHash>.error為合併失敗、<fileHash>.q&lt;隊列&gt;.ro為該次上傳已由upload事件處理完成之結果)，為合併佇列之狀態載體，前端重送查詢時據以回傳相同結果而不重複觸發upload事件；上傳可能仍在進行時不得刪除，應用端可依修改時間清理確定已結束者</p></td>
         </tr>
 
     
@@ -497,7 +630,47 @@
                 </td>
             
 
-            <td class="description last"><p>輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024</p></td>
+            <td class="description last"><p>輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>sizeMsg</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Integer</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>100*1024*1024</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入單次請求本體大小上限整數，單位為Byte，預設為100<em>1024</em>1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發execute/upload/download事件(請求帶Content-Length者於進入路由前即被拒，亦不觸發verifyConn與handler事件；無Content-Length之chunked本體則須讀入後才能判定，故verifyConn與handler事件已觸發)；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload</p></td>
         </tr>
 
     
@@ -577,7 +750,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入允許跨域網域陣列，若給予['<em>']代表允許全部，預設['</em>']</p></td>
+            <td class="description last"><p>輸入允許跨域網域陣列，若給予['<em>']代表允許全部，預設['</em>']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名</p></td>
         </tr>
 
     
@@ -657,7 +830,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入外部提供Hapi伺服器物件，預設null</p></td>
+            <td class="description last"><p>輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效</p></td>
         </tr>
 
     
@@ -690,7 +863,7 @@
 
         
 <div class="param-desc">
-    <p>回傳事件物件，可監聽事件execute、upload、handler</p>
+    <p>回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；<strong>filename為用戶端所給之原值、未經淨化、不可信</strong>(可含路徑分隔符、<code>..</code>、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；<strong>filenameSafe</strong>為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。<strong>監聽器須為同步函數，不可為async函數、亦不可回傳promise</strong>：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為<code>wo.on('upload', (input, pm) =&gt; { doWork().then(pm.resolve, pm.reject) })</code>。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(<code>await wo.stop()</code>)，該promise恆resolve，停止失敗以error事件通知而不外拋。<strong>應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件</strong>(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知</p>
 </div>
 
 
@@ -749,7 +922,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 23:05:45 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 12 2026 13:40:38 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

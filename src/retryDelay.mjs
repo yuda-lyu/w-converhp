@@ -42,5 +42,11 @@ function retryDelay(n) {
 }
 
 
+//maxDelay / nToPeak / baseDelay / ratio 為本模組之**內部**校準常數, 一律不匯出
+//why: 呼叫端只需要「第 n 次要等多久」這一個答案, 給了常數反而多一條可被誤用的路(改了它不會改變曲線, 因為 ratio 已在載入時算好)。
+//三者原本只為了讓單元測試拿去斷言而匯出 —— 而 `retryDelay(1) === baseDelay` 這種寫法是拿實作比實作:
+//把 baseDelay 改成 5000、maxDelay 改成 999999, 測試照樣全綠(現狀指紋, 見 CLAUDE.md §15.2 與經驗 E20)。
+//已改為以規格字面值斷言(見 test/unit-retryDelay.test.mjs), 匯出面因而縮為單一函式, 檔名亦依帳本 R22 回到該識別字
+
+
 export default retryDelay
-export { maxDelay, nToPeak, baseDelay }

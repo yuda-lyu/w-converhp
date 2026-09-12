@@ -171,12 +171,23 @@ if (typeof globalThis.after === 'function') {
 }
 
 
-export {
+//r, 本檔對 e2e 測試提供之能力(各成員之用途)
+//  HOST             伺服器與頁面所用之主機位址(一律 127.0.0.1)
+//  projRoot         專案根目錄之絕對路徑, 供測試組出 test/pics 等資產路徑
+//  launchBrowser    取一個帶確定性渲染旗標之 chromium(每 case 各開一個)
+//  buildClientBundle 打包瀏覽器端 client 供頁面載入(首次呼叫才真的打包)
+//  writePage        寫出一個載入 client 之測試頁, 回傳其網址路徑
+//  startServer      起一個 WConverhpServer 並等其就緒
+//why cleanup 不在此列: 它是本檔於 globalThis.after 內自行註冊之收尾(見上方), 三個 e2e 檔皆未取用 ——
+//  匯出一個沒有外部使用者之成員, 只是讓讀者以為「我需要自己呼叫它」(帳本 R23)
+let r = {
     HOST,
     projRoot,
     launchBrowser,
     buildClientBundle,
     writePage,
     startServer,
-    cleanup
 }
+
+
+export default r

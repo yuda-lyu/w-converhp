@@ -2,7 +2,9 @@ import assert from 'assert'
 import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { allRoutes } from './api-axes.mjs'
+import axes from './api-axes.mjs'
+
+let { allRoutes } = axes
 
 
 /**

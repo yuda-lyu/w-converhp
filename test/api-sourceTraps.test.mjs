@@ -3,7 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRoutes, downloadRouteKeys, downloadRouteKeysByStage, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
+import axes from './api-axes.mjs'
+
+let { downloadRoutes, downloadRouteKeys, downloadRouteKeysByStage, downloadErrorStatus, fetchDownload } = axes
 
 
 /**

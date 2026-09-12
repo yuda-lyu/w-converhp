@@ -3,7 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import w from 'wsemi'
-import { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer } from './e2e-setup.mjs'
+import setup from './e2e-setup.mjs'
+
+let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer } = setup
 
 
 /**

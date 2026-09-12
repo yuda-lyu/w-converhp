@@ -4,8 +4,10 @@ import path from 'path'
 import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRouteKeysByBody, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import axes from './api-axes.mjs'
+
+let { downloadRouteKeysByBody, downloadErrorStatus, fetchDownload } = axes
 
 
 /**

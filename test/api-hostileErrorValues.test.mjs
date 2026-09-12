@@ -2,7 +2,9 @@ import assert from 'assert'
 import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRouteKeys, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
+import axes from './api-axes.mjs'
+
+let { downloadRouteKeys, downloadErrorStatus, fetchDownload } = axes
 
 
 /**

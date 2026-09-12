@@ -6,7 +6,9 @@ import Hapi from '@hapi/hapi'
 import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { fetchDownload } from './api-axes.mjs'
+import axes from './api-axes.mjs'
+
+let { fetchDownload } = axes
 
 
 /**

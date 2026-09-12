@@ -3,7 +3,9 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import { downloadRouteKeys, downloadErrorStatus, fetchDownload } from './api-axes.mjs'
+import axes from './api-axes.mjs'
+
+let { downloadRouteKeys, downloadErrorStatus, fetchDownload } = axes
 
 
 /**

@@ -385,6 +385,11 @@ let qGet = async(id, pathUploadTemp, opt = {}) => {
     }
 }
 
+//r, 本模組對路由層提供之兩個入口(皆由 WConverhpServer 之 /ulctr 使用)
+//  push(fileHash, chunkTotal, pathUploadTemp)  受理一次合併: 回傳 queueId; 合併於脫勾後進行, 本函數不等它完成
+//  get(id, pathUploadTemp, opt)                查詢該 queueId 之狀態並於就緒時消費: 回 { state, msg, path },
+//                                              state 為 success / merging / error, 判定順序見本檔開頭之狀態表
+//內部之 merging / consuming 兩個記憶體集合與各 fp* 路徑不匯出: 它們是狀態機之實作細節, 對外只有「推一件事」與「問它好了沒」兩個動作(帳本 R23)
 let r = {
     push: qPush,
     get: qGet,

@@ -24,7 +24,7 @@ import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 //downloadRoutes, 下載路由軸之成員全集
 //每個成員宣告其請求形狀、回應本體形式、會走到之來源階段、會讀取之應用端欄位 ——
 //「這個成員為何不適用某條測試」因此成為資料, 而非某個檔案裡的一句註解或一段空白
-export let downloadRoutes = {
+let downloadRoutes = {
 
     dw: {
         key: 'dw',
@@ -113,7 +113,7 @@ export let downloadRoutes = {
 let st200 = { permission: 200, param: 200, app: 200, output: 200, packet: 200 }
 let jsonInit = (body) => ({ method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' }, body })
 let octetInit = (body, extraHeaders = {}) => ({ method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/octet-stream', ...extraHeaders }, body })
-export let allRoutes = {
+let allRoutes = {
     main: {
         key: 'main',
         apiType: 'main',
@@ -186,7 +186,7 @@ export let allRoutes = {
 //downloadRouteKeys, 取下載路由軸之成員清單
 //excludes 之鍵為要排除之成員、值為排除理由; 理由不可省 —— 少測一個成員必須講得出為什麼,
 //且成員名打錯時直接拋錯(而非靜默少跑一輪)
-export let downloadRouteKeys = (excludes = {}) => {
+let downloadRouteKeys = (excludes = {}) => {
     let ks = Object.keys(downloadRoutes)
     let exKeys = Object.keys(excludes)
     for (let k of exKeys) {
@@ -204,21 +204,21 @@ export let downloadRouteKeys = (excludes = {}) => {
 
 //downloadRouteKeysRequiring, 取以指定欄位為必要之成員; excluded 為互補集
 //用於「缺某欄位即為形狀錯誤」這類測試 —— 哪些路由適用由軸上的 requiredFields 決定, 不由各檔手寫
-export let downloadRouteKeysRequiring = (field) => {
+let downloadRouteKeysRequiring = (field) => {
     return Object.keys(downloadRoutes).filter((k) => downloadRoutes[k].requiredFields.includes(field))
 }
 
 
 //downloadRouteKeysNotRequiring, 取不以指定欄位為必要之成員
 //與 downloadRouteKeysRequiring 成對, 使「另一半成員的應然」也有地方可斷言, 而不是留白
-export let downloadRouteKeysNotRequiring = (field) => {
+let downloadRouteKeysNotRequiring = (field) => {
     return Object.keys(downloadRoutes).filter((k) => !downloadRoutes[k].requiredFields.includes(field))
 }
 
 
 //downloadRouteKeysByBody, 取回應本體形式為指定值之成員
 //stream 為交付檔案本體者(受 Content-Length 與串流形狀之契約約束), json 為只回封包者
-export let downloadRouteKeysByBody = (body) => {
+let downloadRouteKeysByBody = (body) => {
     let ks = Object.keys(downloadRoutes).filter((k) => downloadRoutes[k].body === body)
     if (ks.length === 0) {
         throw new Error(`downloadRouteKeysByBody: 無任何路由之本體形式為[${body}]`)
@@ -229,7 +229,7 @@ export let downloadRouteKeysByBody = (body) => {
 
 //downloadRouteKeysByStage, 取會走到指定來源階段之成員
 //用於只對「真的會走到該階段」的路由列舉(如 pipeline 建立階段對 /dwgfn 不成立)
-export let downloadRouteKeysByStage = (stage) => {
+let downloadRouteKeysByStage = (stage) => {
     let ks = Object.keys(downloadRoutes).filter((k) => downloadRoutes[k].stages.includes(stage))
     if (ks.length === 0) {
         throw new Error(`downloadRouteKeysByStage: 無任何路由走到階段[${stage}]`)
@@ -241,7 +241,7 @@ export let downloadRouteKeysByStage = (stage) => {
 //downloadErrorStatus, 取某下載路由於某種錯誤之 HTTP 狀態碼
 //kind: permission(verifyConn 未通過)、param(請求參數錯誤, 可證明不需重試)、app(應用端拒絕或無監聽器)、output(應用端交出之內容不合契約)
 //why 寫成軸上的資料: 三路由對錯誤狀態碼之差異是契約(見 errorStatus 之註解), 不是某個測試檔之例外; 各檔取自此處而不各自手寫 200 或 404
-export let downloadErrorStatus = (route, kind) => {
+let downloadErrorStatus = (route, kind) => {
     let df = downloadRoutes[route]
     if (!df) {
         throw new Error(`downloadErrorStatus: [${route}]不是下載路由軸之成員`)
@@ -256,7 +256,7 @@ export let downloadErrorStatus = (route, kind) => {
 //fetchDownload, 打某下載路由並取回應之標頭與本體
 //原本五個測試檔各自手寫一份請求組裝與回應拆解, 差異(有無 Accept-Encoding、有無逾時、text 之長度上限)
 //是各檔需求不同而非路由不同, 故收斂為同一個函數加選項
-export let fetchDownload = async(port, route, fileId, opt = {}) => {
+let fetchDownload = async(port, route, fileId, opt = {}) => {
 
     let df = downloadRoutes[route]
     if (!df) {
@@ -328,3 +328,28 @@ export let fetchDownload = async(port, route, fileId, opt = {}) => {
     }
 
 }
+
+
+//r, 本檔對測試提供之軸與工具(各成員之用途; 全部皆有實際取用者, 見帳本 R23)
+//  downloadRoutes                 下載三路由之成員全集與其請求形狀、欄位順序、錯誤狀態碼
+//  allRoutes                      六路由之成員全集(含 apiType、handler 之 api、authorization 來源、可否解析之本體)
+//  downloadRouteKeys(excludes)    取下載路由之成員清單; 少測一個須以理由排除
+//  downloadRouteKeysRequiring     取以某欄位為必要之成員; NotRequiring 為其互補集
+//  downloadRouteKeysByBody        依回應本體形式取成員(stream 或 json)
+//  downloadRouteKeysByStage       依會走到之下載來源階段取成員
+//  downloadErrorStatus(route,kind) 取某路由於某種錯誤之 HTTP 狀態碼
+//  fetchDownload(port,route,...)  依軸上之請求形狀打該路由並取回標頭與本體
+let r = {
+    downloadRoutes,
+    allRoutes,
+    downloadRouteKeys,
+    downloadRouteKeysRequiring,
+    downloadRouteKeysNotRequiring,
+    downloadRouteKeysByBody,
+    downloadRouteKeysByStage,
+    downloadErrorStatus,
+    fetchDownload,
+}
+
+
+export default r

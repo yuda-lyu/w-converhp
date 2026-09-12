@@ -1,14 +1,9 @@
 import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
-import {
-    downloadRoutes,
-    downloadRouteKeys,
-    downloadRouteKeysByBody,
-    downloadRouteKeysByStage,
-    downloadRouteKeysRequiring,
-    downloadRouteKeysNotRequiring
-} from './api-axes.mjs'
+import axes from './api-axes.mjs'
+
+let { downloadRoutes, downloadRouteKeys, downloadRouteKeysByBody, downloadRouteKeysByStage, downloadRouteKeysRequiring, downloadRouteKeysNotRequiring } = axes
 
 
 /**

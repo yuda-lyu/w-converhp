@@ -1,6 +1,7 @@
 import path from 'path'
 import fs from 'fs'
 import stream from 'stream'
+import { validateHeaderValue } from 'http'
 import Hapi from '@hapi/hapi'
 import Inert from '@hapi/inert' //提供靜態檔案
 import get from 'lodash-es/get.js'
@@ -11,6 +12,7 @@ import evEmitDelayBase from 'wsemi/src/evEmitDelay.mjs'
 import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
+import isstr from 'wsemi/src/isstr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
@@ -29,20 +31,611 @@ import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import isSafeId from './isSafeId.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import routeSpec from './routeSpec.mjs'
-import callApp from './callApp.mjs'
-import destroyStreamRead from './destroyStreamRead.mjs'
-import readDownloadFields from './readDownloadFields.mjs'
-import validDownloadField from './validDownloadField.mjs'
-import encodeOut from './encodeOut.mjs'
-import buildDownloadSource from './buildDownloadSource.mjs'
-import responseU8aStream from './responseU8aStream.mjs'
-import responseU8aStreamWithError from './responseU8aStreamWithError.mjs'
 import encodeRfc5987 from './encodeRfc5987.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
 // import checkSlicesHash from './checkSlicesHash.mjs'
 import checkSlicesHash from './checkSlicesHash.wk.umd.js'
+
+
+//=== 本檔專用之內部函式 =========================================================================
+//以下九者原各自為一個單檔, 第十一輪依帳本 R20 併入: 判準為「唯有**重要且需獨立測試**之函數(如 managerMergeSlices),
+//或**多檔共用**之函數, 才獨立成檔」。九者皆只被本檔使用、且皆無獨立單元測試, 故不具獨立成檔之理由。
+//排列依相依順序: attempt → isValidHeaderValue → hasPipe → buildDownloadSource → readDownloadFields
+//  → validDownloadField → destroyStreamRead → encodeOut → responseU8aStream / WithError → callApp
+//仍獨立成檔者: isSafeId(三檔共用)、sanitizeFilename(兩檔共用 + 有單元測試)、encodeRfc5987 / routeSpec(有單元測試)、
+//  managerMergeSlices(重要 + 有單元測試)、三個 worker(建置輸入)
+
+
+/**
+ * 觸碰應用端可控值之唯一入口
+ *
+ * 應用端可用會拋錯之getter或Proxy包裝其交給套件之值(觀測、記錄之常見手法), 而任何屬性讀取都可能拋錯:
+ *   instanceof 會觸發 Proxy 之 getPrototypeOf trap;
+ *   typed array 之 .length 對 Proxy receiver 會拋 Method get TypedArray.prototype.length called on incompatible receiver;
+ *   stream.pipeline 建立時會讀來源之 pipe 等方法。
+ * 這些例外若逸出 handler, hapi 只能回裸 HTTP 500, 且套件不發任何 error 事件, 應用端無從得知是自己給錯值。
+ *
+ * 本原語把每一次觸碰收斂為 tagged result, 使「公開訊息穩定、內部真因不丟」兩者兼得:
+ *   成功回 { ok: true, value };失敗回 { ok: false, stage, cause }
+ * stage 供組錯誤訊息, cause 為原始例外訊息 —— 公開訊息維持既有字面(invalid streamRead 等), 真因只進 error 事件供診斷
+ *
+ * 取因用 wsemi 之 getErrorMessage 而非 String(err): 後者對 toString 會拋錯之物件、對 null 與 undefined 皆拋錯,
+ * 會使 catch 區塊自身拋出而讓例外仍逸出、外層 try 形同虛設。getErrorMessage 以候選階梯取值且整體包 try,
+ * 契約上於任何輸入下皆不拋錯且回傳必為字串(wsemi 1.8.90 實測 25 種惡意輸入: 0 拋錯、0 非字串),
+ * 但其取不到內容時回空字串(如 new Error()、已撤銷之 Proxy), 故此處另補非空退路
+ *
+ * @param {String} stage 輸入本次觸碰之階段名稱字串, 供錯誤訊息辨識
+ * @param {Function} fn 輸入實際執行觸碰之函數
+ * @returns {Object} 回傳 { ok: true, value } 或 { ok: false, stage, cause }
+ */
+function attempt(stage, fn) {
+    try {
+        return { ok: true, value: fn() }
+    }
+    catch (err) {
+        let cause = getErrorMessage(err)
+        return { ok: false, stage, cause: isestr(cause) ? cause : 'unknown error' }
+    }
+}
+
+
+/**
+ * 檢核值是否可作為HTTP回應標頭之值
+ *
+ * 以node之低階標頭驗證(同setHeader之判定, 禁CR/LF與其他控制字元、禁超出latin1範圍者)檢核應用端或請求端可控之標頭值
+ *
+ * why: 原只以isestr檢核, 含CR/LF或非latin1字元者交給hapi設定標頭時拋錯而回裸HTTP 500,
+ * 非套件之錯誤封包, 前端無法解析且伺服器不發error事件
+ *
+ * @param {String} name 輸入標頭名稱字串
+ * @param {*} value 輸入待檢核之標頭值
+ * @returns {Boolean} 回傳是否為合法標頭值
+ */
+function isValidHeaderValue(name, value) {
+    try {
+        validateHeaderValue(name, value)
+        return true
+    }
+    catch (err) {
+        return false
+    }
+}
+
+
+/**
+ * 安全判定值是否像串流(有可呼叫之pipe)
+ *
+ * 回三態, 不回布林二態:
+ *   true  確定像串流
+ *   false 確定不像串流
+ *   null  判定失敗(pipe為會拋錯之getter或Proxy trap) —— 其值本就不可用, 由呼叫端收斂為錯誤封包
+ *
+ * why 須區分 false 與 null: 「確定不是串流」者(如plain object)可走具體化路徑,
+ * 而「讀不到」者不可當成「不是串流」而繼續處理, 否則後續之JSON.stringify等操作會再次觸發同一個拋錯getter
+ *
+ * why try 須包住屬性讀取本身: 應用端物件之 pipe 可為會拋錯之 getter 或 Proxy trap(帳本 R1)
+ *
+ * @param {*} v 輸入任意值
+ * @returns {Boolean|null} 回傳三態判定
+ */
+function hasPipe(v) {
+    try {
+        return isfun(v.pipe)
+    }
+    catch (err) {
+        return null
+    }
+}
+
+
+/**
+ * 將應用端交出之streamRead收斂為可交給hapi之回應本體, 並保證實送位元組數與fileSize一致
+ *
+ * why: 伺服器以fileSize寫Content-Length, 應用端給錯時hapi與node皆不會替套件擋:
+ *   缺streamRead、非串流物件 → 本體不完整而連線懸置至前端閒置逾時(預設5分鐘, 再乘retryDownload); 宣告大於實送 → 同樣懸置;
+ *   宣告小於實送 → 回200且前端存下被截斷之檔案並判成功(靜默毀損); stream-like、objectMode → hapi拒收回裸500且來源未被銷毀;
+ *   已destroy之串流(如瀏覽器兩階段下載重用同一串流) → 懸置
+ *
+ * 作法: 可事前具體化者(Buffer、Uint8Array、字串、數值、布林、可JSON化物件, 皆為hapi現已接受之本體型別, 維持相容)先算實際長度,
+ * 不符即回錯誤封包(標頭尚未送出);
+ * 真串流則以計數串流(pipeline接於其後)包住: 超量立即以錯誤終止, 來源正常結束但不足則於flush產生錯誤 ——
+ * 兩者皆令hapi中止回應(res.destroy), 前端收到不完整而失敗, 不會把壞檔當成功;
+ * 來源自身出錯者沿用其錯誤不另報; pipeline亦使hapi於前端中斷時銷毀計數串流後連帶銷毀來源(維持原有收尾)
+ *
+ * 不採instanceof Readable之白名單: 會擋掉目前可正常下載之Buffer與plain object用法
+ *
+ * 四個階段(辨識 / 狀態讀取 / 建立pipeline / 具體化)全部經attempt: 應用端可用Proxy或拋錯之getter包裝其值,
+ * 任一階段之屬性讀取皆可能拋錯而逸出成裸HTTP 500(見attempt之說明)
+ *
+ * 取捨(須知): 可事前具體化者由本函數以JSON.stringify產生bytes後交hapi, 故該route之json政策(replacer/space/suffix/escape)不套用於下載本體.
+ * 代價是外部serverHapi若設有json.replacer(如移除敏感欄位), 對download本體不生效; 換得的是本體長度可於送標頭前確知並與fileSize比對.
+ * 應用端若需套用自訂序列化政策, 應自行序列化後以字串或Buffer交出
+ *
+ * @param {*} streamRead 輸入應用端交出之本體來源
+ * @param {Number} fileSize 輸入應用端宣告之位元組數(已經呼叫端以isValidFileSize檢核並以cint正規化)
+ * @param {Function} funError 輸入長度不符時之回報函數, 參數為原因字串
+ * @param {Object} [opt={}] 輸入設定物件, 預設{}
+ * @param {Boolean} [opt.forHead=false] 輸入本次是否為HEAD請求布林值, 預設false。HEAD不送本體故不建計數串流, 直接交來源供hapi收尾
+ * @returns {Object} 回傳 { source } 或 { error, reason };error為回前端之公開訊息, reason供error事件
+ */
+function buildDownloadSource(streamRead, fileSize, funError, opt = {}) {
+
+    //forHead
+    let forHead = get(opt, 'forHead', false) === true
+
+    //check
+    if (streamRead === undefined || streamRead === null) {
+        return { error: 'invalid streamRead', reason: 'streamRead is null or undefined' }
+    }
+
+    //階段1 辨識, 階段2 狀態讀取: instanceof會觸發Proxy之getPrototypeOf trap, 三個狀態屬性亦可為會拋錯之getter, 故一併納入attempt
+    let ri = attempt('identify streamRead', () => {
+        if (!(streamRead instanceof stream.Readable)) {
+            return { isReadable: false }
+        }
+        return {
+            isReadable: true,
+            objectMode: streamRead.readableObjectMode === true,
+            done: streamRead.destroyed === true || streamRead.readableEnded === true,
+        }
+    })
+    if (!ri.ok) {
+        return { error: 'invalid streamRead', reason: `${ri.stage} failed: ${ri.cause}` }
+    }
+
+    //stream
+    if (ri.value.isReadable) {
+
+        //check
+        if (ri.value.objectMode) {
+            return { error: 'invalid streamRead', reason: 'streamRead is in object mode' }
+        }
+        if (ri.value.done) {
+            return { error: 'invalid streamRead', reason: 'streamRead is already destroyed or ended (each download event must provide a new stream)' }
+        }
+
+        //check, HEAD不建pipeline, 直接交來源供hapi收尾
+        if (forHead) {
+            return { source: streamRead }
+        }
+
+        //階段3 建立pipeline: 其內部會讀來源之pipe等方法, Proxy可於此拋錯
+        let rp = attempt('setup pipeline', () => {
+
+            //counter, 計數並於不符時以錯誤終止
+            let n = 0
+            let bMismatch = false
+            let counter = new stream.Transform({
+                transform(chunk, encoding, cb) {
+                    n += chunk.length
+                    if (n > fileSize) {
+                        bMismatch = true
+                        cb(new Error(`streamRead sent more than fileSize[${fileSize}] bytes`))
+                        return
+                    }
+                    cb(null, chunk)
+                },
+                flush(cb) {
+                    if (n !== fileSize) {
+                        bMismatch = true
+                        cb(new Error(`streamRead ended at ${n} bytes but fileSize is ${fileSize}`))
+                        return
+                    }
+                    cb()
+                },
+            })
+
+            //pipeline, 任一方出錯或提前關閉皆銷毀雙方; 長度不符者另以error事件通知應用端, 來源自身出錯或前端中斷則不另報
+            stream.pipeline(streamRead, counter, (err) => {
+                if (err && bMismatch) {
+                    funError(getErrorMessage(err))
+                }
+            })
+
+            return counter
+        })
+        if (!rp.ok) {
+            return { error: 'invalid streamRead', reason: `${rp.stage} failed: ${rp.cause}` }
+        }
+
+        return { source: rp.value }
+    }
+
+    //階段4 具體化: Buffer.isBuffer與instanceof皆可觸發Proxy trap, typed array之.length對Proxy receiver亦會拋
+    //(實測 Method get TypedArray.prototype.length called on incompatible receiver), 故整段納入attempt
+    let rm = attempt('materialize streamRead', () => {
+        if (Buffer.isBuffer(streamRead)) {
+            return { buf: streamRead }
+        }
+        if (streamRead instanceof Uint8Array) {
+            return { buf: Buffer.from(streamRead) }
+        }
+        if (isstr(streamRead)) {
+            return { buf: Buffer.from(streamRead, 'utf8') }
+        }
+
+        //number與object刻意不用wsemi之isnum與isobj(實測差異):
+        //  isnum 收數字字串('42'為true)而拒NaN —— 本處需要的是「primitive number」之型別分派, 收字串會使字串走進數值分支
+        //  isobj 拒陣列、Buffer、Uint8Array、Date —— 而陣列([1,2,3]得'[1,2,3]')為目前可正常下載且有測試鎖住之用法
+        //字串與布林則已驗證與typeof完全一致, 故改用isstr與isbol
+        if (typeof streamRead === 'number' || isbol(streamRead) || (typeof streamRead === 'object' && hasPipe(streamRead) === false)) {
+            //number與boolean為hapi原生即接受之本體型別(其marshal以JSON序列化, 如42得'42'), 須維持相容;
+            //物件則須先確認不像串流(hasPipe回false), 回null者代表其pipe為會拋錯之getter, 落到下方之不支援分支
+            let s = null
+            try {
+                s = JSON.stringify(streamRead)
+            }
+            catch (err) {
+                return { unserializable: getErrorMessage(err) } //取不到內容時回空字串, 下方以 isestr 分流故無須另補退路
+            }
+            if (typeof s !== 'string') {
+                return { unserializable: '' }
+            }
+            return { buf: Buffer.from(s, 'utf8') }
+        }
+        return { unsupported: true }
+    })
+    if (!rm.ok) {
+        return { error: 'invalid streamRead', reason: `${rm.stage} failed: ${rm.cause}` }
+    }
+    if (haskey(rm.value, 'unserializable')) {
+        let d = rm.value.unserializable
+        return { error: 'invalid streamRead', reason: isestr(d) ? `streamRead can not be serialized: ${d}` : 'streamRead can not be serialized' }
+    }
+    if (rm.value.unsupported === true) {
+        return { error: 'invalid streamRead', reason: 'streamRead must be a readable stream, buffer, string, number, boolean or plain object' }
+    }
+
+    //check, buf為套件自建或已確認之Buffer, 此處讀length為套件自有值
+    let buf = rm.value.buf
+    if (buf.length !== fileSize) {
+        return { error: 'fileSize mismatch', reason: `streamRead has ${buf.length} bytes but fileSize is ${fileSize}` }
+    }
+
+    return { source: buf }
+}
+
+
+/**
+ * 讀取應用端download事件回傳物件之欄位
+ *
+ * 逐欄各自以attempt收斂, 使某欄之getter拋錯不影響不需該欄之路由:
+ *   /dwgfn 只需 streamRead 與 filename, 若一併讀 fileSize 而其getter拋錯, 該路由會由成功變失敗(行為改變)
+ *
+ * 失敗時**一併回傳已成功讀到之欄位**(fields), 使呼叫端能清理已取得之資源
+ *
+ * why: streamRead 一律排在 keys 之首, 故凡後續欄位之 getter 拋錯者, 該串流**已經在套件手上**。
+ * 原本只回 { ok:false, field, cause } 而不回 fields, 路由層遂無從清理 —— 應用端交出之串流(常為 fs.createReadStream)
+ * 就此失去引用且未被 destroy, 其 fd 持續開啟。實測(tmp/probe_r9_rest.mjs 第1節): 四欄之中後三欄拋錯時
+ * 串流皆為 destroyed=false。三條下載路由原有之註解「讀取失敗時尚未取得串流引用, 無從清理」僅對「首欄即拋錯」成立
+ *
+ * @param {Object} r 輸入應用端download事件所resolve之物件
+ * @param {Array} keys 輸入本次需要之欄位名稱陣列
+ * @returns {Object} 回傳 { ok: true, fields } 或 { ok: false, field, cause, fields };後者之 fields 為失敗前已讀到者
+ */
+function readDownloadFields(r, keys) {
+    let fields = {}
+    for (let k of keys) {
+        let a = attempt(`read field[${k}]`, () => {
+            return get(r, k)
+        })
+        if (!a.ok) {
+            return { ok: false, field: k, cause: a.cause, fields } //fields為已成功讀到者, 供呼叫端清理
+        }
+        fields[k] = a.value
+    }
+    return { ok: true, fields }
+}
+
+
+/**
+ * 檢核應用端給之fileSize是否可用
+ *
+ * fileSize有兩個用途, 兩者決定了值域:
+ *   1. 原樣(經cint正規化後)寫入Content-Length —— HTTP之訊息分框依據
+ *   2. 與實際位元組數比較(可事前具體化者比 buf.length, 串流則於計數之flush比) —— 故比較前須先以cint轉為數值
+ *
+ * why 須為安全整數: 原以lodash isNumber檢核, 其對NaN、Infinity、負數、小數皆回true, 此類值交給node寫標頭即拋錯,
+ * hapi於送標頭階段失敗只能直接斷線, 前端連回應標頭都收不到而伺服器亦不發error事件;
+ * 另超出安全整數者(如Number.MAX_SAFE_INTEGER+1或1e21)雖為整數, 但其字串形式帶指數記號(如'1e+21'),
+ * 不合Content-Length之1*DIGIT語法, 實測同樣是連線懸置且無回應標頭
+ *
+ * 採wsemi之isp0int搭配useLimitSafe, 故數字字串(如'1058915')亦視為有效, 呼叫端須以cint正規化後才可用於比較與寫標頭(帳本R4b)
+ *
+ * @param {*} v 輸入任意值
+ * @returns {Boolean} 回傳是否為可用之fileSize
+ */
+function isValidFileSize(v) {
+    return isp0int(v, { useLimitSafe: true })
+}
+
+
+//toWellFormed, 以 U+FFFD 取代孤立代理對
+let toWellFormed = (s) => {
+    if (typeof s.toWellFormed === 'function') {
+        return s.toWellFormed()
+    }
+    return s.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '�')
+}
+
+
+/**
+ * 判定並正規化應用端 download 事件回傳之單一欄位(filename、fileSize、fileType)
+ *
+ * why 判定本身須在 attempt 內: 欄位之**擷取**已由 readDownloadFields 收進 attempt, 而擷取到的值之**型別判定**原本在其外 ——
+ * wsemi 之 isestr / isValidFileSize 皆經 Object.prototype.toString.call, 會觸發值之 Symbol.toStringTag getter;
+ * 該 getter 拋錯時三條下載路由皆回裸 HTTP 500 且 0 則事件, /dw 之應用端串流且未被銷毀(實測第十輪 A5, 7 格)。與帳本 R1 之 #32 同型。
+ *
+ * why 須正規化為字串基本型: 通過 isestr 之物件(帶 Symbol.toStringTag='String')其 toString 可拋錯, 原本 /dwgfn 有 attempt + cstr 而 /dw、/dwgf 無 ——
+ * 同一個 filename 於 /dwgfn 回錯誤 + 1 則事件, 於另兩路由靜默送出空檔名(實測第十輪 A6)。收斂於此, 三路由同一判定。
+ *
+ * why filename 須取代孤立代理對: /dw 以 wsemi 之 str2b64 編碼, 其寬鬆模式吞掉 URIError 而回空字串, 檔名整個消失;
+ * /dwgf 之 encodeRfc5987 則以 U+FFFD 取代(實測第十輪 A7)。正規化於此, 兩種編碼器得到同一個檔名。
+ *
+ * @param {String} name 輸入欄位名稱, 為 'filename'、'fileSize' 或 'fileType'
+ * @param {*} v 輸入應用端交出之欄位值
+ * @returns {Object} 回傳 { ok, value, cause }: ok 為是否可用; value 為正規化後之值(fileSize 為數值, 其餘為字串基本型); cause 為判定時拋出之原因(未拋錯者為空字串)
+ */
+function validDownloadField(name, v) {
+    let a = attempt(`check field[${name}]`, () => {
+        if (name === 'fileSize') {
+            if (!isValidFileSize(v)) {
+                return { ok: false }
+            }
+            return { ok: true, value: cint(v) } //isValidFileSize 亦接受數字字串, 須正規化為數值後才可寫 Content-Length 並與實送位元組數以 === 比較
+        }
+        if (name === 'filename' || name === 'fileType') {
+            if (!isestr(v)) {
+                return { ok: false }
+            }
+            let s = cstr(v) //toString 拋錯者 cstr 回空字串
+            if (!isestr(s)) {
+                return { ok: false }
+            }
+            if (name === 'fileType') {
+                if (!isValidHeaderValue('Content-Type', s)) {
+                    return { ok: false }
+                }
+                return { ok: true, value: s }
+            }
+            return { ok: true, value: toWellFormed(s) }
+        }
+        throw new Error(`unknown field[${name}]`)
+    })
+    if (!a.ok) {
+        return { ok: false, value: undefined, cause: a.cause }
+    }
+    return { ok: a.value.ok, value: a.value.value, cause: '' }
+}
+
+
+/**
+ * 清理應用端交出之串流
+ *
+ * 只對「像串流(有pipe)且可destroy」者呼叫, 不對任意值(Buffer、字串、數值、plain object)盲呼叫destroy
+ *
+ * why try須包住屬性讀取本身而非只包v.destroy(): 應用端物件之pipe/destroy可能是會拋錯之getter或Proxy trap,
+ * 只包v.destroy()時該例外會逸出handler, hapi只能回裸HTTP 500且伺服器不發error事件 —— 與本函數要收斂之情形同型
+ *
+ * 本函數不回報成敗: 清理為盡力而為, 失敗不應改變呼叫端之錯誤處置流程
+ *
+ * @param {*} v 輸入應用端交出之值
+ */
+function destroyStreamRead(v) {
+    try {
+        if (v && isfun(v.pipe) && isfun(v.destroy)) {
+            v.destroy()
+        }
+    }
+    catch (err) {}
+}
+
+
+/**
+ * 正規化協定鍵之值, 使該鍵不可能於序列化時消失
+ *
+ * why: JSON對值為undefined、function、symbol之鍵是「靜默丟棄整個鍵」而非拋錯
+ * (見wsemi之obj2stru8arr檔頭所列失真集合), 故以編碼器對 { success: undefined } 編碼會回 state 為 success
+ * 但解回 {} —— 連success鍵都不存在。前端只能以無意義之'data does not contain success or error'拒絕,
+ * 而伺服器亦不發任何error事件, 應用端無從得知
+ *
+ * 於包入協定外殼前先把這三種值轉為null(與procApp對output已有之處置一致), 協定鍵遂於結構上不可能消失,
+ * 不需encode後再decode回來檢查(大輸出之代價加倍)
+ *
+ * @param {*} v 輸入協定鍵之值
+ * @returns {*} 回傳可安全序列化之值
+ */
+function canonProtocolValue(v) {
+    if (v === undefined || isfun(v) || typeof v === 'symbol') {
+        return null
+    }
+    return v
+}
+
+
+/**
+ * 序列化回應封包之唯一出口
+ *
+ * 兩道保護:
+ *   1. 協定鍵之值先經canonProtocolValue正規化, 使該鍵於結構上不可能因JSON之靜默失真而消失
+ *   2. 以wsemi之嚴格模式取狀態, 值無法序列化者(如含BigInt、循環參照)回null並呼叫funError
+ *
+ * why 不用「encode後再decode回來檢查協定鍵」: 該作法對大輸出之代價加倍, 而第1點已於結構上保證
+ *
+ * @param {Object} out 輸入待序列化之封包物件, 其鍵為協定鍵(success或error)
+ * @param {Function} funError 輸入序列化失敗時之回報函數, 參數為原因字串
+ * @returns {Uint8Array|null} 回傳序列化結果; 失敗時回null(已呼叫funError)
+ */
+function encodeOut(out, funError) {
+
+    //canon, 協定鍵之值先正規化, 使其不因JSON之靜默失真而消失
+    let o = {}
+    for (let k of Object.keys(out)) {
+        o[k] = canonProtocolValue(out[k])
+    }
+
+    let r = obj2u8arr(o, { returnWithStateAndMsg: true })
+    if (get(r, 'state') !== 'success') {
+        funError(get(r, 'msg', 'unknown error'))
+        return null
+    }
+
+    return r.msg
+}
+
+
+/**
+ * 以octet-stream回應二進位封包, 並附上本套件之回應協定標頭
+ *
+ * 本套件之回應協定有兩層: 本體(obj2u8arr之success/error)與標頭(Return-Type、Return-Msg、Return-Retryable、Content-Disposition)。
+ * 下載路徑(client之downloadStream)只讀標頭不解析本體, 故標頭是協定的一部分而非附屬資訊
+ *
+ * Return-Msg之值域檢核(見isValidHeaderValue):
+ * 錯誤訊息可能回顯請求端可控之字串(如 invalid mode[<mode>] in payload), 該值若含CR/LF或超出latin1範圍(如中文),
+ * node於寫標頭時拋錯而hapi只能回裸HTTP 500 —— 非本套件之錯誤封包, 前端無法解析且伺服器不發error事件。
+ * 故不合法者**不送該標頭**而非讓整個回應失敗: 完整訊息仍在本體之error封包內, 前端解析本體即可取得;
+ * 下載路徑雖只讀標頭, 但其錯誤訊息皆為套件自產之固定字串, 不受影響
+ *
+ * @param {Object} res 輸入hapi之response toolkit
+ * @param {Uint8Array} u8a 輸入待回應之二進位封包
+ * @param {Object} [opt={}] 輸入設定物件, 預設{}
+ * @param {String} [opt.returnType=''] 輸入Return-Type標頭值, 為'success'或'error', 空字串代表不送
+ * @param {String} [opt.returnMsg=''] 輸入Return-Msg標頭值, 空字串或非法標頭值代表不送
+ * @returns {Object} 回傳hapi之response物件
+ */
+function responseU8aStream(res, u8a, opt = {}) {
+
+    //stream
+    let smr = new stream.Readable()
+    smr._read = () => {}
+    smr.push(u8a)
+    smr.push(null)
+
+    //returnType
+    let returnType = get(opt, 'returnType', '')
+
+    //returnMsg
+    let returnMsg = get(opt, 'returnMsg', '')
+
+    //r
+    let r = res.response(smr)
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        .header('Content-Type', 'application/octet-stream')
+        .header('Content-Length', smr.readableLength)
+    if (isestr(returnType)) {
+        r.header('Return-Type', returnType)
+    }
+
+    //check, 標頭值須通過值域檢核; 不合法者略過該標頭而非使整個回應失敗(完整訊息仍在本體)
+    if (isestr(returnMsg) && isValidHeaderValue('Return-Msg', returnMsg)) {
+        r.header('Return-Msg', returnMsg)
+    }
+
+    return r
+}
+
+
+/**
+ * 以本套件之錯誤封包回應
+ *
+ * 本函數為所有失敗之最終出口: 其自身之序列化不再以嚴格模式取狀態, 因為輸入之msg恆為套件自產字串
+ * (全部呼叫點皆為字面或模板字串), 且此處若再失敗亦無處可退(帳本R3之刻意不套站點)
+ *
+ * why 與 responseU8aStream 並存而非合一: 前者之本體由呼叫端算好(可能是成功結果), 後者之本體由本函數依 msg 產生 ——
+ * 輸入不同, 合一會多一個「這次是不是錯誤」的旗標參數
+ *
+ * @param {Object} res 輸入hapi之response toolkit
+ * @param {String} msg 輸入錯誤訊息字串
+ * @param {Object} [opt={}] 輸入設定物件, 預設{}
+ * @param {Boolean} [opt.retryable=true] 輸入是否可重試布林值, 預設true。
+ * 給false者限「可證明不需重試」之錯誤: 結果僅由client自行建構之請求內容(mode、fileHash、chunkTotal、chunkIndex、packageId、fileId)決定, 重送同一請求必得同一結果;
+ * 凡涉及權限(permission denied)、應用端reject、應用端回傳形狀不合、磁碟、網路者皆為狀態不穩, 不得標示, 依重試原則由前端照常重試。
+ * 標示同時置於封包(供execute/upload/dwgfn之本體解析)與標頭Return-Retryable(供download之串流路徑, 該路徑只讀標頭不解析本體)
+ * @returns {Object} 回傳hapi之response物件
+ */
+function responseU8aStreamWithError(res, msg, opt = {}) {
+
+    //check
+    if (!isestr(msg)) {
+        console.log('msg', msg)
+        console.log(`msg is not an effective string, set msg=''`)
+        msg = ''
+    }
+
+    //retryable
+    let retryable = get(opt, 'retryable', true)
+
+    //out
+    let out = {
+        error: msg,
+    }
+    if (retryable === false) {
+        out.retryable = false
+    }
+
+    //u8aOut
+    let u8aOut = obj2u8arr(out)
+
+    //r
+    let r = responseU8aStream(res, u8aOut, { returnType: 'error', returnMsg: msg })
+    if (retryable === false) {
+        r.header('Return-Retryable', 'false')
+    }
+
+    return r
+}
+
+
+/**
+ * 派發一次應用端呼叫, 並保證該次呼叫必定終結
+ *
+ * why: 本套件之路由層刻意關閉 timeout.server 與 timeout.socket(大檔傳輸本就超過任何固定值),
+ * 宿主之兜底因此不存在。無人接聽時該 pm 永無人 settle, 請求即**永久懸置**且 0 則 error 事件
+ * (實測 tmp/probe_r9_hang.mjs: /main、/dw、/ulctr 三入口皆 6000ms 未回應)。
+ * 而該事實其實早就在套件手上 —— eventemitter3 之 emit 對無監聽器回 false, 只是被丟棄。
+ *
+ * why 於派發前以 listenerCount 判定, 而非取 evEmit 之回傳值:
+ * wsemi 之 evEmit 對「無監聽器」與「監聽器同步拋錯」**皆回 false**(其 evEmit.mjs:107 之 catch 分支),
+ * 兩者不可分辨(實測 tmp/probe_r9_emitret.mjs)。而拋錯那格已由 evEmit 之 funSettle 拒絕過 pm、
+ * 且已發過一則 error 事件 —— 以回傳值判定會對該格**再發一則**, 即同一次失敗兩則(違反規則帳本 R5)。
+ * 派發前判定則兩者分明, 且不受「監聽器於執行中移除自己」影響(判定早於執行)。
+ *
+ * 本函數只處理「**現在沒有人接聽**」這一種狀態。應用端接了卻不回話(忘記 settle pm、
+ * resolve 一個永不 settle 之 promise、verifyConn 回 pending promise)一律**不在本函數職責內** ——
+ * 那是對無限未來之斷言, 任何有限時點皆與「還沒好」不可分辨, 屬呼叫端責任。判準與否決過的修法見帳本 R12 之分界線。
+ *
+ * @param {Object} ev 輸入事件物件, 為 wsemi 之 evem 所建立之 eventemitter3 實例
+ * @param {Function} evEmit 輸入本套件之派發函數, 簽章為 (name, ...args)
+ * @param {String} name 輸入事件名稱字串
+ * @param {Array} args 輸入事件參數陣列(不含 pm)
+ * @param {Object} pm 輸入本次呼叫之回覆通道, 會作為事件之最後一個參數交給監聽器
+ * @param {Function} funError 輸入無人接聽時之回報函數, 參數為原因字串
+ * @returns {Boolean} 回傳是否已派發; false 代表無人接聽且 pm 已被拒絕
+ */
+function callApp(ev, evEmit, name, args, pm, funError) {
+
+    //check, 無人接聽即終結: 一次失敗恰一則事件(帳本 R5), 且不得懸置
+    if (ev.listenerCount(name) === 0) {
+        let msg = `no listener for event[${name}]`
+
+        //settle 須排在回報之前(帳本 R10 之結構層): pm.reject 為此處唯一「非做不可」之事,
+        //funError 會走到應用端之 error 監聽器, 其若拋錯而排在前面, 該次請求就永遠不會被 settle ——
+        //那正是本模組存在所要防止的懸置。順序即保證, 不可對調
+        pm.reject(msg)
+        funError(msg)
+
+        return false
+    }
+
+    //emit, pm 為事件之最後一個參數(本套件之契約)
+    evEmit(name, ...args, pm)
+
+    return true
+}
+
+//=== 本檔專用之內部函式結束 =====================================================================
 
 
 //回傳前端stream時(POST或GET皆可), 前端會須等stream傳完才能判斷是否為大檔或錯誤訊息, 此會導致若回傳超大檔, 會需要對超大檔進行解析會有記憶體上限問題, 故需要通過header提供基本成功或失敗訊息, 讓前端能進行解析判斷

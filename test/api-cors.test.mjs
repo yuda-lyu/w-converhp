@@ -1,10 +1,12 @@
 import assert from 'assert'
-import { downloadErrorStatus } from './api-axes.mjs'
 import fs from 'fs'
 import http from 'http'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import axes from './api-axes.mjs'
+
+let { downloadErrorStatus } = axes
 
 
 /**
