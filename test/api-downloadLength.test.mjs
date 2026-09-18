@@ -6,6 +6,9 @@ import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -21,7 +24,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-downloadLength', function() {
 
-    let port = 8215 //同時test故得要不同port
+    let port = portOf('api-downloadLength')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-downloadLength'
     let fdDownload = './test/_tmp/download-api-downloadLength'
     let fpSrc = path.resolve('test/1mb.7z')

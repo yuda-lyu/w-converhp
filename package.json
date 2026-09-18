@@ -1,20 +1,19 @@
 {
   "name": "w-converhp",
-  "version": "2.0.89",
+  "version": "2.1.1",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
     "@hapi/hapi": "^21.4.10",
     "@hapi/inert": "^7.1.2",
     "axios": "^1.20.0",
-    "wsemi": "^1.8.92"
+    "wsemi": "^1.9.0"
   },
   "devDependencies": {
     "playwright": "^1.63.0",
     "w-package-tools": "^1.1.16"
   },
   "scripts": {
-    "test": "mocha --parallel --timeout 60000",
-    "test:e2e": "mocha --no-config --timeout 180000 test/e2e-*.test.mjs",
+    "test": "mocha --parallel \"test/*.test.mjs\" --timeout 180000",
     "deploy": "gh-pages -d docs"
   },
   "repository": {

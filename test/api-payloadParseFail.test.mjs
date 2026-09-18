@@ -1,6 +1,9 @@
 import assert from 'assert'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -13,7 +16,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
 describe('api-payloadParseFail', function() {
     this.timeout(30000)
 
-    let port = 8623
+    let port = portOf('api-payloadParseFail')
     let wsv = null
     let errs = []
 

@@ -3,6 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -16,7 +19,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
 describe('api-uploadMergeIntegrity', function() {
     this.timeout(60000)
 
-    let port = 8492
+    let port = portOf('api-uploadMergeIntegrity')
     let base = `http://127.0.0.1:${port}/api`
     let pathUploadTemp = path.resolve('./test/_tmp/uploadTemp-api-uploadMergeIntegrity')
     let wsv = null

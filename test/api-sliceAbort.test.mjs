@@ -5,6 +5,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -16,7 +19,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-sliceAbort', function() {
 
-    let port = 8211 //同時test故得要不同port
+    let port = portOf('api-sliceAbort')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-sliceAbort'
     let sizeSlice = 1024 * 1024
     let wsv = null

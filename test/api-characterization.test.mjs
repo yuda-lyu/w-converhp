@@ -6,7 +6,10 @@ import Hapi from '@hapi/hapi'
 import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { fetchDownload } = axes
 
@@ -27,8 +30,8 @@ let { fetchDownload } = axes
  */
 describe('api-characterization', function() {
 
-    let port = 8221 //同時test故得要不同port
-    let portExt = 8222 //外部 serverHapi 之對照組
+    let port = portOf('api-characterization')
+    let portExt = portOf('api-characterization', 1)
     let pathUploadTemp = './test/_tmp/uploadTemp-api-characterization'
     let wsv = null
     let wsvExt = null

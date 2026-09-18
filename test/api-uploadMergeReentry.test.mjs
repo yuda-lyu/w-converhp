@@ -3,6 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -14,7 +17,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
  */
 describe('api-uploadMergeReentry', function() {
 
-    let port = 8207 //同時test故得要不同port
+    let port = portOf('api-uploadMergeReentry')
     let base = `http://127.0.0.1:${port}/api`
     let pathUploadTemp = path.resolve('./test/_tmp/uploadTemp-api-uploadMergeReentry')
     let sizeSlice = 64 * 1024

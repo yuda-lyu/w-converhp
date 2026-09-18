@@ -2,11 +2,14 @@ import assert from 'assert'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 describe('api-executeError', function() {
 
-    let port = 8184 //同時test故得要不同port
+    let port = portOf('api-executeError')
     let url = `http://localhost:${port}`
     let wsv = null
 

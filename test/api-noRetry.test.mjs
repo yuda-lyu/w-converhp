@@ -4,6 +4,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -15,7 +18,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-noRetry', function() {
 
-    let port = 8206 //同時test故得要不同port
+    let port = portOf('api-noRetry')
     let base = `http://127.0.0.1:${port}/api`
     let pathUploadTemp = path.resolve('./test/_tmp/uploadTemp-api-noRetry')
     let wsv = null

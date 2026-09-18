@@ -2,6 +2,9 @@ import assert from 'assert'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -16,7 +19,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 describe('api-clientToken', function() {
     this.timeout(60000)
 
-    let port = 8489
+    let port = portOf('api-clientToken')
     let wsv = null
     let auths = []
     let used = new Set()

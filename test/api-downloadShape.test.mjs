@@ -5,7 +5,10 @@ import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { downloadRouteKeysByBody, downloadErrorStatus, fetchDownload } = axes
 
@@ -25,7 +28,7 @@ let { downloadRouteKeysByBody, downloadErrorStatus, fetchDownload } = axes
  */
 describe('api-downloadShape', function() {
 
-    let port = 8214 //同時test故得要不同port
+    let port = portOf('api-downloadShape')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-downloadShape'
     let fdDownload = './test/_tmp/download-api-downloadShape'
     let fpSrc = path.resolve('test/1mb.7z')

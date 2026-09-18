@@ -4,6 +4,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -19,7 +22,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 describe('api-sliceDurable', function() {
     this.timeout(90000)
 
-    let port = 8620
+    let port = portOf('api-sliceDurable')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-sliceDurable'
     let sizeSlice = 64 * 1024
     let wsv = null

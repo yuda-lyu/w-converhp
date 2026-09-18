@@ -2,7 +2,10 @@ import assert from 'assert'
 import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { downloadRouteKeys, fetchDownload } = axes
 
@@ -25,12 +28,11 @@ let { downloadRouteKeys, fetchDownload } = axes
  *   應用端交出之串流(常為 fs.createReadStream)就此失去引用且 fd 持續開啟(實測四欄中後三欄皆 destroyed=false)。
  */
 
-let genPort = () => 9600 + Math.floor(Math.random() * 300)
 
 describe('api-failureNotSuccess', function() {
     this.timeout(60000)
 
-    let port = genPort()
+    let port = portOf('api-failureNotSuccess')
     let evs = []
     let streams = []
     let wsv = null

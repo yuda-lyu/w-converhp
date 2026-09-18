@@ -3,11 +3,14 @@ import crypto from 'crypto'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 describe('api-executeProgress', function() {
 
-    let port = 8185 //同時test故得要不同port
+    let port = portOf('api-executeProgress')
     let url = `http://localhost:${port}`
     let apiName = 'myapi' //測試自訂apiName
     let wsv = null

@@ -3,7 +3,10 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import w from 'wsemi'
-import setup from './e2e-setup.mjs'
+import setup from './tools/e2e-setup.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer } = setup
 
@@ -23,7 +26,7 @@ let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer }
  */
 describe('e2e-upload', function() {
 
-    let port = 8191 //各測試檔須用不同 port
+    let port = portOf('e2e-upload')
     let baseUrl = `http://${HOST}:${port}`
     let sizeSlice = 64 * 1024 //縮小切片, 使小檔亦能造出多切片情境
     let pathUploadTemp = path.resolve(projRoot, 'test', '_tmp', 'uploadTemp-e2e-upload')
@@ -127,6 +130,14 @@ window.tUpload = async (n, seed, name, o) => {
             wsv.stop()
         }
 
+        //清除本檔之上傳暫存夾
+        //why 於 after 而非 beforeEach: 末條「重複上傳須去重」依賴同一次執行內之殘留
+        //why 本檔自己清: e2e-setup 之 cleanup 自本輪起只刪自己行程之子夾(--parallel 下不可刪整個 test/_tmp, 會清掉他人正在用者),
+        //  原本靠它順帶清掉此夾; 不清則**下一次執行**時合併檔仍在, 多切片案例改走去重路徑而斷言失敗(實測 from 得 check-total-hash)
+        try {
+            fs.rmSync(pathUploadTemp, { recursive: true, force: true })
+        }
+        catch (err) {}
     })
 
     //每 case fresh browser (技能 §6)

@@ -5,6 +5,9 @@ import w from 'wsemi'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -17,7 +20,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 describe('api-uploadResumeLastSlice', function() {
     this.timeout(60000)
 
-    let port = 8622
+    let port = portOf('api-uploadResumeLastSlice')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-uploadResumeLastSlice'
     let sizeSlice = 1024
     let wsv = null

@@ -4,9 +4,14 @@ import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
-describe('uploadLargeFile', function() {
+describe('api-uploadLargeFile', function() {
+
+    let port = portOf('api-uploadLargeFile')
 
     let ms = []
 
@@ -15,7 +20,7 @@ describe('uploadLargeFile', function() {
         // let ms = []
 
         let opt = {
-            port: 8082, //同時test故得要不同port
+            port,
             apiName: 'api',
             pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
             verifyConn: async ({ apiType, authorization, query, headers, req }) => {
@@ -72,7 +77,7 @@ describe('uploadLargeFile', function() {
     let runClient = () => {
 
         let opt = {
-            url: 'http://localhost:8082', //同時test故得要不同port
+            url: `http://localhost:${port}`,
             apiName: 'api',
             getToken: () => {
                 return 'token-for-test'

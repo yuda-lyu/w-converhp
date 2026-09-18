@@ -3,6 +3,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -16,7 +19,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 describe('api-clientErrorEvents', function() {
     this.timeout(60000)
 
-    let port = 8496
+    let port = portOf('api-clientErrorEvents')
     let fd = path.resolve('./test/_tmp/api-clientErrorEvents')
     let servers = []
 
@@ -44,7 +47,7 @@ describe('api-clientErrorEvents', function() {
         return evs
     }
 
-    for (let [label, opt, p] of [['應用端拒絕', {}, port], ['permission denied', { verifyConn: () => false }, port + 1]]) {
+    for (let [label, opt, p] of [['應用端拒絕', {}, port], ['permission denied', { verifyConn: () => false }, portOf('api-clientErrorEvents', 1)]]) {
         it(`${label}: execute 與 download(nodejs) 須各恰發一則 error 事件(修正前 download 為 0)`, async function() {
             await mkServer(p, opt)
             let e1 = await countEvents(p, (wc) => wc.execute('f', {}))
@@ -55,7 +58,7 @@ describe('api-clientErrorEvents', function() {
     }
 
     it('重試時每次嘗試各一則, 且 download 之不重試標示(Return-Retryable)仍須生效: 參數錯誤不重試故恰一則', async function() {
-        let p = port + 2
+        let p = portOf('api-clientErrorEvents', 2)
         await mkServer(p)
         let evs = []
         let wc = new WConverhpClient({ url: `http://127.0.0.1:${p}`, retryDownload: 1 })

@@ -6,6 +6,9 @@ import { syncBuiltinESMExports } from 'module'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -17,7 +20,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-downloadAbort', function() {
 
-    let port = 8212 //同時test故得要不同port
+    let port = portOf('api-downloadAbort')
     let fdDownload = './test/_tmp/download-api-downloadAbort'
     let pathUploadTemp = './test/_tmp/uploadTemp-api-downloadAbort'
     let fpSrc = path.resolve('test/1mb.7z')

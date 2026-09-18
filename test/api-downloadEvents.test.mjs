@@ -3,7 +3,10 @@ import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { downloadRouteKeys, downloadRouteKeysRequiring, downloadRouteKeysNotRequiring, fetchDownload } = axes
 
@@ -19,7 +22,7 @@ let { downloadRouteKeys, downloadRouteKeysRequiring, downloadRouteKeysNotRequiri
  */
 describe('api-downloadEvents', function() {
 
-    let port = 8219 //同時test故得要不同port
+    let port = portOf('api-downloadEvents')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-downloadEvents'
     let fpSrc = path.resolve('test/1mb.7z')
     let sizeSrc = fs.statSync(fpSrc).size

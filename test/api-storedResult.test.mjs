@@ -5,6 +5,9 @@ import w from 'wsemi'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -21,7 +24,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
  */
 describe('api-storedResult', function() {
 
-    let port = 8223 //同時test故得要不同port
+    let port = portOf('api-storedResult')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-storedResult'
     let wsv = null
     let errs = []

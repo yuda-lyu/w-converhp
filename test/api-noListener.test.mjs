@@ -3,7 +3,10 @@ import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { downloadRouteKeys, downloadErrorStatus, fetchDownload } = axes
 
@@ -26,11 +29,13 @@ let { downloadRouteKeys, downloadErrorStatus, fetchDownload } = axes
  * 替它們寫測試等於把它們收編為套件契約, 故不寫。
  */
 
-let genPort = () => 9200 + Math.floor(Math.random() * 300)
 
 //mkServer, 只註冊 error 監聽器, 三個 RPC 事件一律不註冊
+//nSrv, 本檔每次 mkServer 各起一台伺服器, 須各自之 port(原以 Math.random 每次取新號); 配額用盡時 portOf 拋錯而非靜默共用
+let nSrv = 0
 let mkServer = async(opt = {}) => {
-    let port = genPort()
+    let port = portOf('api-noListener', nSrv)
+    nSrv += 1
     let evs = []
     let wsv = new WConverhpServer({
         port,

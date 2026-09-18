@@ -17,15 +17,24 @@ import { fileURLToPath } from 'url'
 import { chromium } from 'playwright'
 import rollupFile from 'w-package-tools/src/rollupFile.mjs'
 import delay from 'wsemi/src/delay.mjs'
-import WConverhpServer from '../src/WConverhpServer.mjs'
+import WConverhpServer from '../../src/WConverhpServer.mjs'
 
 
 //projRoot, 以模組所在位置推導專案根, 不依賴 cwd
 //(輸出落在模組所在資料夾之情境, 須用 fileURLToPath, 不可用 new URL().pathname)
-let projRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+let projRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 //fdTmp, 測試中介資料一律落 test/_tmp/ (已 gitignore), 不可用專案 ./tmp/ (該處為代理暫存區, 隨時會被清除)
 let fdTmp = path.resolve(projRoot, 'test', '_tmp')
+
+//fdTmpProc, 本行程專屬之中介夾; 本模組產生之 bundle 與頁面一律落於此
+//why: mocha 之 --parallel 使每個測試檔於獨立 worker process 執行, 而本模組原本假設「同一個 process 內只打包一次」:
+//  ①module 層之 pmBundle 快取跨不了 process, 三個 e2e 檔遂同時打包到同一路徑而互相覆蓋 ——
+//    實測頁面載入到寫入中之半成品, 報 window.tUpload is not a function
+//  ②cleanup 原註冊於 root after 並刪**整個** test/_tmp, 而每個 worker 各有自己的 root after;
+//    先結束者會刪掉他人正在使用之 bundle 與頁面, 連 api 測試之上傳暫存夾(同在 test/_tmp 下)亦一併刪除
+//故各行程各用一個子夾, 且 cleanup 只刪自己的; 代價是每個 e2e 檔各打包一次(可並行, 約數秒)
+let fdTmpProc = path.resolve(fdTmp, `e2e-${process.pid}`)
 
 //host, 一律用 127.0.0.1 不用 localhost
 //(localhost 先試 IPv6 ::1, 而 server 常只綁 IPv4, 瀏覽器每次連線會多數百 ms)
@@ -54,8 +63,8 @@ async function launchBrowser() {
 let pmBundle = null
 function buildClientBundle() {
 
-    //fpBundle
-    let fpBundle = path.resolve(fdTmp, `${nameBundle}.umd.js`)
+    //fpBundle, 落於本行程專屬之中介夾(見 fdTmpProc)
+    let fpBundle = path.resolve(fdTmpProc, `${nameBundle}.umd.js`)
 
     //check, 已在打包或已打包完成則直接沿用
     //須同時確認產物仍存在, 否則若中介資料夾被清除, 沿用快取會讓頁面載入不到 bundle
@@ -66,18 +75,18 @@ function buildClientBundle() {
     let core = async() => {
 
         //mkdir
-        fs.mkdirSync(fdTmp, { recursive: true })
+        fs.mkdirSync(fdTmpProc, { recursive: true })
 
-        //於 _tmp 產生 re-export 入口後打包, 不複製 src 檔案: 複製會使 client 內之相對 import(./isPathInside.mjs 等)於 _tmp 解析不到;
-        //入口檔名決定 UMD 之全域名, 故沿用 nameBundle
+        //於本行程之中介夾產生 re-export 入口後打包, 不複製 src 檔案: 複製會使 client 內之相對 import(./isPathInside.mjs 等)解析不到;
+        //入口檔名決定 UMD 之全域名, 故沿用 nameBundle。相對層數為 test/_tmp/e2e-<pid>/ 回專案根, 故為三層
         let fnTmp = `${nameBundle}.mjs`
-        fs.writeFileSync(path.resolve(fdTmp, fnTmp), `export { default } from '../../src/WConverhpClient.mjs'\n`, 'utf8')
+        fs.writeFileSync(path.resolve(fdTmpProc, fnTmp), `export { default } from '../../../src/WConverhpClient.mjs'\n`, 'utf8')
 
         //rollup, runin 須為 browser, 與 toolg/gDistRollup.mjs 之 client 設定一致
         await rollupFile({
             fn: fnTmp,
-            fdSrc: fdTmp,
-            fdTar: fdTmp,
+            fdSrc: fdTmpProc,
+            fdTar: fdTmpProc,
             globals: { path: 'path', fs: 'fs', stream: 'stream' },
             external: ['worker_threads', 'path', 'fs', 'stream'],
             runin: 'browser',
@@ -105,14 +114,17 @@ function buildClientBundle() {
 function writePage(fnPage, scriptBody) {
 
     //mkdir
-    fs.mkdirSync(fdTmp, { recursive: true })
+    fs.mkdirSync(fdTmpProc, { recursive: true })
+
+    //dirUrl, 頁面與 bundle 皆落於本行程之子夾, 故 URL 亦帶該層(見 fdTmpProc)
+    let dirUrl = `/test/_tmp/e2e-${process.pid}`
 
     let html = `<!DOCTYPE html>
 <html lang="zh-tw">
 <head>
 <meta charset="utf-8">
 <title>${fnPage}</title>
-<script src="/test/_tmp/${nameBundle}.umd.js"></script>
+<script src="${dirUrl}/${nameBundle}.umd.js"></script>
 </head>
 <body>
 <script>
@@ -122,10 +134,10 @@ ${scriptBody}
 </body>
 </html>
 `
-    let fp = path.resolve(fdTmp, fnPage)
+    let fp = path.resolve(fdTmpProc, fnPage)
     fs.writeFileSync(fp, html, 'utf8')
 
-    return `/test/_tmp/${fnPage}`
+    return `${dirUrl}/${fnPage}`
 }
 
 
@@ -149,16 +161,15 @@ async function startServer(opt = {}) {
 
 
 /**
- * 清除本輪測試之中介資料
- * 只刪本模組建立者, 不動 fixture (test/1mb.7z 等)
+ * 清除本行程之中介資料
+ * 只刪本模組於本行程建立者(test/_tmp/e2e-<pid>/), 不動 fixture (test/1mb.7z 等), 亦不動他人之中介資料
  *
- * 註冊於 root after, 全部 e2e 檔跑完才執行一次。
- * 不可放在各檔自己的 after: 多檔共用同一份已打包之 bundle,
- * 先跑完的檔若清掉整個中介資料夾, 後續檔會載入不到 bundle。
+ * why 不刪整個 test/_tmp: `--parallel` 下每個測試檔於獨立 worker process 執行, 各有自己的 root after ——
+ * 刪整個資料夾會使先結束者清掉他人正在使用之 bundle 與頁面, 連 api 測試之上傳暫存夾(同在 test/_tmp 下)亦一併刪除
  */
 function cleanup() {
     try {
-        fs.rmSync(fdTmp, { recursive: true, force: true })
+        fs.rmSync(fdTmpProc, { recursive: true, force: true })
     }
     catch (err) {}
 }

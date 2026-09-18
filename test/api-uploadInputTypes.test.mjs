@@ -4,6 +4,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -21,7 +24,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 describe('api-uploadInputTypes', function() {
     this.timeout(90000)
 
-    let port = 8493
+    let port = portOf('api-uploadInputTypes')
     let pathUploadTemp = path.resolve('./test/_tmp/uploadTemp-api-uploadInputTypes')
     let wsv = null
     let wc = null

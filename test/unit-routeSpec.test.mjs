@@ -1,6 +1,6 @@
 import assert from 'assert'
 import routeSpec from '../src/routeSpec.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
 
 let { allRoutes, downloadRoutes } = axes
 

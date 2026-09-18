@@ -2,7 +2,10 @@ import assert from 'assert'
 import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { downloadRouteKeys, downloadErrorStatus, fetchDownload } = axes
 
@@ -30,7 +33,7 @@ let { downloadRouteKeys, downloadErrorStatus, fetchDownload } = axes
  */
 describe('api-hostileErrorValues', function() {
 
-    let port = 8227 //同時test故得要不同port
+    let port = portOf('api-hostileErrorValues')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-hostileErrorValues'
     let fpSrc = 'test/1mb.7z'
     let wsv = null

@@ -2,11 +2,14 @@ import assert from 'assert'
 import http from 'http'
 import w from 'wsemi'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 describe('api-uploadMergeError', function() {
 
-    let port = 8189 //同時test故得要不同port
+    let port = portOf('api-uploadMergeError')
     let url = `http://localhost:${port}`
     let sizeSlice = 64 * 1024
     let srv = null

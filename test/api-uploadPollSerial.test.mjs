@@ -4,6 +4,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -14,7 +17,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-uploadPollSerial', function() {
 
-    let port = 8203 //同時test故得要不同port
+    let port = portOf('api-uploadPollSerial')
     let pathUploadTemp = path.resolve('./test/_tmp/uploadTemp-api-uploadPollSerial')
     let sizeSlice = 64 * 1024
     let wsv = null

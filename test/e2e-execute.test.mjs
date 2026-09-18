@@ -1,7 +1,10 @@
 import assert from 'assert'
 import crypto from 'crypto'
 import w from 'wsemi'
-import setup from './e2e-setup.mjs'
+import setup from './tools/e2e-setup.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { HOST, launchBrowser, buildClientBundle, writePage, startServer } = setup
 
@@ -19,7 +22,7 @@ let { HOST, launchBrowser, buildClientBundle, writePage, startServer } = setup
  */
 describe('e2e-execute', function() {
 
-    let port = 8190 //各測試檔須用不同 port
+    let port = portOf('e2e-execute')
     let baseUrl = `http://${HOST}:${port}`
     let wsv = null
     let browser = null

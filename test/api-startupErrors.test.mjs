@@ -3,6 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -22,7 +25,7 @@ describe('api-startupErrors', function() {
         let fpFile = path.join(fd, 'is-a-file')
         fs.writeFileSync(fpFile, 'x')
         let evs = []
-        let wsv = new WConverhpServer({ port: 8498, useInert: false, pathUploadTemp: fpFile })
+        let wsv = new WConverhpServer({ port: portOf('api-startupErrors'), useInert: false, pathUploadTemp: fpFile })
         wsv.on('error', (e) => evs.push(String(e)))
         await w.delay(900)
         await wsv.stop()
@@ -33,13 +36,13 @@ describe('api-startupErrors', function() {
     it('執行期暫存資料夾消失時, check-slices-hash 與 check-total-hash 須同樣以 <mode> failed 回應且各恰一則事件(修正前 check-slices-hash 吞掉 readdir 錯誤而回 slks 空陣列)', async function() {
         let up = path.join(fd, 'gone')
         let evs = []
-        let wsv = new WConverhpServer({ port: 8497, useInert: false, pathUploadTemp: up })
+        let wsv = new WConverhpServer({ port: portOf('api-startupErrors', 1), useInert: false, pathUploadTemp: up })
         wsv.on('error', (e) => evs.push(String(e)))
         await w.delay(700)
         fs.rmSync(up, { recursive: true, force: true })
         let call = async(body) => {
             evs.length = 0
-            let r = await fetch(`http://127.0.0.1:8497/api/ulctr`, {
+            let r = await fetch(`http://127.0.0.1:${portOf('api-startupErrors', 1)}/api/ulctr`, {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -59,11 +62,11 @@ describe('api-startupErrors', function() {
     })
 
     it('對照組: 埠被占時仍須於建構期恰發一則 error 事件', async function() {
-        let a = new WConverhpServer({ port: 8499, useInert: false, pathUploadTemp: path.join(fd, 'a') })
+        let a = new WConverhpServer({ port: portOf('api-startupErrors', 2), useInert: false, pathUploadTemp: path.join(fd, 'a') })
         a.on('error', () => {})
         await w.delay(600)
         let evs = []
-        let b = new WConverhpServer({ port: 8499, useInert: false, pathUploadTemp: path.join(fd, 'b') })
+        let b = new WConverhpServer({ port: portOf('api-startupErrors', 2), useInert: false, pathUploadTemp: path.join(fd, 'b') })
         b.on('error', (e) => evs.push(String(e)))
         await w.delay(900)
         await a.stop()

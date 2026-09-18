@@ -4,7 +4,10 @@ import path from 'path'
 import crypto from 'crypto'
 import stream from 'stream'
 import w from 'wsemi'
-import setup from './e2e-setup.mjs'
+import setup from './tools/e2e-setup.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer } = setup
 
@@ -31,7 +34,7 @@ let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer }
  */
 describe('e2e-download', function() {
 
-    let port = 8192 //各測試檔須用不同 port
+    let port = portOf('e2e-download')
     let baseUrl = `http://${HOST}:${port}`
     let urlCross = `http://localhost:${port}` //跨來源案例用: 與頁面之 127.0.0.1 為不同 origin(見檔頭說明)
     let fpSrc = path.resolve(projRoot, 'test', '1mb.7z')
@@ -164,6 +167,18 @@ window.tDownloadManager = async (fileId, o) => {
             wsv.stop()
         }
 
+        //清除本檔之下載落地檔(dl-manager-*)
+        //why 本檔自己清: e2e-setup 之 cleanup 自本輪起只刪自己行程之子夾(--parallel 下不可刪整個 test/_tmp),
+        //原本靠它順帶清掉此類產物; 本檔之落地檔每次覆寫故不影響斷言, 但不清會逐輪累積
+        try {
+            let fdTmp = path.resolve(projRoot, 'test', '_tmp')
+            for (let fn of fs.readdirSync(fdTmp)) {
+                if (fn.startsWith('dl-manager-')) {
+                    fs.rmSync(path.resolve(fdTmp, fn), { force: true })
+                }
+            }
+        }
+        catch (err) {}
     })
 
     //每 case fresh browser (技能 §6)

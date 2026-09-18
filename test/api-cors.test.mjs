@@ -4,7 +4,10 @@ import http from 'http'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { downloadErrorStatus } = axes
 
@@ -19,8 +22,8 @@ let { downloadErrorStatus } = axes
  */
 describe('api-cors', function() {
 
-    let port = 8209 //同時test故得要不同port
-    let port2 = 8210 //限定來源之對照組伺服器
+    let port = portOf('api-cors')
+    let port2 = portOf('api-cors', 1) //限定來源之對照組伺服器
     let fpSrc = path.resolve('test/1mb.7z')
     let wsv = null
     let wsv2 = null

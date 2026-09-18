@@ -5,6 +5,9 @@ import net from 'net'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -22,8 +25,8 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-mainMaxBytes', function() {
 
-    let port = 8198 //同時test故得要不同port
-    let portDef = 8200 //預設值伺服器(8199 為 api-executeError 之「連線失敗」測試所用, 不可佔用)
+    let port = portOf('api-mainMaxBytes')
+    let portDef = portOf('api-mainMaxBytes', 1) //預設值伺服器
     let LIMIT = 1024 * 1024 //測試用上限 1MB
     let SLICE = 64 * 1024 //測試用切片大小 64KB
     let pathUploadTemp = './test/_tmp/uploadTemp-api-mainMaxBytes'

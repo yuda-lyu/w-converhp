@@ -2,6 +2,9 @@ import assert from 'assert'
 import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -26,7 +29,7 @@ let fieldsFromSource = () => {
 describe('api-hostileRequestJson', function() {
     this.timeout(120000)
 
-    let port = 8494
+    let port = portOf('api-hostileRequestJson')
     let wsv = null
     let evs = []
 

@@ -5,6 +5,9 @@ import http from 'http'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -17,7 +20,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-pathTraversal', function() {
 
-    let port = 8195 //同時test故得要不同port
+    let port = portOf('api-pathTraversal')
     let base = `http://127.0.0.1:${port}/api`
     let fdSand = path.resolve('./test/_tmp/pt')
     let pathUploadTemp = path.resolve(fdSand, 'uploadTemp')
@@ -170,7 +173,7 @@ describe('api-pathTraversal', function() {
     //stub 伺服器, /dw 依 body.fileId 回 Content-Disposition 檔名(base64)為該字串之串流
     describe('Q: node client 信任伺服器檔名', function() {
 
-        let port2 = 8196
+        let port2 = portOf('api-pathTraversal', 1) //檔名穿越之對照組伺服器
         let srv = null
         let fdDownload = path.resolve(fdSand, 'dl')
         let wo = null

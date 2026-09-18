@@ -4,9 +4,14 @@ import _ from 'lodash-es'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
-describe('executeWithFile', function() {
+describe('api-executeWithU8a', function() {
+
+    let port = portOf('api-executeWithU8a')
 
     let ms = []
 
@@ -15,7 +20,7 @@ describe('executeWithFile', function() {
         // let ms = []
 
         let opt = {
-            port: 8081, //同時test故得要不同port
+            port,
             apiName: 'api',
             pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
             verifyConn: async ({ apiType, authorization, query, headers, req }) => {
@@ -42,9 +47,7 @@ describe('executeWithFile', function() {
 
                     if (_.get(input, 'p.d.u8a', null)) {
                         // console.log('input.p.d.u8a', input.p.d.u8a)
-                        let t = input.p.d.u8a
-                        let ts = [t[0], t[1], t[2]]
-                        ms.push({ 'server receive input.p.d.u8a': ts })
+                        ms.push({ 'server receive input.p.d.u8a': input.p.d.u8a })
                     }
 
                     let r = {
@@ -90,7 +93,7 @@ describe('executeWithFile', function() {
         // let ms = []
 
         let opt = {
-            url: 'http://localhost:8081', //'http://localhost:8080', //同時test故得要不同port
+            url: `http://localhost:${port}`,
             apiName: 'api',
             getToken: () => {
                 return 'token-for-test'
@@ -117,9 +120,7 @@ describe('executeWithFile', function() {
                 },
             }
             // console.log('p', p)
-            let t = p.d.u8a
-            let ts = [t[0], t[1], t[2]]
-            ms.push({ 'client execute input': ts })
+            ms.push({ 'client execute input': p })
 
             //execute
             await wo.execute('add', { p },
@@ -135,9 +136,7 @@ describe('executeWithFile', function() {
                     // console.log('client web: execute: add', r)
                     // console.log('r._bin.name', r._bin.name, 'r._bin.u8a', r._bin.u8a)
                     // w.downloadFileFromU8Arr(r._bin.name, r._bin.u8a)
-                    let t = r._bin.u8a
-                    let ts = [t[0], t[1], t[2]]
-                    ms.push({ 'client execute done': ts })
+                    ms.push({ 'client execute done': r })
                 })
                 .catch(function () {
                     // console.log('client web: execute: catch', err)
@@ -145,17 +144,17 @@ describe('executeWithFile', function() {
 
         }
 
-        function executeWithFile() {
+        function executeWithU8a() {
             let core = async() => {
 
                 //u8a
-                let u8a = new Uint8Array(fs.readFileSync('./test/1mb.7z')) //使用test內檔案
-                // console.log('executeWithFile u8a', u8a)
+                let u8a = new Uint8Array([66, 97, 115])
+                // console.log('executeWithU8a u8a', u8a)
 
                 //execute
-                await execute('1mb.7z', u8a)
+                await execute('zdata.b1', u8a)
 
-                // console.log('ms', ms)
+                // console.log('ms', JSON.stringify(ms))
 
             }
             core()
@@ -164,7 +163,7 @@ describe('executeWithFile', function() {
                 })
         }
 
-        executeWithFile()
+        executeWithU8a()
 
     }
 
@@ -174,13 +173,13 @@ describe('executeWithFile', function() {
         runClient()
         setTimeout(() => {
             // console.log('ms', JSON.stringify(ms))
-            // fs.writeFileSync('./test_executeWithFile.json', JSON.stringify(ms), 'utf8')
+            // fs.writeFileSync('./test_executeWithU8a.json', JSON.stringify(ms), 'utf8')
             pm.resolve(ms)
         }, 4000)
         return pm
     }
 
-    let res = `[{"client execute input":[55,122,188]},{"server receive input.p.d.u8a":[55,122,188]},{"client execute done":[52,66,97]}]`
+    let res = `[{"client execute input":{"a":12,"b":34.56,"c":"test中文","d":{"name":"zdata.b1","u8a":{"0":66,"1":97,"2":115}}}},{"server receive input.p.d.u8a":{"0":66,"1":97,"2":115}},{"client execute done":{"_add":46.56,"_data":[11,22.22,"abc",{"x":"21","y":65.43,"z":"test中文"}],"_bin":{"name":"zdata.b2","u8a":{"0":52,"1":66,"2":97,"3":115}}}}]`
     it(`should return ${res} when test`, async function() {
         let r = await run()
         r = JSON.stringify(r)

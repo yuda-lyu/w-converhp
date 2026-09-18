@@ -5,11 +5,14 @@ import crypto from 'crypto'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 describe('api-downloadVariants', function() {
 
-    let port = 8188 //同時test故得要不同port
+    let port = portOf('api-downloadVariants')
     let url = `http://localhost:${port}`
     let fdDownload = './tmp-api-downloadVariants' //各測試檔須用不同下載資料夾, 避免parallel互相干擾
     let fpSrc = './test/1mb.7z'

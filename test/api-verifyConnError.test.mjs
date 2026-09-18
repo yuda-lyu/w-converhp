@@ -2,6 +2,9 @@ import assert from 'assert'
 import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -13,7 +16,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
  */
 describe('api-verifyConnError', function() {
 
-    let port = 8193 //同時test故得要不同port
+    let port = portOf('api-verifyConnError')
     let base = `http://127.0.0.1:${port}/api`
     let wsv = null
 

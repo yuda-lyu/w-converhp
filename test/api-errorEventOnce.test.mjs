@@ -2,7 +2,10 @@ import assert from 'assert'
 import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
-import axes from './api-axes.mjs'
+import axes from './tools/api-axes.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 let { allRoutes } = axes
 
@@ -18,8 +21,8 @@ let { allRoutes } = axes
 describe('api-errorEventOnce', function() {
     this.timeout(60000)
 
-    let portA = 8624 //有監聽器
-    let portB = 8625 //無應用端監聽器
+    let portA = portOf('api-errorEventOnce') //有監聽器
+    let portB = portOf('api-errorEventOnce', 1) //無應用端監聽器
     let fd = './test/_tmp/api-errorEventOnce'
     let wsvA = null
     let wsvB = null

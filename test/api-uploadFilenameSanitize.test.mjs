@@ -3,6 +3,9 @@ import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -16,7 +19,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 describe('api-uploadFilenameSanitize', function() {
     this.timeout(60000)
 
-    let port = 8621
+    let port = portOf('api-uploadFilenameSanitize')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-uploadFilenameSanitize'
     let sizeSlice = 64 * 1024
     let wsv = null

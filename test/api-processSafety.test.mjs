@@ -4,6 +4,9 @@ import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -16,7 +19,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-processSafety', function() {
 
-    let port = 8201 //同時test故得要不同port
+    let port = portOf('api-processSafety')
     let base = `http://127.0.0.1:${port}/api`
     let pathUploadTemp = path.resolve('./test/_tmp/uploadTemp-api-processSafety')
     let sizeSlice = 64 * 1024

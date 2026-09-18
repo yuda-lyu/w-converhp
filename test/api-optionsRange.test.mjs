@@ -4,6 +4,9 @@ import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf, reserved } = wPorts
 
 
 /**
@@ -22,7 +25,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-optionsRange', function() {
 
-    let port = 8216 //同時test故得要不同port
+    let port = portOf('api-optionsRange')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-optionsRange'
     let wsv = null
 
@@ -161,7 +164,7 @@ describe('api-optionsRange', function() {
         this.timeout(20000)
         let errs2 = []
         let wsv2 = new WConverhpServer({
-            port: 8220,
+            port: portOf('api-optionsRange', 1),
             apiName: 'api',
             useInert: false,
             pathUploadTemp: './test/_tmp/uploadTemp-api-optionsRange2',
@@ -173,7 +176,7 @@ describe('api-optionsRange', function() {
         wsv2.on('handler', () => {})
         await w.delay(1200)
         assert.strict.deepEqual(errs2, [])
-        let r = await fetch(`http://127.0.0.1:8220/api/ulctr`, {
+        let r = await fetch(`http://127.0.0.1:${portOf('api-optionsRange', 1)}/api/ulctr`, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode: 'check-total-hash', fileHash: 'ffffffffffffffff', filename: 'a.bin', fileSize: 1 }),
@@ -209,6 +212,21 @@ describe('api-optionsRange', function() {
         await w.delay(1200)
         for (let e of errs3) {
             assert.strict.deepEqual(e.includes('EADDRINUSE') || e.includes('address already in use'), true, `error 事件須僅可能為埠占用, 實得: ${e}`)
+        }
+
+        //第十一輪: 預設埠 8080 已由 test/tools/ports.mjs 列為保留區而空出(原被 executeWithU8a 佔用, 故本條只能斷言「建構不拋錯」)。
+        //無埠占用之錯誤時, 伺服器就應該真的在預設埠上服務 —— 於此實打一次以斷言「**取到了預設值**」, 而非只是「沒拋錯」。
+        //開發者機器上 8080 仍可能被本套件以外之程式占用, 故以「有無 EADDRINUSE」分流而不強求(帳本 R24)
+        if (errs3.length === 0) {
+            let rDef = await fetch(`http://127.0.0.1:${reserved.packageDefault}/api/ulctr`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'check-total-hash', fileHash: 'ffffffffffffffff', filename: 'a.bin', fileSize: 1 }),
+                signal: AbortSignal.timeout(3000),
+            })
+            assert.strict.deepEqual(rDef.status, 200, 'port 非法時須取預設 8080 並於其上服務')
+            let oDef = u8arr2obj(new Uint8Array(await rDef.arrayBuffer()))
+            assert.strict.deepEqual(oDef.success.sizeSlice, 1024 * 1024, '須為本測試所起之伺服器(而非他人佔用 8080)')
         }
         wsv3.stop()
         try {

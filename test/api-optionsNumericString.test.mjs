@@ -3,6 +3,9 @@ import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -18,7 +21,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-optionsNumericString', function() {
 
-    let port = 8226 //同時test故得要不同port
+    let port = portOf('api-optionsNumericString')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-optionsNumericString'
     let url = `http://127.0.0.1:${port}`
     let sizeSlice = 1024 * 1024

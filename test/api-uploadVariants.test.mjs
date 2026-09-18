@@ -4,11 +4,14 @@ import crypto from 'crypto'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 describe('api-uploadVariants', function() {
 
-    let port = 8186 //同時test故得要不同port
+    let port = portOf('api-uploadVariants')
     let url = `http://localhost:${port}`
     let pathUploadTemp = './test/_tmp/uploadTemp-api-uploadVariants' //各測試檔須用不同暫存資料夾, 避免parallel互相干擾; 須置於 test/_tmp(已 gitignore), 置於專案根目錄時測試進行中 commit 會把暫存檔收進版本庫
     let sizeSlice = 64 * 1024 //縮小切片, 使小檔亦能造出多切片情境

@@ -4,6 +4,9 @@ import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import wPorts from './tools/ports.mjs'
+
+let { portOf } = wPorts
 
 
 /**
@@ -22,7 +25,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
  */
 describe('api-envelopeShape', function() {
 
-    let port = 8224 //同時test故得要不同port
+    let port = portOf('api-envelopeShape')
     let pathUploadTemp = './test/_tmp/uploadTemp-api-envelopeShape'
     let wsv = null
     let errs = []
