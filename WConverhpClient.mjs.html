@@ -61,7 +61,6 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
-import ispm from 'wsemi/src/ispm.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import dig from 'wsemi/src/dig.mjs'
 import strright from 'wsemi/src/strright.mjs'
@@ -69,7 +68,6 @@ import b642str from 'wsemi/src/b642str.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
-import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
@@ -239,11 +237,23 @@ async function saveStreamToFile(streamRecv, fdDownload, filename, scope) {
 //訊息: 優先取 HTTP 之 statusText(如 Payload Too Large), 無者經 getErrorMessage(帳本 R10)。以 isestr 判定而非 ||: 空 reason-phrase 之 statusText 為空字串, || 會落到 response.data ——
 //nodejs 串流下載時那是 IncomingMessage 物件(B 卷 B10); 且不再交出 stack: 原以 get(res,'stack') 兜底, 把整段本機 stack 當成呼叫端可見之錯誤值(A 卷 §①-1.3(e))
 //Network Error 除可能是網路斷線之外, 可能被瀏覽器外掛封鎖阻擋, 亦可能因硬碟空間不足無法下載被瀏覽器拒絕
+//讀取包 try(帳本 R29): getToken 之拒絕值為應用端之任意值, instanceof 會觸發 Proxy 之 getPrototypeOf 陷阱(已撤銷之 Proxy 即拋)、讀 response 可觸發拋錯之 getter;
+//讀不出者視為非 Error 而原樣交出 —— 惡意值亦原樣(主控裁示: 「非 Error 者原樣交出」不因值難讀而改變, 其讀取由監聽器與呼叫端自行負責)。
+//原本兩處裸讀, 惡意值之讀取錯誤使本函數拋出, 一次嘗試之失敗因而 0 則事件、不重試、值被換成讀取錯誤之訊息(審計 run01 實測)
 function classifyFailure(res) {
-    if (!(res instanceof Error)) {
+    let bErr = false
+    try {
+        bErr = res instanceof Error
+    }
+    catch (err) {}
+    if (!bErr) {
         return res
     }
-    let statusText = get(res, 'response.statusText')
+    let statusText = ''
+    try {
+        statusText = get(res, 'response.statusText')
+    }
+    catch (err) {}
     let data = isestr(statusText) ? statusText : getErrorMessage(res)
     if (!isestr(data)) {
         data = 'Can not connect to server.'
@@ -262,14 +272,14 @@ function classifyFailure(res) {
  * @param {Object} opt 輸入設定參數物件
  * @param {String} [opt.url='http://localhost:8080'] 輸入Hapi伺服器網址，預設為'http://localhost:8080'
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
- * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''。未給或給予非函數者一律視為不帶token(每次請求送出空token，不另發事件)，伺服器端之verifyConn若要求token即以permission denied拒絕。可回傳字串或promise；回undefined或null視為未帶token(送出空token，不送字面之undefined)。**每一次請求嘗試各呼叫一次**(含重試，故一次execute為1+retryMain次)，使重試帶當下之token；瀏覽器下載管理器路徑(downloadByManager=true)於取檔名之請求外，另於導覽至下載網址前再呼叫一次，故為(1+retryDownload)+1次(該次拋錯時download以錯誤拒絕並發一則error事件；此時伺服器已因取檔名之請求觸發過一次download事件而沒有下載發生)；快取與否由應用端自行決定
+ * @param {Function} [opt.getToken=()=>''] 輸入取得使用者token的回調函數，預設()=>''。未給或給予非函數者一律視為不帶token(每次請求送出空token，不另發事件)，伺服器端之verifyConn若要求token即以permission denied拒絕。可回傳字串、promise或thenable(一律await)；回undefined或null(含promise或thenable解出者)視為未帶token(送出空token，不送字面之undefined)。拋錯或reject之值不論形狀(含形似取消、形似413者與惡意值)一律為該次嘗試之失敗，照常重試且每次一則error事件，最終以原值拒絕(Error者為其訊息)。**每一次請求嘗試各呼叫一次**(含重試，故一次execute為1+retryMain次)，使重試帶當下之token；瀏覽器下載管理器路徑(downloadByManager=true)於取檔名之請求外，另於導覽至下載網址前再呼叫一次，故為(1+retryDownload)+1次(該次拋錯時download以錯誤拒絕並發一則error事件；此時伺服器已因取檔名之請求觸發過一次download事件而沒有下載發生)；快取與否由應用端自行決定
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與伺服器之sizeSlice一致，伺服器以其sizeSlice為單一切片請求上限並據以判定切片是否完整，不一致時upload會於check-total-hash階段以sizeSlice mismatch訊息終止。須為安全整數，Infinity與超出安全範圍者視為無效取預設
  * @param {Integer} [opt.timeout=5*60*1000] 輸入最長等待時間整數，單位ms，預設為5*60*1000、為5分鐘。交予axios之timeout：於nodejs為socket閒置逾時（有資料往來即不計時），於瀏覽器為XHR之**整個請求**上限（含本體傳輸時間，故瀏覽器以blob模式下載或execute傳輸大檔時須依檔案大小與頻寬調大或給0）；0為不逾時；須為安全整數，Infinity與超出安全範圍者視為無效取預設；另受計時器上限2147483647約束，超過者亦取預設。不可用Infinity或超大數字表示不逾時(axios會於請求送出前即拋錯，超大數字則因計時器溢位而立即逾時)，不逾時請給0
- * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
+ * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413(指本套件之請求所收到之HTTP狀態；應用端或getToken交出之值不論形狀皆不據以判定，如{response:{status:413}}照常重試)。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
- * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload)一則。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。**中止(opt.signal)**：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止**該次呼叫**(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以**signal.reason原樣**拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。**判別中止請以signal.aborted**(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為**結果未知**(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而**不可中止**(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交
+ * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload、upload之輸入讀取失敗即雜湊計算失敗)一則，不重試。**結局之判定**：伺服器回傳值(含應用端之拒絕值)與getToken之拒絕值一律原樣交出，不以形狀判定(形似取消之{reason:'cancelled'}、形似413之{response:{status:413}}皆照常重試並逐次發事件)；惡意值(如已撤銷之Proxy)亦原樣交給error監聽器與呼叫端，其讀取由監聽器與呼叫端自行負責。下載須取得本套件之下載回應(帶Content-Disposition)才算成功，否則(如網址誤指他站而回2xx之網頁)以'invalid download response from server'拒絕並照常重試。請求之成敗依本套件明給之validateStatus(2xx)判定，不受宿主之axios.defaults影響；惟Node.js下使用axios之預設實例，宿主掛於其上之攔截器亦作用於本套件之請求(已知限制，瀏覽器之dist自帶axios而不受影響)。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。**中止(opt.signal)**：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止**該次呼叫**(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以**signal.reason原樣**拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。**判別中止請以signal.aborted**(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為**結果未知**(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而**不可中止**(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交
  * @example
  *
  * import path from 'path'
@@ -520,42 +530,46 @@ function WConverhpClient(opt) {
         return { ctx: genCallCtx(scope) }
     }
 
-    //symNoRetry, 標記「可證明不需重試」之錯誤: 伺服器於error封包標示retryable為false(參數檢核類, 結果僅由請求內容決定), 或HTTP 413(本體超過伺服器上限, 上限為伺服器建構參數, 重送同一本體必同一結果且每次重送整包)
-    //以Symbol為鍵避免與伺服器回傳之任意值撞名; 僅於send內部流轉, 交予呼叫端前解包, 呼叫端仍收到原始error值; 其餘(permission denied、應用端reject、斷線等)皆屬狀態不穩, 依重試原則照常重試
-    let symNoRetry = Symbol('noRetry')
+    //noRetrySet, 「可證明不需重試」之錯誤之包裝之集合: 伺服器於error封包或標頭標示retryable為false(參數檢核類, 結果僅由請求內容決定), 或本套件之請求收到HTTP 413(本體超過伺服器上限, 上限為伺服器建構參數, 重送同一本體必同一結果且每次重送整包)
+    //一律於失敗之來源以 wrapNoRetry 包裝, 以 WeakSet 之成員(參照)識別(帳本 R29): 不讀失敗值之任何屬性 —— 失敗值可為伺服器轉交之應用端值或 getToken 之任意值(含已撤銷之 Proxy), 讀之即可拋;
+    //原本以 Symbol 鍵 + isobj(Object.prototype.toString, 會觸發 Symbol.toStringTag getter)識別包裝, 並對**任意**失敗值讀 response.status === 413 —— 應用端或 getToken 以 { response: { status: 413 } } 拒絕即被判為不需重試(審計 run01 實測)。
+    //對標: p-retry 之不重試只認其自己之類別 AbortError、axios-retry 之重試判定只讀 AxiosError 之欄位; 判「不需重試」只用自建物件之識別
+    //僅於send內部流轉, 交予呼叫端前解包, 呼叫端仍收到原始error值; 其餘(permission denied、應用端reject、斷線等)皆屬狀態不穩, 依重試原則照常重試
+    let noRetrySet = new WeakSet()
     let isNoRetry = (msg) => {
-        return (isobj(msg) &amp;&amp; msg[symNoRetry] === true) || get(msg, 'response.status') === 413
+        return noRetrySet.has(msg)
     }
     let unwrapNoRetry = (msg) => {
-        return (isobj(msg) &amp;&amp; msg[symNoRetry] === true) ? msg.msg : msg
+        return noRetrySet.has(msg) ? msg.msg : msg
     }
 
-    //fetchToken, 取當下 token 之唯一擁有者: 應用端之 getToken 可回值或 promise; undefined / null 視為未帶 token
+    //fetchToken, 取當下 token 之唯一擁有者: 應用端之 getToken 可回值、promise 或 thenable; undefined / null 視為未帶 token
     //why 單一擁有者: 第十輪 F11 於 callApiCore 內補了「每次嘗試重取 + undefined 不送字面」, 而瀏覽器下載管理器路徑(downloadBrowser)另有一份手寫之取 token 且未套 ——
     //getToken 回 undefined 時 URL 帶 token=undefined, 伺服器 isestr('undefined') 為真而以 Bearer undefined 交 verifyConn(同一規則兩站點只套一處)
+    //why 一律 await(2026-10-14): 原以 wsemi 之 ispm(只認 [object Promise])判斷才 await, 一般物件之 thenable 不被認出, 由 async 函數之回傳採納而跳過下方正規化 ——
+    //thenable 解出 undefined 時送出字面 Bearer undefined(審計 run01 實測)。await 對非 thenable 之值原樣交回
     //拋錯或 reject 原樣向外拋, 由呼叫處決定其為該次嘗試之失敗(callApiCore, 進重試)或入口失敗(downloadBrowser, 一則事件 + 拒絕)
     let fetchToken = async() => {
-        let token = getToken()
-        if (ispm(token)) {
-            token = await token
-        }
+        let token = await getToken()
         if (token === undefined || token === null) {
             token = ''
         }
         return token
     }
 
-    //wrapNoRetry, 伺服器標示 retryable 為 false 之錯誤以 symNoRetry 包裝, 交由 callApi 中止重試並解包; 不發事件(事件由 attemptFailed 唯一擁有)
+    //wrapNoRetry, 可證明不需重試之錯誤之包裝(見 noRetrySet): 伺服器標示 retryable 為 false 者、本套件之請求收到 HTTP 413 者; 交由 callApi 中止重試並解包; 不發事件(事件由 attemptFailed 唯一擁有)
     //why 原本之 serverError 兼做「發事件」: 它只涵蓋業務錯誤(封包 / 標頭 / 合併查詢), 傳輸失敗 0 則 —— 同一個「這次嘗試失敗了」兩種處置(第十一輪 N3)
     let wrapNoRetry = (msg, retryable) => {
         if (retryable === false) {
-            return { [symNoRetry]: true, msg }
+            let o = { msg }
+            noRetrySet.add(o)
+            return o
         }
         return msg
     }
 
     //attemptFailed, 「一次嘗試失敗」之 error 事件唯一擁有者(帳本 R5 client 側): 不分傳輸(連不上、逾時、413、5xx)、業務(伺服器錯誤封包 / Return-Type:error / 合併查詢之 state:error)、
-    //封包解析、getToken 拋錯, 每次嘗試恰一則。呼叫點只有兩個: callApi 之重試迴圈(每次 fun(s) 回 error)與 checkMerging(其 HTTP 請求成功而本體 state 為 error, 不經迴圈; 第十輪 F6 之站點)
+    //封包解析、getToken 拋錯, 每次嘗試恰一則。呼叫點只有兩個: callApi 之重試迴圈(每次 attempt() 回 error)與 checkMerging(其 HTTP 請求成功而本體 state 為 error, 不經迴圈; 第十輪 F6 之站點)
     //why: 原本只有業務錯誤經 serverError 發事件, 傳輸失敗 0 則(實測第十一輪 N3: 連不上、413 皆 0 則), 應用端完全觀察不到斷線; send 之 catch 只在不可達之分支發事件且值為物件。
     //對標: socket.io-client 之 connect_error 不論傳輸方式、每次嘗試皆發出
     //事件值經 classifyFailure, 與最終拒絕值同一算法: 非 Error 者(伺服器回傳值)原樣; Error 者取可讀訊息(HTTP statusText 優先, 如 413 為 Payload Too Large; 帳本 R10)
@@ -731,8 +745,18 @@ function WConverhpClient(opt) {
                 return Promise.reject(wrapNoRetry(returnMsg, returnRetryable !== 'false')) //事件由 callApi 之 attemptFailed 發
             }
 
+            //check, 成功須以肯定式證明是本套件之下載回應(帳本 R6、R29): 伺服器 /dw 之成功回應必帶 Content-Disposition, 不帶者即非本套件之回應 ——
+            //網址誤指他站(如 SPA 主機對任何路徑回 200 網頁)、代理之 2xx 錯誤頁; 以錯誤拒絕並照常重試(屬環境/狀態不穩, 不標示不需重試), 不把該本體當成使用者之檔案交出或落檔
+            //why: 原本只排除 Return-Type 為 error 者, 其餘一律當成功(否定式, fail-open)—— 審計 run01 實測網址誤指 SPA 主機時 nodejs 下載 resolve 並把 HTML 存為 unknown、0 則;
+            //而封包路由(execute、upload)同一情境以嚴格解碼正確失敗。瀏覽器跨來源時 Content-Disposition 須被曝露(本套件之伺服器已列於 additionalExposedHeaders; 外部 serverHapi 未曝露者 JSDoc 本載 download 失效)
+            let contentDisposition = get(res, `headers['content-disposition']`, '')
+            if (!isestr(contentDisposition)) {
+                drainResponse(res)
+                return Promise.reject(`invalid download response from server`) //屬傳輸/環境不穩, 依重試原則照常重試; 事件由 callApi 之 attemptFailed 發
+            }
+
             //filename, 自 Content-Disposition 解碼並淨化(見 decodeFilenameFromHeader)
-            let filename = decodeFilenameFromHeader(get(res, `headers['content-disposition']`, ''))
+            let filename = decodeFilenameFromHeader(contentDisposition)
 
             //streamRecv
             let streamRecv = get(res, 'data')
@@ -759,6 +783,7 @@ function WConverhpClient(opt) {
             data: dd,
             headers: {}, //於每次嘗試由 callApiCore 組裝(含每次重取之 token)
             timeout,
+            validateStatus: (status) => status >= 200 &amp;&amp; status &lt; 300, //明給(帳本 R29): 成敗依本套件之判準, 不取宿主之 axios.defaults(宿主全放行時 404 之下載曾被當成功並落檔, 審計 run01)
             signal: ctx.scope.signal, //本呼叫之中止範圍內部之 signal(中止即中止在途請求並銷毀串流回應); 未給 opt.signal 之呼叫為 undefined, 組態與未支援中止前相同
             maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
@@ -813,8 +838,15 @@ function WConverhpClient(opt) {
                 ...headers,
             }
 
-            //axios, catch時直接向外傳遞
-            let res = await axios(s)
+            //axios, 失敗時向外傳遞; 本套件之請求收到 HTTP 413 者於此(失敗之來源)標示為可證明不需重試(見 noRetrySet, 帳本 R29)
+            //只對 axios.isAxiosError 為真者讀 response.status: 宿主掛在共用 axios 實例上之攔截器可改以任意值拒絕(帳本已知限制 L1), 該值不是本套件之請求所收到之 HTTP 狀態
+            let res
+            try {
+                res = await axios(s)
+            }
+            catch (err) {
+                throw (axios.isAxiosError(err) &amp;&amp; get(err, 'response.status') === 413) ? wrapNoRetry(err, false) : err
+            }
 
             //check, download時直接轉由downloadStream處理res, catch時直接向外傳遞
             if (type === 'download') {
@@ -858,11 +890,21 @@ function WConverhpClient(opt) {
         //callApi, 處理callApiCore失敗catch時retry
         let callApi = async() => {
 
-            //pmConvertResolve
-            let fun = pmConvertResolve(callApiCore)
+            //attempt, 一次嘗試之結局 { state, msg } 由本套件自己的 try/catch 分類(帳本 R29), 不以失敗值之形狀判定
+            //why: 原以 wsemi 之通用輔助函式分類, 其另有取消第三態(拒絕值之 reason 為 'cancelled' 者改為空字串, 原值丟棄; 屬 wsemi 取消家族之文件化慣例)——
+            //伺服器轉交之應用端拒絕值、getToken 之拒絕值、宿主攔截器之值只要抵達時為該形狀, 即以空字串結束、0 則事件、不重試(含 CLAUDE.md 之 failTwice 契約以該形狀實作即破);
+            //惡意之拒絕值更使其讀取 reason 時拋錯而永不 settle 並產生未處理之 rejection(審計 run01 實測)。本處之 catch 只回傳物件、不讀失敗值, 不可能拋
+            let attempt = async() => {
+                try {
+                    return { state: 'success', msg: await callApiCore() }
+                }
+                catch (err) {
+                    return { state: 'error', msg: err }
+                }
+            }
 
-            //fun
-            let r = await fun(s)
+            //attempt
+            let r = await attempt()
             // console.log('r', r)
 
             //while, 退避曲線見src/retryBackoff.mjs(其自有封頂, 使延遲不隨retry次數無界成長)
@@ -902,7 +944,7 @@ function WConverhpClient(opt) {
 
                 //retry
                 ctx.log(`retry n=${n}...`)
-                r = await fun(s)
+                r = await attempt()
                 // console.log(`retry n=${n} done`)
 
             }
@@ -1027,10 +1069,27 @@ function WConverhpClient(opt) {
             }
         }
 
+        //hashOf, 雜湊之計算: 本地計算無法取消, 中止時不再等待其結果(已中止者不開始), 計算本身於背景跑完
+        //失敗(輸入讀取失敗: nodejs 之 fs.openAsBlob 取得後檔案被改寫而 NotReadableError、瀏覽器之 File 於選取後被修改或刪除等)屬入口失敗(帳本 R5):
+        //一則事件 + classifyFailure 之值(與其餘本地失敗同一算法)、不重試(重算讀的是同一個已不可讀之輸入); 中止者以 reason 拒絕且不發事件(帳本 R27)
+        //why(主控裁示 N6): 原本 race 之拒絕直接成為 upload() 之拒絕 —— 以原始錯誤物件拒絕且 0 則, 為本地失敗中唯一交出 Error 物件且不發事件之路徑(審計 run01 實測)
+        let hashOf = async(inp) => {
+            try {
+                return await ctx.scope.race(() => calcHash(inp))
+            }
+            catch (err) {
+                if (ctx.scope.isAborted()) {
+                    return Promise.reject(ctx.scope.reason())
+                }
+                let msg = classifyFailure(err)
+                ctx.emit('error', msg)
+                return Promise.reject(msg)
+            }
+        }
+
         //fileTotalHash
         // console.log(`calc hash for fileTotalSize[${fileTotalSize}]...`)
-        //雜湊為本地計算無法取消: 中止時不再等待其結果(已中止者不開始), 計算本身於背景跑完
-        let fileTotalHash = await ctx.scope.race(() => calcHash(bb))
+        let fileTotalHash = await hashOf(bb)
         // console.log(`calc hash for fileTotalSize[${fileTotalSize}] done`, fileTotalHash)
 
         //send check-total-hash
@@ -1108,7 +1167,7 @@ function WConverhpClient(opt) {
                 let chunk = bb.slice(start, end)
 
                 //fileSliceHash
-                let fileSliceHash = await ctx.scope.race(() => calcHash(chunk))
+                let fileSliceHash = await hashOf(chunk)
                 // console.log('fileSliceHash', fileSliceHash)
 
                 //push
@@ -1393,7 +1452,7 @@ function WConverhpClient(opt) {
      * @memberof WConverhpClient
      * @instance
      * @param {String} filename 輸入檔名字串(伺服器端以filename原值與其淨化值filenameSafe交給應用端)
-     * @param {Blob|File|ArrayBuffer|ArrayBufferView|String} input 輸入資料,ArrayBufferView以位元組計、字串以UTF-8位元組計,其餘以錯誤拒絕並發一則error事件
+     * @param {Blob|File|ArrayBuffer|ArrayBufferView|String} input 輸入資料,ArrayBufferView以位元組計、字串以UTF-8位元組計,其餘以錯誤拒絕並發一則error事件;上傳期間輸入無法讀取者(如File選取後被修改或刪除而雜湊計算失敗)以訊息字串拒絕並發一則error事件、不重試
      * @param {Function} [cbProgress] 輸入進度回呼函數,傳入{prog,p,m}。同步拋錯只發一則error事件而不影響上傳結果;中止後不再被呼叫
      * @param {Object} [opt={}] 輸入設定物件,預設{}
      * @param {AbortSignal} [opt.signal] 輸入中止訊號,中止即以signal.reason拒絕本次上傳(含雜湊計算之等待、各切片、合併輪詢),其後不再重試、不再發error事件、不再呼叫getToken與cbProgress;伺服器已存之切片保留供續傳,已受理之合併照常完成,結果未知。可用AbortSignal.timeout(ms)為整個上傳(含依設計持續至應用端接受為止之合併輪詢)設上限。詳見建構函數之@returns
@@ -1579,7 +1638,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Oct 13 2026 21:38:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Oct 14 2026 01:32:25 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
