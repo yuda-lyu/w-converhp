@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -80,7 +80,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line802">line 802</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line820">line 820</a>
     </li></ul></dd>
     
 
@@ -127,140 +127,7 @@
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>import fs from 'fs'
-import _ from 'lodash-es'
-import w from 'wsemi'
-import WConverhpServer from './src/WConverhpServer.mjs'
-
-let ms = []
-
-let opt = {
-    port: 8080,
-    apiName: 'api',
-    pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
-    sizeMsg: 100 * 1024 * 1024, //單次請求本體上限, 預設100mb, 適用於除切片(/slc)外之各API; 切片單次上限為sizeSlice, 大檔案總大小不受限, 請改用upload
-    verifyConn: async ({ apiType, authorization, query, headers, req }) => {
-        console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
-        let token = w.strdelleft(authorization, 7) //刪除Bearer
-        if (!w.isestr(token)) {
-            return false
-        }
-        // await w.delay(3000)
-        return true
-    },
-}
-
-//new
-let wo = new WConverhpServer(opt)
-
-wo.on('execute', (func, input, pm) => {
-    // console.log(`Server[port:${opt.port}]: execute`, func, input)
-    console.log(`Server[port:${opt.port}]: execute`, func)
-
-    try {
-
-        if (func === 'add') {
-
-            if (_.get(input, 'p.d.u8a', null)) {
-                console.log('input.p.d.u8a', input.p.d.u8a)
-                ms.push({ 'input.p.d.u8a': input.p.d.u8a })
-            }
-
-            let r = {
-                _add: input.p.a + input.p.b,
-                _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],
-                _bin: {
-                    name: 'zdata.b2',
-                    u8a: new Uint8Array([52, 66, 97, 115]),
-                },
-            }
-
-            pm.resolve(r)
-
-        }
-        else {
-            console.log('invalid func')
-            pm.reject('invalid func')
-        }
-
-    }
-    catch (err) {
-        console.log('execute error', err)
-        pm.reject('execute error')
-    }
-
-})
-wo.on('upload', (input, pm) => {
-    console.log(`Server[port:${opt.port}]: upload`, input)
-
-    try {
-        ms.push({ 'receive and return': input })
-        let output = input
-        pm.resolve(output)
-    }
-    catch (err) {
-        console.log('upload error', err)
-        pm.reject('upload error')
-    }
-
-})
-wo.on('download', (input, pm) => {
-    console.log(`Server[port:${opt.port}]: download`, input)
-
-    let streamRead = null
-    try {
-        ms.push({ 'download': input })
-
-        //fp
-        let fp = `./test/1mb.7z`
-
-        //check, 檔案存在才往下
-
-        //fileSize
-        let stats = fs.statSync(fp)
-        let fileSize = stats.size
-
-        //streamRead
-        streamRead = fs.createReadStream(fp)
-
-        //filename
-        let filename = `1mb中文.7z` //測試支援中文
-
-        //fileType
-        let fileType = 'application/x-7z-compressed'
-
-        //output
-        let output = {
-            streamRead,
-            filename,
-            fileSize,
-            fileType,
-        }
-
-        pm.resolve(output)
-    }
-    catch (err) {
-        console.log('download error', err)
-        // try {
-        //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy
-        // }
-        // catch (err) {}
-        pm.reject('download error')
-    }
-
-})
-wo.on('error', (err) => {
-    console.log(`Server[port:${opt.port}]: error`, err)
-})
-wo.on('handler', (data) => {
-    // console.log(`Server[port:${opt.port}]: handler`, data)
-})
-
-setTimeout(() => {
-    console.log('ms', ms)
-    // console.log('ms', JSON.stringify(ms))
-    wo.stop()
-}, 3000)</code></pre>
+    <pre class="prettyprint"><code>import fs from 'fs'import _ from 'lodash-es'import w from 'wsemi'import WConverhpServer from './src/WConverhpServer.mjs'let ms = []let opt = {    port: 8080,    apiName: 'api',    pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist    sizeMsg: 100 * 1024 * 1024, //單次請求本體上限, 預設100mb, 適用於除切片(/slc)外之各API; 切片單次上限為sizeSlice, 大檔案總大小不受限, 請改用upload    verifyConn: async ({ apiType, authorization, query, headers, req }) => {        console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)        let token = w.strdelleft(authorization, 7) //刪除Bearer        if (!w.isestr(token)) {            return false        }        // await w.delay(3000)        return true    },}//newlet wo = new WConverhpServer(opt)wo.on('execute', (func, input, pm) => {    // console.log(`Server[port:${opt.port}]: execute`, func, input)    console.log(`Server[port:${opt.port}]: execute`, func)    try {        if (func === 'add') {            if (_.get(input, 'p.d.u8a', null)) {                console.log('input.p.d.u8a', input.p.d.u8a)                ms.push({ 'input.p.d.u8a': input.p.d.u8a })            }            let r = {                _add: input.p.a + input.p.b,                _data: [11, 22.22, 'abc', { x: '21', y: 65.43, z: 'test中文' }],                _bin: {                    name: 'zdata.b2',                    u8a: new Uint8Array([52, 66, 97, 115]),                },            }            pm.resolve(r)        }        else {            console.log('invalid func')            pm.reject('invalid func')        }    }    catch (err) {        console.log('execute error', err)        pm.reject('execute error')    }})wo.on('upload', (input, pm) => {    console.log(`Server[port:${opt.port}]: upload`, input)    try {        ms.push({ 'receive and return': input })        let output = input        pm.resolve(output)    }    catch (err) {        console.log('upload error', err)        pm.reject('upload error')    }})wo.on('download', (input, pm) => {    console.log(`Server[port:${opt.port}]: download`, input)    let streamRead = null    try {        ms.push({ 'download': input })        //fp        let fp = `./test/1mb.7z`        //check, 檔案存在才往下        //fileSize        let stats = fs.statSync(fp)        let fileSize = stats.size        //streamRead        streamRead = fs.createReadStream(fp)        //filename        let filename = `1mb中文.7z` //測試支援中文        //fileType        let fileType = 'application/x-7z-compressed'        //output        let output = {            streamRead,            filename,            fileSize,            fileType,        }        pm.resolve(output)    }    catch (err) {        console.log('download error', err)        // try {        //     streamRead.destroy() //若fs.createReadStream早於fs.statSync執行, 但fs.statSync發生錯誤時, stream得要destroy        // }        // catch (err) {}        pm.reject('download error')    }})wo.on('error', (err) => {    console.log(`Server[port:${opt.port}]: error`, err)})wo.on('handler', (data) => {    // console.log(`Server[port:${opt.port}]: handler`, data)})setTimeout(() => {    console.log('ms', ms)    // console.log('ms', JSON.stringify(ms))    wo.stop()}, 3000)</code></pre>
 
 
 
@@ -390,7 +257,7 @@ setTimeout(() => {
                 </td>
             
 
-            <td class="description last"><p>輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設</p></td>
+            <td class="description last"><p>輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設。給予serverHapi時不作用</p></td>
         </tr>
 
     
@@ -430,7 +297,7 @@ setTimeout(() => {
                 </td>
             
 
-            <td class="description last"><p>輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true</p></td>
+            <td class="description last"><p>輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true。靜態檔案不經verifyConn，即對所有連線者公開。未給(undefined或null)時取預設；有給但非布林值(如字串'false'、數值0)時不提供靜態檔案並發一則error事件，不會退回提供。給予serverHapi時不作用</p></td>
         </tr>
 
     
@@ -470,7 +337,7 @@ setTimeout(() => {
                 </td>
             
 
-            <td class="description last"><p>輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'</p></td>
+            <td class="description last"><p>輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'。未給(undefined或null)時取預設；有給但非有效字串時不提供靜態檔案並發一則error事件，不會改為公開預設資料夾。給予serverHapi時不作用</p></td>
         </tr>
 
     
@@ -710,7 +577,7 @@ setTimeout(() => {
                 </td>
             
 
-            <td class="description last"><p>輸入呼叫API時檢測函數，預設()=&gt;{return true}</p></td>
+            <td class="description last"><p>輸入呼叫API時檢測函數，可為sync或async函數，回傳(或resolve)嚴格等於true才放行，回傳其他值、拋錯或reject一律視為不通過而回應permission denied，預設()=&gt;{return true}。未給(undefined或null)時全部放行；有給但非函數(如false、字串、物件)時本套件之API一律拒絕(permission denied)並發一則error事件，不會退回全部放行。作用於本套件之API，不作用於靜態檔案(見useInert)</p></td>
         </tr>
 
     
@@ -750,7 +617,7 @@ setTimeout(() => {
                 </td>
             
 
-            <td class="description last"><p>輸入允許跨域網域陣列，若給予['<em>']代表允許全部，預設['</em>']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名</p></td>
+            <td class="description last"><p>輸入允許跨域網域陣列，若給予['<em>']代表允許全部('</em>'須單獨出現)，預設['<em>']。給予單一字串時視為只含該網域之陣列；給予false或<a href="%E5%90%AB%E5%8F%AA%E6%9C%89%E7%A9%BA%E5%AD%97%E4%B8%B2%E8%80%85"></a>代表停用跨域：不回應CORS標頭，瀏覽器無法跨來源讀取回應(伺服器端之存取控制仍由verifyConn決定)；陣列中之空字串會被忽略。給予其他值、或hapi不接受之陣列(如含非字串元素、'</em>'與其他網域並存)時同樣停用跨域並發一則error事件，不會退回允許全部，建構時亦不拋出。給予serverHapi時不作用(跨域由外部伺服器決定)，若仍有給予則發一則error事件告知。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名</p></td>
         </tr>
 
     
@@ -803,7 +670,7 @@ setTimeout(() => {
             <td class="type">
             
                 
-<span class="param-type">Boolean</span>
+<span class="param-type">Object</span>
 
 
 
@@ -830,7 +697,7 @@ setTimeout(() => {
                 </td>
             
 
-            <td class="description last"><p>輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效</p></td>
+            <td class="description last"><p>輸入外部提供之Hapi伺服器物件，預設null。給予時本套件只於其上註冊通訊路由(不啟動伺服器、不註冊@hapi/inert)，故port、useInert、pathStaticFiles、corsOrigins不作用，跨域與靜態檔案由外部提供者自行設定；外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效。路由註冊失敗(如與既有路由衝突)時以error事件通知，已註冊之部分路由不會回復。此模式下伺服器之生命週期由外部提供者擁有，請勿呼叫回傳物件之stop：其會停止整台外部伺服器(含其上之其他路由)，並觸發外部伺服器之onPreStop、onPostStop擴充與stop事件(即使外部伺服器尚未啟動)；外部伺服器啟動期間呼叫則被hapi拒絕而以error事件通知</p></td>
         </tr>
 
     
@@ -863,7 +730,7 @@ setTimeout(() => {
 
         
 <div class="param-desc">
-    <p>回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；<strong>filename為用戶端所給之原值、未經淨化、不可信</strong>(可含路徑分隔符、<code>..</code>、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；<strong>filenameSafe</strong>為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。<strong>監聽器須為同步函數，不可為async函數、亦不可回傳promise</strong>：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為<code>wo.on('upload', (input, pm) =&gt; { doWork().then(pm.resolve, pm.reject) })</code>。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(<code>await wo.stop()</code>)，該promise恆resolve，停止失敗以error事件通知而不外拋。<strong>應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件</strong>(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知</p>
+    <p>回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；<strong>filename為用戶端所給之原值、未經淨化、不可信</strong>(可含路徑分隔符、<code>..</code>、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；<strong>filenameSafe</strong>為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。<strong>監聽器須為同步函數，不可為async函數、亦不可回傳promise</strong>：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為<code>wo.on('upload', (input, pm) =&gt; { doWork().then(pm.resolve, pm.reject) })</code>。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(<code>await wo.stop()</code>)，該promise恆resolve，停止失敗以error事件通知而不外拋(外部serverHapi模式見該參數之說明)。<strong>應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件</strong>(不會等待一個不存在的回覆)；upload之上傳管線亦同：未註冊upload監聽器時，切片上傳與check-total-hash、check-slices-hash、merge-slices-push於寫入任何暫存檔之前即以錯誤封包回應，前端upload於第一個請求(check-total-hash)即收到錯誤並依retryUpload重試後失敗，不會先傳完整檔(上傳途中才移除監聽器者，已傳之切片留於暫存資料夾，可續傳)；merge-slices-get對已承接之工作(已儲存結果之重送、同一隊列在途之消費)不受影響。而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知</p>
 </div>
 
 
@@ -922,7 +789,7 @@ setTimeout(() => {
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Oct 11 2026 14:07:27 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Oct 13 2026 12:47:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

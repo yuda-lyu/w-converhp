@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -141,6 +141,8 @@
 原本手寫展開於六條路由之 40 處同型片段, 每加一條規則就得寫六遍而漏其一(第十輪 A5/A6/A9/F10 各改 3–6 處; 第十一輪 N2/N4 皆為「同一規則第二站點沒套」)。
 表上少一欄由測試直接對表斷言, 比數 grep 命中數有分辨力</p>
 <p>欄位:
+event: 本路由所服務之應用端事件; 該事件無人接聽時請求須立即終結而不得產生副作用(帳本 R12)。/main 與三條下載路由由 callApp 於派發前判定,
+/slc 與 /ulctr(merge-slices-get 除外)由 requireListener 於副作用前判定(第十二輪)
 apiType: verifyConn 所見之 apiType(對外契約)
 api: handler 事件所見之 api(對外契約)
 authFrom: 應用端所見之 authorization 來源 —— 'header' 為請求標頭原樣, token 為確認授權方案前綴相符後切出者(帳本 R15);
@@ -155,7 +157,7 @@ optional 者判定不通過且判定本身未拋錯時視為未給</p></li></ul>
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="routeSpec.mjs.html">routeSpec.mjs</a>, <a href="routeSpec.mjs.html#line22">line 22</a>
+        <a href="routeSpec.mjs.html">routeSpec.mjs</a>, <a href="routeSpec.mjs.html#line24">line 24</a>
     </li></ul></dd>
     
 
@@ -202,6 +204,8 @@ optional 者判定不通過且判定本身未拋錯時視為未給</p></li></ul>
 原本手寫展開於六條路由之 40 處同型片段, 每加一條規則就得寫六遍而漏其一(第十輪 A5/A6/A9/F10 各改 3–6 處; 第十一輪 N2/N4 皆為「同一規則第二站點沒套」)。
 表上少一欄由測試直接對表斷言, 比數 grep 命中數有分辨力</p>
 <p>欄位:
+event: 本路由所服務之應用端事件; 該事件無人接聽時請求須立即終結而不得產生副作用(帳本 R12)。/main 與三條下載路由由 callApp 於派發前判定,
+/slc 與 /ulctr(merge-slices-get 除外)由 requireListener 於副作用前判定(第十二輪)
 apiType: verifyConn 所見之 apiType(對外契約)
 api: handler 事件所見之 api(對外契約)
 authFrom: 應用端所見之 authorization 來源 —— 'header' 為請求標頭原樣, token 為確認授權方案前綴相符後切出者(帳本 R15);
@@ -824,7 +828,7 @@ resolve 一個永不 settle 之 promise、verifyConn 回 pending promise)一律<
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line617">line 617</a>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line635">line 635</a>
     </li></ul></dd>
     
 
@@ -2631,6 +2635,190 @@ hapi於送標頭階段失敗只能直接斷線, 前端連回應標頭都收不�
 
     
 
+    <h4 class="name" id="noListenerOf"><span class="type-signature"></span>noListenerOf<span class="signature">(ev, name)</span><span class="type-signature"> &rarr; {String}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>判定某事件現在是否無人接聽 —— 全檔唯一呼叫 listenerCount 之處(帳本 R12 之判定擁有者)</p>
+<p>兩個使用者: callApp(派發應用端事件之前)與 requireListener(上傳管線受理新工作而產生副作用之前, 第十二輪)。
+只判「現在的狀態」(帳本 R12 分界線: 可在確定時點、只用手上的值判出); 訊息字面由此唯一產生, 使兩處之錯誤封包與事件同一字面</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="WConverhpServer.mjs.html">WConverhpServer.mjs</a>, <a href="WConverhpServer.mjs.html#line601">line 601</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>ev</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入事件物件, 為 wsemi 之 evem 所建立之 eventemitter3 實例</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>name</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入事件名稱字串</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳無人接聽之訊息字串; 有人接聽時回傳空字串</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">String</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id="normalizeUploadInput"><span class="type-signature"></span>normalizeUploadInput<span class="signature">(v)</span><span class="type-signature"> &rarr; {Blob|Uint8Array|null}</span></h4>
 
     
@@ -4285,7 +4473,7 @@ wsemi 之 isestr / isValidFileSize 皆經 Object.prototype.toString.call, 會觸
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Oct 11 2026 14:07:27 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Oct 13 2026 12:47:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
