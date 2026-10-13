@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -1744,6 +1744,196 @@ resolve 一個永不 settle 之 promise、verifyConn 回 pending promise)一律<
 
     
 
+    <h4 class="name" id="genAbortScope"><span class="type-signature"></span>genAbortScope<span class="signature">(signal<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>建立一次公開呼叫(execute、upload、download)之中止範圍</p>
+<p>對外部 signal 只掛一個 abort 監聽, 於 dispose 時移除: 長壽 signal 被重複用於大量呼叫時不累積監聽。
+交給 axios 者為範圍內部之 AbortController 之 signal(axios 每次請求各自於其上掛監聽), 外部 signal 不承受逐次請求之監聽。
+未給 signal(undefined、null)者為永不中止之範圍: 不建 AbortController、signal 為 undefined、race 直通、delay 即一般之延遲 ——
+使未使用中止之既有呼叫其行為與組態(含交給 axios 之 signal)皆與未支援中止前相同。</p>
+<p>中止為單向且只觸發一次: 觸發時先中止內部 AbortController(使在途之 axios 請求中止), 再依註冊順序呼叫 onAbort 之處理器;
+已中止後才註冊之處理器立即被呼叫。處理器之拋錯一律吞下, 不得中斷其餘處理器。</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="abortScope.mjs.html">abortScope.mjs</a>, <a href="abortScope.mjs.html#line63">line 63</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>let ac = new AbortController()
+let scope = genAbortScope(ac.signal)
+scope.race(() => new Promise((resolve) => setTimeout(resolve, 1000)))
+    .catch((err) => {
+        console.log(err === ac.signal.reason) // => true
+    })
+ac.abort()
+scope.dispose()</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>signal</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">AbortSignal</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+
+            <td class="description last"><p>輸入外部之 AbortSignal, 未給(undefined 或 null)代表永不中止; 是否為 AbortSignal 由呼叫端先以 isAbortSignal 判定</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳範圍物件, 含 signal(交 axios 之內部 signal, 未給外部 signal 者為 undefined)、isAborted()、reason()、
+onAbort(fn)(註冊中止處理器, 回傳取消註冊之函數)、race(promise 或 function)(中止即以 reason 拒絕; 給函數者於已中止時不呼叫)、
+delay(ms)(可被中止之延遲, 中止即清除計時器並以 reason 拒絕)、dispose()(移除對外部 signal 之監聽, 呼叫結束時呼叫)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id="hasPipe"><span class="type-signature"></span>hasPipe<span class="signature">(v)</span><span class="type-signature"> &rarr; {Boolean|null}</span></h4>
 
     
@@ -1897,6 +2087,167 @@ null  判定失敗(pipe為會拋錯之getter或Proxy trap) —— 其值本就�
 |
 
 <span class="param-type">null</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="isAbortSignal"><span class="type-signature"></span>isAbortSignal<span class="signature">(v)</span><span class="type-signature"> &rarr; {Boolean}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>判定是否為 AbortSignal</p>
+<p>以鴨子型別判定(aborted 為布林, 且具 addEventListener 與 removeEventListener), 不用 instanceof:
+跨 realm(iframe)與 polyfill 之 signal 其原型不同, instanceof 會誤判為非 AbortSignal 而使中止靜默失效。
+不用 wsemi 之 isobj: AbortSignal 之 Object.prototype.toString 為 [object AbortSignal], isobj 對其回 false</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="abortScope.mjs.html">abortScope.mjs</a>, <a href="abortScope.mjs.html#line14">line 14</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>v</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入任意值</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳是否為 AbortSignal</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Boolean</span>
 
 
 
@@ -2843,7 +3194,7 @@ axios 對非 Buffer 之視圖送 data.buffer, 以 subarray 切出之視圖會連
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line49">line 49</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line52">line 52</a>
     </li></ul></dd>
     
 
@@ -4473,7 +4824,7 @@ wsemi 之 isestr / isValidFileSize 皆經 Object.prototype.toString.call, 會觸
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Oct 13 2026 12:47:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Oct 13 2026 21:38:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
