@@ -174,6 +174,7 @@ describe('api-optionsRange', function() {
         })
         wsv2.on('error', (e) => errs2.push(String(e)))
         wsv2.on('handler', () => {})
+        wsv2.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: check-total-hash 受理前須有 upload 接聽者, 本案以其回應之 sizeSlice 驗選項取值
         await w.delay(1200)
         assert.strict.deepEqual(errs2, [])
         let r = await fetch(`http://127.0.0.1:${portOf('api-optionsRange', 1)}/api/ulctr`, {
@@ -208,6 +209,7 @@ describe('api-optionsRange', function() {
             })
             wsv3.on('error', (e) => errs3.push(String(e)))
             wsv3.on('handler', () => {})
+            wsv3.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: check-total-hash 受理前須有 upload 接聽者, 本案以其回應之 sizeSlice 驗是否為本測試之伺服器
         })
         await w.delay(1200)
         for (let e of errs3) {

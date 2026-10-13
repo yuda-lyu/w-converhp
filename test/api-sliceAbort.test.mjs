@@ -53,6 +53,9 @@ describe('api-sliceAbort', function() {
         wsv.on('execute', (func, input, pm) => {
             pm.resolve({ ok: 1 })
         })
+        wsv.on('upload', (input, pm) => {
+            pm.resolve(input) //第十二輪: /slc 寫入切片前須有 upload 接聽者; 本檔驗的是寫入後之中斷收尾
+        })
         wsv.on('error', (e) => {
             errs.push(e)
         })

@@ -1,8 +1,9 @@
 import assert from 'assert'
+import fs from 'fs'
 import routeSpec from '../src/routeSpec.mjs'
 import axes from './tools/api-axes.mjs'
 
-let { allRoutes, downloadRoutes } = axes
+let { allRoutes, downloadRoutes, ulctrModes } = axes
 
 
 /**
@@ -27,12 +28,13 @@ describe('unit-routeSpec', function() {
         }
     })
 
-    it('apiType、api、authFrom 與各種錯誤之狀態碼, src 表與測試軸逐欄相同', function() {
+    it('apiType、api、event、authFrom 與各種錯誤之狀態碼, src 表與測試軸逐欄相同', function() {
         for (let k of keys) {
             let s = routeSpec[k]
             let a = allRoutes[k]
             assert.strict.deepEqual(s.apiType, a.apiType, k)
             assert.strict.deepEqual(s.api, a.api, k)
+            assert.strict.deepEqual(s.event, a.event, `${k}: 所服務之事件(閘門與派發之依據)`)
             assert.strict.deepEqual(s.authFrom, a.authFrom, k)
             for (let kind of Object.keys(a.errorStatus)) {
                 assert.strict.deepEqual(s.statusOf[kind], a.errorStatus[kind], `${k}.${kind}`)
@@ -52,6 +54,21 @@ describe('unit-routeSpec', function() {
         }
         for (let k of ['main', 'ulctr', 'slc']) {
             assert.strict.deepEqual(routeSpec[k].fields, undefined, `${k}: 非下載路由不得有 fields`)
+        }
+    })
+
+    it('/ulctr 之 mode 軸與 src 一致: 軸之成員全集等於 handler 合法 mode 之字面; 軸上不擋者恰為 src 閘門之豁免字面(第十二輪)', function() {
+        //src 之 mode 字面只存在於 handler 之合法性檢核與閘門豁免兩處(非表), 故以原始碼文字對照, 使軸與實作任一邊改了而另一邊沒改即紅
+        let src = fs.readFileSync('src/WConverhpServer.mjs', 'utf8')
+        let mValid = src.match(/if \(mode !== '([a-z-]+)' && mode !== '([a-z-]+)' && mode !== '([a-z-]+)' && mode !== '([a-z-]+)'\)/)
+        assert.strict.deepEqual(mValid !== null, true, '找不到 /ulctr 之 mode 合法性檢核')
+        assert.strict.deepEqual(mValid.slice(1).sort(), Object.keys(ulctrModes).sort())
+        let exempt = [...src.matchAll(/if \(mode !== '([a-z-]+)'\) \{\r?\n\s+let refused = requireListener\(spec, reply\)/g)].map((m) => m[1])
+        assert.strict.deepEqual(exempt, Object.keys(ulctrModes).filter((m) => ulctrModes[m].gated === false), '閘門豁免之 mode 須與軸上 gated:false 者相同')
+        for (let m of Object.keys(ulctrModes)) {
+            if (ulctrModes[m].gated === false) {
+                assert.strict.deepEqual(typeof ulctrModes[m].why === 'string' && ulctrModes[m].why.trim() !== '', true, `${m}: 不擋者須附理由`)
+            }
         }
     })
 

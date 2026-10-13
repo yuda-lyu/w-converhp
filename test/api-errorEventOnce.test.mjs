@@ -69,6 +69,10 @@ describe('api-errorEventOnce', function() {
             }
             pm.resolve({ streamRead: Buffer.from('abc'), filename: 'a.txt', fileSize: 3, fileType: 'text/plain' })
         })
+        //upload, 「有監聽器」之伺服器須亦接聽 upload: 第十二輪起上傳管線(/ulctr、/slc)受理新工作前即須有接聽者, 否則正常路徑之兩路由被閘門擋下
+        wsvA.on('upload', (input, pm) => {
+            pm.resolve({ ok: 1 })
+        })
         wsvB = new WConverhpServer({ port: portB, useInert: false, pathUploadTemp: `${fd}/b`, verifyConn: verifyConnOf('b') })
         wsvB.on('error', (e) => errsB.push(String(e)))
         await w.delay(900)
@@ -157,17 +161,15 @@ describe('api-errorEventOnce', function() {
         }
     })
 
-    it('無人接聽: 直接觸發應用端事件之路由皆恰一則 no listener 事件、狀態碼取自軸之 app; execute 回 no listener for event[execute], download 三路由回固定字串', async function() {
+    it('無人接聽: 六路由皆恰一則 no listener 事件(事件名取自軸之 event)、狀態碼取自軸之 app; execute 與 upload 兩路由回 no listener for event[<事件>], download 三路由回固定字串', async function() {
+        //第十二輪起以 event(本路由所服務之事件)迭代: /ulctr 與 /slc 雖不直接派發 upload(appEvent 為 null), 但受理新上傳工作前即須有接聽者(閘門)
         for (let k of keys) {
             let df = allRoutes[k]
-            if (df.appEvent === null) {
-                continue
-            }
             let r = await hit(df.requestOf(portB, 'ok'), { server: 'b' })
             assert.strict.deepEqual(r.status, df.errorStatus.app, `${k}: ${JSON.stringify(r)}`)
-            assert.strict.deepEqual(r.error, df.appEvent === 'execute' ? 'no listener for event[execute]' : 'can not get file from fileId', `${k}: ${JSON.stringify(r)}`)
+            assert.strict.deepEqual(r.error, df.event === 'download' ? 'can not get file from fileId' : `no listener for event[${df.event}]`, `${k}: ${JSON.stringify(r)}`)
             assert.strict.deepEqual(r.nErrs, 1, `${k}: ${JSON.stringify(r)}`)
-            assert.strict.deepEqual(r.errs[0], `no listener for event[${df.appEvent}]`, `${k}: ${r.errs[0]}`)
+            assert.strict.deepEqual(r.errs[0], `no listener for event[${df.event}]`, `${k}: ${r.errs[0]}`)
         }
     })
 

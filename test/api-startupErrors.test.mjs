@@ -38,6 +38,7 @@ describe('api-startupErrors', function() {
         let evs = []
         let wsv = new WConverhpServer({ port: portOf('api-startupErrors', 1), useInert: false, pathUploadTemp: up })
         wsv.on('error', (e) => evs.push(String(e)))
+        wsv.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: 上傳管線受理新工作前須有 upload 接聽者; 本案驗的是其後之 internal 錯誤
         await w.delay(700)
         fs.rmSync(up, { recursive: true, force: true })
         let call = async(body) => {

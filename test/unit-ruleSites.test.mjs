@@ -1,5 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
+import routeSpec from '../src/routeSpec.mjs'
 
 
 /**
@@ -295,13 +296,14 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(countAll(src.client, /ev\.emit\(/g), 0, `R11 client 無形狀轉接需求, 不得直接 ev.emit ${hint}`)
     })
 
-    it('R11 以 timer 脫勾派發僅限建構期: evEmitDelay 之 3 個呼叫站點皆須位於路由定義之外', function() {
+    it('R11 以 timer 脫勾派發僅限建構期: evEmitDelay 之 4 個呼叫站點皆須位於路由定義之外', function() {
         //why: 建構期之失敗事件須脫勾, 因應用端於 new 回傳後才有機會註冊監聽器(實測 tmp/probe_r8_defer.mjs);
         //其餘派發站點皆於請求進來後才觸發, 脫勾對其毫無作用而只帶來「堆疊被切斷」之代價
         //第十輪 1 → 3: 暫存資料夾建立失敗、外部 serverHapi 之路由註冊失敗(與啟動失敗同為建構期失敗)。
+        //第十二輪 3 → 4: 曝露與存取控制選項有給而無效(帳本 R26)—— 訊息集中於 errsOpt, 以單一迴圈派發(一選項一則); 迴圈本身即一個建構期站點, 其位置同受下方斷言約束
         //刻意不以一個包裝函數把站點數維持為 1: 那會使本條鎖住的變成「包裝函數存在」, 而日後在請求路徑呼叫該包裝函數不會紅(第十輪兩份外部複審指出)
         //故直接斷言**每一個**站點之位置: 不得落在 apiMain 至 startServer 之間(六條路由之定義)
-        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('/g), 3, `R11 evEmitDelay 之呼叫站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('/g), 4, `R11 evEmitDelay 之呼叫站點數 ${hint}`)
         let iA = src.server.indexOf('let apiMain = {')
         let iZ = src.server.indexOf('async function startServer')
         assert.strict.deepEqual(iA > 0 && iZ > iA, true, '找不到路由定義之起訖標記')
@@ -312,6 +314,53 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(countAll(src.client, /evEmitDelay\(/g), 0, `R11 client 無建構期事件, 不應有脫勾派發 ${hint}`)
     })
 
+    it('R12 應用端呼叫須有接聽者: 判定之唯一擁有者為 noListenerOf; 上傳管線之閘門須排在副作用之前(位置鎖); 閘門之事件名與派發之事件字面一致', function() {
+        //why 位置鎖而非計數鎖(第十二輪 A 卷 ③-3、B 卷 ③-2、C 卷 ③-5): 「恰 N 處」擋不住「閘門排錯行」——
+        //把 /slc 之閘門移到 createWriteStream 之後計數不變, 卻成了先開檔(寫入模式即截斷既有切片)再拒絕
+        //本檔之 readCode 保留每行之 \r(專案檔案為 CRLF), 跨行比對一律用 \r?\n(帳本經驗 E5)
+
+        //擁有者: listenerCount 全檔恰一處且在 noListenerOf 內; callApp 經之
+        assert.strict.deepEqual(countAll(src.server, /listenerCount\(/g), 1, `R12 listenerCount 之呼叫須恰為 1 ${hint}`)
+        assert.strict.deepEqual(sect('noListenerOf').includes('listenerCount('), true, 'R12 listenerCount 須位於 noListenerOf 內')
+        assert.strict.deepEqual(sect('callApp').includes('noListenerOf(ev, name)'), true, 'R12 callApp 須經 noListenerOf 判定')
+
+        //requireListener: 經 noListenerOf 並以 spec.event 為事件名; 先組回覆再通報(帳本 R10 之結構層)
+        let iDef = src.server.indexOf('let requireListener = (spec, reply) => {')
+        assert.strict.deepEqual(iDef > 0, true, '找不到 requireListener 之定義')
+        let rest = src.server.slice(iDef)
+        let body = rest.slice(0, rest.search(/\r?\n {4}\}\r?\n/))
+        assert.strict.deepEqual(body.includes('noListenerOf(ev, spec.event)'), true, 'R12 requireListener 須經 noListenerOf 且以 spec.event 為事件名')
+        let iApp = body.indexOf('reply.app(msg)')
+        let iEmit = body.indexOf(`evEmit('error', msg)`)
+        assert.strict.deepEqual(iApp > 0 && iEmit > 0 && iApp < iEmit, true, 'R12 requireListener: reply.app 須早於 error 事件(非做不可之事排在回報之前)')
+
+        //位置鎖: /slc 之閘門早於開啟寫入串流; /ulctr 之閘門位於「merge-slices-get 以外」之條件內且早於 procCore(worker 與合併)
+        let routeOf = (a, b) => src.server.slice(src.server.indexOf(a), src.server.indexOf(b))
+        let slc = routeOf('let apiUploadSlice = {', 'let apiDownloadGetFilename = {')
+        let iGateSlc = slc.indexOf('requireListener(spec, reply)')
+        let iOpen = slc.indexOf('fs.createWriteStream(')
+        assert.strict.deepEqual(iGateSlc > 0 && iOpen > 0 && iGateSlc < iOpen, true, 'R12 /slc: 閘門須早於開啟寫入串流')
+        let ulctr = routeOf('let apiUploadCheck = {', 'let apiUploadSlice = {')
+        let iGateUl = ulctr.search(/if \(mode !== 'merge-slices-get'\) \{\r?\n\s+let refused = requireListener\(spec, reply\)/)
+        let iCore = ulctr.indexOf('let procCore = async')
+        assert.strict.deepEqual(iGateUl > 0 && iCore > 0 && iGateUl < iCore, true, 'R12 /ulctr: 閘門須位於 merge-slices-get 以外之條件內且早於 procCore')
+        assert.strict.deepEqual(countAll(src.server, /requireListener\(spec, reply\)/g), 2, 'R12 閘門之呼叫站點須恰為 /slc 與 /ulctr 兩處')
+
+        //一致性: 閘門之事件名(routeSpec.event)與派發之事件字面(procDeal / procUpload / procDownload 之 procApp 第一參數)為同一事實之兩份來源(第十二輪 B 卷 ③-D5)
+        let lit = (fn) => {
+            let m = src.server.match(new RegExp(`async function ${fn}\\([^)]*\\) \\{\\r?\\n\\s+return procApp\\('(\\w+)'`))
+            return m ? m[1] : ''
+        }
+        assert.strict.deepEqual(lit('procDeal'), routeSpec.main.event, 'R12 /main 派發之事件須等於 routeSpec.main.event')
+        assert.strict.deepEqual(lit('procUpload'), routeSpec.ulctr.event, 'R12 /ulctr 派發之事件須等於 routeSpec.ulctr.event')
+        assert.strict.deepEqual(lit('procUpload'), routeSpec.slc.event, 'R12 /slc 之閘門事件須等於上傳管線派發之事件')
+        for (let k of ['dwgfn', 'dwgf', 'dw']) {
+            assert.strict.deepEqual(lit('procDownload'), routeSpec[k].event, `R12 /${k} 派發之事件須等於 routeSpec.${k}.event`)
+        }
+        assert.strict.deepEqual(routeOf('let apiMain = {', 'let apiUploadCheck = {').includes('procDeal('), true, 'R12 /main 須經 procDeal 派發')
+        assert.strict.deepEqual(ulctr.includes('procUpload('), true, 'R12 /ulctr 須經 procUpload 派發')
+    })
+
     it('R11 監聽器須為同步之契約須寫在建構函數之 JSDoc 內', function() {
         //why: 此為對外契約(不支援 async 監聽器), 未寫進 JSDoc 者等於沒有裁定
         for (let fp of ['src/WConverhpServer.mjs', 'src/WConverhpClient.mjs']) {
@@ -320,16 +369,18 @@ describe('unit-ruleSites', function() {
         }
     })
 
-    it('R5 error 事件發送站點(總量, 帳本維護提示): server 23(即時 19 + 建構期脫勾 3 + 監聽器出錯之通報 1)、client 10', function() {
+    it('R5 error 事件發送站點(總量, 帳本維護提示): server 26(即時 21 + 建構期脫勾 4 + 監聽器出錯之通報 1)、client 10', function() {
         //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
         //第九輪 23 → 26: procApp 之「無人接聽」通報 ×1(R12)、stop 之停止失敗通報 ×1(R11 之建構期同族)、
         ///dwgfn 之 filename 正規化失敗 ×1(R3: 協定鍵內之值亦會靜默消失)
         //第十輪 26 → 28: procApp 之輸出為 function/symbol ×1、/ulctr 之 internal ×1、/dwgf 之 filename 判定拋錯 ×1, 而 /dwgfn 之 filename 兩處判定併為一處 −1
         //第十一輪 28 → 19: 三路由之下載欄位失敗(9 處)收斂為 readOutput 之 2 處、三路由之「回應無法序列化」(3 處)收斂為 replyPacket 之 1 處, 另 failPayload +1
         //client 13 → 10: serverError 之 emit、callApiCore 三個解析失敗分支、send 之 catch 共 5 處收斂為 attemptFailed 1 處, 另 downloadBrowser 之 getToken 拋錯 +1
+        //第十二輪 19 → 21: 上傳管線之接聽者閘門 requireListener ×1(R12 之延伸)、/main 於 admit 期間已中斷之補判 ×1(/slc 之同一補判走既有 onAbort 而不新增站點);
+        //建構期脫勾 3 → 4: 曝露與存取控制選項有給而無效之 errsOpt 派發迴圈(R26)
         //總量只能偵測「有人增刪了一處」, 偵測不到「同一次失敗發了兩則」或「某條路由漏了處置」—— 行為面由 test/api-errorEventOnce.test.mjs(失敗種類 × 六路由)與 api-clientAttemptEvents 鎖(B 卷 §③-3.6)
-        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 19, `R5 即時派發之站點數 ${hint}`)
-        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 3, `R5 建構期脫勾派發之站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 21, `R5 即時派發之站點數 ${hint}`)
+        assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 4, `R5 建構期脫勾派發之站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.client, /evEmit\('error'/g), 10, `R5 client 之站點數 ${hint}`)
     })
@@ -377,7 +428,8 @@ describe('unit-ruleSites', function() {
         //第十輪: 原清單只列 R1–R7, R8 以後之規則(本檔亦有其斷言)缺頁不會紅 —— 清單範圍比本檔所鎖之規則窄(帳本 R4b 之教訓同型)
         let doc = fs.readFileSync('CLAUDE_rulebook.md', 'utf8')
         assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'CLAUDE_rulebook.md 缺少標題')
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ']) {
+        //第十二輪: 補 R19–R26(原清單只到 R18, R19–R25 缺頁不會紅 —— 與上述第十輪之教訓同型, B 卷 ③-6)
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ']) {
             assert.strict.deepEqual(doc.includes(r), true, `CLAUDE_rulebook.md 缺少 ${r.trim()}`)
         }
         assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE_rulebook.md 之盤點指令數不足')

@@ -9,6 +9,8 @@
  * 表上少一欄由測試直接對表斷言, 比數 grep 命中數有分辨力
  *
  * 欄位:
+ *   event: 本路由所服務之應用端事件; 該事件無人接聽時請求須立即終結而不得產生副作用(帳本 R12)。/main 與三條下載路由由 callApp 於派發前判定,
+ *          /slc 與 /ulctr(merge-slices-get 除外)由 requireListener 於副作用前判定(第十二輪)
  *   apiType: verifyConn 所見之 apiType(對外契約)
  *   api: handler 事件所見之 api(對外契約)
  *   authFrom: 應用端所見之 authorization 來源 —— 'header' 為請求標頭原樣, token 為確認授權方案前綴相符後切出者(帳本 R15);
@@ -23,24 +25,28 @@ let st200 = { permission: 200, param: 200, app: 200, output: 200, packet: 200, i
 
 let routeSpec = {
     main: {
+        event: 'execute',
         apiType: 'main',
         api: 'apiMain',
         authFrom: 'header',
         statusOf: st200,
     },
     ulctr: {
+        event: 'upload',
         apiType: 'upload-controller',
         api: 'apiUploadCheck',
         authFrom: 'header',
         statusOf: st200,
     },
     slc: {
+        event: 'upload',
         apiType: 'upload-slice',
         api: 'apiUploadSlice',
         authFrom: 'header',
         statusOf: st200,
     },
     dwgfn: {
+        event: 'download',
         apiType: 'download-get-filename',
         api: 'apiDownloadGetFilename',
         authFrom: 'header',
@@ -48,6 +54,7 @@ let routeSpec = {
         fields: [{ name: 'streamRead' }, { name: 'filename' }],
     },
     dwgf: {
+        event: 'download',
         apiType: 'download-get-file',
         api: 'apiDownloadGetFile',
         authFrom: 'query',
@@ -55,6 +62,7 @@ let routeSpec = {
         fields: [{ name: 'streamRead' }, { name: 'fileSize' }, { name: 'fileType' }, { name: 'filename', optional: true }],
     },
     dw: {
+        event: 'download',
         apiType: 'download',
         api: 'apiDownload',
         authFrom: 'header',

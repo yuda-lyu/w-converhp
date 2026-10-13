@@ -88,6 +88,9 @@ let alloc = [
     ['e2e-execute', 1, 'e2e 不在 --parallel 範圍, 仍納管以免與 api 撞'],
     ['e2e-upload', 1, ''],
     ['e2e-download', 1, ''],
+    ['api-uploadNoListener', 3, '無 upload 接聽者 + 有接聽者(對照組、S2、S3、once 在途) + 第二實例(在途消費之跨實例隔離)'],
+    ['api-optionsFailClosed', 13, 'verifyConn:false + verifyConn:null 對照組 + corsOrigins(無效 3、明示停用 3、合法寬鬆 2)+ useInert 無效 + pathStaticFiles 無效 + 靜態檔對照組'],
+    ['api-abortDuringAdmit', 1, ''],
 ]
 
 //segs, 依 alloc 之順序自 base 起連續配發

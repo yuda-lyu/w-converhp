@@ -84,6 +84,7 @@ describe('api-verifyConnError', function() {
             let fp = './test/1mb.7z'
             pm.resolve({ streamRead: fs.createReadStream(fp), filename: 'x.7z', fileSize: fs.statSync(fp).size, fileType: 'application/octet-stream' })
         })
+        wsv.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: /ulctr 與 /slc 受理新上傳工作前須有 upload 接聽者, 否則對照組之兩路由被閘門擋下
         wsv.on('handler', (d) => handled.push(d.api)) //只有通過授權才會 emit, 供對照組證明「確實放行」而非「恰好沒回 denied」
         wsv.on('error', (e) => errs.push(e))
 

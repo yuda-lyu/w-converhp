@@ -1,6 +1,6 @@
 {
   "name": "w-converhp",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
     "@hapi/hapi": "^21.4.10",

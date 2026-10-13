@@ -15,7 +15,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isstr from 'wsemi/src/isstr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
-import isearr from 'wsemi/src/isearr.mjs'
+import isarr from 'wsemi/src/isarr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispm from 'wsemi/src/ispm.mjs'
@@ -589,6 +589,24 @@ function responseU8aStreamWithError(res, msg, opt = {}) {
 
 
 /**
+ * 判定某事件現在是否無人接聽 —— 全檔唯一呼叫 listenerCount 之處(帳本 R12 之判定擁有者)
+ *
+ * 兩個使用者: callApp(派發應用端事件之前)與 requireListener(上傳管線受理新工作而產生副作用之前, 第十二輪)。
+ * 只判「現在的狀態」(帳本 R12 分界線: 可在確定時點、只用手上的值判出); 訊息字面由此唯一產生, 使兩處之錯誤封包與事件同一字面
+ *
+ * @param {Object} ev 輸入事件物件, 為 wsemi 之 evem 所建立之 eventemitter3 實例
+ * @param {String} name 輸入事件名稱字串
+ * @returns {String} 回傳無人接聽之訊息字串; 有人接聽時回傳空字串
+ */
+function noListenerOf(ev, name) {
+    if (ev.listenerCount(name) === 0) {
+        return `no listener for event[${name}]`
+    }
+    return ''
+}
+
+
+/**
  * 派發一次應用端呼叫, 並保證該次呼叫必定終結
  *
  * why: 本套件之路由層刻意關閉 timeout.server 與 timeout.socket(大檔傳輸本就超過任何固定值),
@@ -616,9 +634,9 @@ function responseU8aStreamWithError(res, msg, opt = {}) {
  */
 function callApp(ev, evEmit, name, args, pm, funError) {
 
-    //check, 無人接聽即終結: 一次失敗恰一則事件(帳本 R5), 且不得懸置
-    if (ev.listenerCount(name) === 0) {
-        let msg = `no listener for event[${name}]`
+    //check, 無人接聽即終結: 一次失敗恰一則事件(帳本 R5), 且不得懸置; 判定見 noListenerOf
+    let msg = noListenerOf(ev, name)
+    if (isestr(msg)) {
 
         //settle 須排在回報之前(帳本 R10 之結構層): pm.reject 為此處唯一「非做不可」之事,
         //funError 會走到應用端之 error 監聽器, 其若拋錯而排在前面, 該次請求就永遠不會被 settle ——
@@ -648,19 +666,19 @@ function callApp(ev, evEmit, name, args, pm, funError) {
  *
  * @class
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設
- * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true
- * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'
+ * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設。給予serverHapi時不作用
+ * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true。靜態檔案不經verifyConn，即對所有連線者公開。未給(undefined或null)時取預設；有給但非布林值(如字串'false'、數值0)時不提供靜態檔案並發一則error事件，不會退回提供。給予serverHapi時不作用
+ * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'。未給(undefined或null)時取預設；有給但非有效字串時不提供靜態檔案並發一則error事件，不會改為公開預設資料夾。給予serverHapi時不作用
  * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'。資料夾內除切片與合併檔外另有狀態標記檔(<fileHash>.done為合併完成、<fileHash>.error為合併失敗、<fileHash>.q<隊列>.ro為該次上傳已由upload事件處理完成之結果)，為合併佇列之狀態載體，前端重送查詢時據以回傳相同結果而不重複觸發upload事件；上傳可能仍在進行時不得刪除，應用端可依修改時間清理確定已結束者
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止
  * @param {Integer} [opt.sizeMsg=100*1024*1024] 輸入單次請求本體大小上限整數，單位為Byte，預設為100*1024*1024。適用於除切片上傳(/slc)外之各API(/main、/ulctr、/dwgfn、/dw)，此類請求須將整個本體讀入記憶體，超過上限會回應413且不觸發execute/upload/download事件(請求帶Content-Length者於進入路由前即被拒，亦不觸發verifyConn與handler事件；無Content-Length之chunked本體則須讀入後才能判定，故verifyConn與handler事件已觸發)；切片上傳之單次請求上限為sizeSlice，大檔案總大小不受此限制，請改用upload
- * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，預設()=>{return true}
- * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部，預設['*']。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
+ * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，可為sync或async函數，回傳(或resolve)嚴格等於true才放行，回傳其他值、拋錯或reject一律視為不通過而回應permission denied，預設()=>{return true}。未給(undefined或null)時全部放行；有給但非函數(如false、字串、物件)時本套件之API一律拒絕(permission denied)並發一則error事件，不會退回全部放行。作用於本套件之API，不作用於靜態檔案(見useInert)
+ * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部('*'須單獨出現)，預設['*']。給予單一字串時視為只含該網域之陣列；給予false或[](含只有空字串者)代表停用跨域：不回應CORS標頭，瀏覽器無法跨來源讀取回應(伺服器端之存取控制仍由verifyConn決定)；陣列中之空字串會被忽略。給予其他值、或hapi不接受之陣列(如含非字串元素、'*'與其他網域並存)時同樣停用跨域並發一則error事件，不會退回允許全部，建構時亦不拋出。給予serverHapi時不作用(跨域由外部伺服器決定)，若仍有給予則發一則error事件告知。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
- * @param {Boolean} [opt.serverHapi=null] 輸入外部提供Hapi伺服器物件，預設null。外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；**filename為用戶端所給之原值、未經淨化、不可信**(可含路徑分隔符、`..`、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；**filenameSafe**為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
+ * @param {Object} [opt.serverHapi=null] 輸入外部提供之Hapi伺服器物件，預設null。給予時本套件只於其上註冊通訊路由(不啟動伺服器、不註冊@hapi/inert)，故port、useInert、pathStaticFiles、corsOrigins不作用，跨域與靜態檔案由外部提供者自行設定；外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效。路由註冊失敗(如與既有路由衝突)時以error事件通知，已註冊之部分路由不會回復。此模式下伺服器之生命週期由外部提供者擁有，請勿呼叫回傳物件之stop：其會停止整台外部伺服器(含其上之其他路由)，並觸發外部伺服器之onPreStop、onPostStop擴充與stop事件(即使外部伺服器尚未啟動)；外部伺服器啟動期間呼叫則被hapi拒絕而以error事件通知
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；**filename為用戶端所給之原值、未經淨化、不可信**(可含路徑分隔符、`..`、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；**filenameSafe**為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋(外部serverHapi模式見該參數之說明)。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；upload之上傳管線亦同：未註冊upload監聽器時，切片上傳與check-total-hash、check-slices-hash、merge-slices-push於寫入任何暫存檔之前即以錯誤封包回應，前端upload於第一個請求(check-total-hash)即收到錯誤並依retryUpload重試後失敗，不會先傳完整檔(上傳途中才移除監聽器者，已傳之切片留於暫存資料夾，可續傳)；merge-slices-get對已承接之工作(已儲存結果之重送、同一隊列在途之消費)不受影響。而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
  * @example
  *
  * import fs from 'fs'
@@ -813,6 +831,14 @@ function WConverhpServer(opt = {}) {
     //超出安全整數者(如Number.MAX_SAFE_INTEGER+1)則使hapi以「must be a safe number」於建構同步拋錯. 各選項另依其sink之值域上限檢核
     let optSafe = { useLimitSafe: true }
 
+    //bServerHapi, 是否使用外部提供之Hapi伺服器(其下 port、useInert、pathStaticFiles、corsOrigins 不作用)
+    let bServerHapi = !!get(opt, 'serverHapi')
+
+    //errsOpt, 曝露與存取控制選項(帳本 R26)有給而無效之告知訊息, 於 evEmitDelay 定義後逐則以建構期事件發出(一個選項一則, 帳本 R5)
+    //why 收集而非各自派發: 選項解析早於事件物件建立, 與 errCreateTemp 同理須延後; 派發點只有一處且位於建構期(帳本 R11 之位置鎖照樣成立)
+    //「有給」= 非 undefined、非 null(本套件慣例以 null 表示未給, 如 serverHapi 之預設; w-serv-webdata 之選填選項亦同)
+    let errsOpt = []
+
     //port
     let port = get(opt, 'port')
     if (!ispint(port, optSafe) || cint(port) > maxPort) {
@@ -820,15 +846,32 @@ function WConverhpServer(opt = {}) {
     }
     port = cint(port) //檢核與正規化須成對: ispint亦接受數字字串
 
-    //useInert
+    //useInert, 曝露選項(帳本 R26): 決定是否把 pathStaticFiles 資料夾對外公開, 而靜態檔不經 verifyConn;
+    //未給依預設 true; 有給但非布林者(如環境變數之字串 'false'、數值 0)不提供靜態檔並告知 ——
+    //原本一律退回 true, 使用端以為關了、實際整個資料夾照常公開且 0 則事件(實測第十二輪 A 卷 ②-1: JSDoc 範例之 pathStaticFiles 為 '.', 即公開整個專案資料夾)
+    //外部 serverHapi 模式下本不提供靜態檔(比意圖更嚴而非更寬), 不告知
     let useInert = get(opt, 'useInert')
-    if (!isbol(useInert)) {
+    if (useInert === undefined || useInert === null) {
         useInert = true
     }
+    else if (!isbol(useInert)) {
+        if (!bServerHapi) {
+            errsOpt.push('invalid useInert: must be a boolean, static files are not served')
+        }
+        useInert = false
+    }
 
-    //pathStaticFiles
+    //pathStaticFiles, 曝露選項(帳本 R26): 未給依預設 'dist'; 有給但非有效字串者不提供靜態檔並告知 —— 無從得知使用端要公開哪個資料夾, 改公開預設之 dist 即擅自曝露
+    //僅於本會提供靜態檔時告知(useInert 為 false 或外部 serverHapi 模式下本不提供)
     let pathStaticFiles = get(opt, 'pathStaticFiles')
-    if (!isestr(pathStaticFiles)) {
+    if (pathStaticFiles === undefined || pathStaticFiles === null) {
+        pathStaticFiles = 'dist'
+    }
+    else if (!isestr(pathStaticFiles)) {
+        if (useInert && !bServerHapi) {
+            errsOpt.push('invalid pathStaticFiles: must be a non-empty string, static files are not served')
+        }
+        useInert = false
         pathStaticFiles = 'dist'
     }
 
@@ -878,18 +921,63 @@ function WConverhpServer(opt = {}) {
     }
     sizeMsg = cint(sizeMsg) //檢核與正規化須成對: ispint亦接受數字字串
 
-    //verifyConn
+    //verifyConn, 存取控制選項(帳本 R26): 未給依預設全部放行; 有給但非函數者本套件之 API 一律拒絕並告知(errsOpt; 靜態檔不經 verifyConn, 不受影響)
+    //why 不沿用其他選項之「無效取預設」: 本選項之預設是最寬鬆之值, 給錯(false、字串、物件)即退回全放行 —— 使用端以為設了關卡, 實際完全沒擋且 0 則事件;
+    //而同一道關卡之回傳值本就只認 === true(見 checkConn), 型別判定卻放寬, 兩層規則相反。建構期失敗不拋出(帳本 R11), 故以「拒絕 + 事件」表達
+    //判定包 try: isfun 經 lodash 之 baseGetTag 會觸發 Proxy 之 has/get trap, 拋錯或已撤銷之 Proxy 會使建構子同步拋出(實測第十二輪 A 卷 ①-9), 一律視為無效
     let verifyConn = get(opt, 'verifyConn')
-    if (!isfun(verifyConn)) {
+    if (verifyConn === undefined || verifyConn === null) {
         verifyConn = () => {
             return true
         }
     }
+    else {
+        let bFun = false
+        try {
+            bFun = isfun(verifyConn)
+        }
+        catch (err) {}
+        if (!bFun) {
+            errsOpt.push('invalid verifyConn: must be a function (sync or async), all API requests will be denied')
+            verifyConn = () => {
+                return false
+            }
+        }
+    }
 
-    //corsOrigins
-    let corsOrigins = get(opt, 'corsOrigins', [])
-    if (!isearr(corsOrigins)) {
+    //corsOrigins, 存取控制選項(帳本 R26): 決定瀏覽器能否跨來源讀取本套件之回應
+    //  未給 → 預設 ['*']
+    //  false、''、[](含只有空字串者)→ 停用 CORS 且不告知: 明示不允許跨來源讀取之合法寫法(第十二輪 B 卷 ③-D4; 否則使用端沒有不帶錯誤事件之寫法可表達)
+    //  非空字串 s → 視為單一來源 [s]: 原以 isearr 判定而退回 ['*'], 字串這個最常見之誤用反而放行一切來源
+    //  陣列 → 剔除空字串元素(不可能與任何來源相符, 剔除不改變行為, 常見於以逗號分割之設定值)後交 hapi 判定, 見下方建構 server 處
+    //  其他型別 → 停用 CORS 並告知
+    //「停用 CORS」之語意: 交 hapi 之 routes.cors 為 false, 不回 CORS 授權標頭, 瀏覽器無法跨來源讀取回應(非簡單請求之預檢亦失敗);
+    //伺服器端之存取控制仍由 verifyConn 決定(第十二輪 C 卷 ①-8)。以 corsOrigins 為 null 表示停用
+    //外部 serverHapi 模式下本選項不作用(跨來源政策由外部伺服器決定): 有給即告知, 使用端所給之白名單被靜默忽略即「以為擋了、實際沒擋」(第十二輪 A 卷 ①-5)
+    let msgInvalidCors = `invalid corsOrigins: must be an array of origin strings ('*' must be the only element if present), or false to disable; CORS is disabled`
+    let corsOrigins = get(opt, 'corsOrigins')
+    let bCorsGiven = corsOrigins !== undefined && corsOrigins !== null
+    if (!bCorsGiven) {
         corsOrigins = ['*']
+    }
+    else if (bServerHapi) {
+        errsOpt.push('corsOrigins has no effect with serverHapi: the cross-origin policy is decided by the external server')
+    }
+    else if (corsOrigins === false || corsOrigins === '') {
+        corsOrigins = null
+    }
+    else if (isestr(corsOrigins)) {
+        corsOrigins = [corsOrigins]
+    }
+    else if (isarr(corsOrigins)) {
+        corsOrigins = corsOrigins.filter((v) => v !== '') //filter 亦略過稀疏陣列之空位, 不會把空位交給 hapi
+        if (corsOrigins.length === 0) {
+            corsOrigins = null
+        }
+    }
+    else {
+        errsOpt.push(msgInvalidCors)
+        corsOrigins = null
     }
 
     //delayForSlice, 交予setTimeout故另受計時器上限約束(見maxTimer)
@@ -901,7 +989,7 @@ function WConverhpServer(opt = {}) {
 
     //server
     let server = null
-    if (get(opt, 'serverHapi')) {
+    if (bServerHapi) {
 
         //use serverHapi
         server = opt.serverHapi
@@ -909,35 +997,61 @@ function WConverhpServer(opt = {}) {
     }
     else {
 
-        //create server
-        server = Hapi.server({
-            //host: 'localhost',
-            port,
-            routes: {
-                timeout: {
-                    server: false, //關閉伺服器超時
-                    socket: false, //關閉socket超時
-                },
-                cors: {
-                    origin: corsOrigins, //Access-Control-Allow-Origin
+        //optServer, 自建伺服器之設定; origins 為 null 時停用 CORS(見上方 corsOrigins)
+        let optServer = (origins) => {
+
+            //cors, origins 為 null 時停用 CORS(交 hapi 為 false)
+            let cors = false
+            if (origins !== null) {
+                cors = {
+                    origin: origins, //Access-Control-Allow-Origin
                     credentials: false, //Access-Control-Allow-Credentials
                     //additionalExposedHeaders, 本套件回應協定除本體外另靠此四個標頭傳成敗(Return-Type/Return-Msg)、可否重試(Return-Retryable)與檔名(Content-Disposition);
                     //瀏覽器對跨來源回應只讓 JS 讀 Access-Control-Expose-Headers 列出者(hapi 預設僅 WWW-Authenticate,Server-Authorization), 未列則 client 讀到空字串,
                     //download 路徑(只讀標頭不解析本體)整條失效: 錯誤封包被當檔案、檔名解析拋錯; execute/upload 只解析本體故不受影響. 用 additional 以保留 hapi 預設兩項
                     additionalExposedHeaders: ['Return-Type', 'Return-Msg', 'Return-Retryable', 'Content-Disposition'],
+                }
+            }
+
+            return {
+                //host: 'localhost',
+                port,
+                routes: {
+                    timeout: {
+                        server: false, //關閉伺服器超時
+                        socket: false, //關閉socket超時
+                    },
+                    cors,
+                    // compression: { //壓縮須納入通用訊息處理(obj2u8arr與u8arr2obj), 其他傳輸或提供下載檔案等, 通常為已壓縮, 故不須指定壓縮
+                    //     minBytes: {
+                    //         value: 1024, //超過1KB才壓縮
+                    //     },
+                    //     mime: {
+                    //         'application/json': true,
+                    //         'text/html': true,
+                    //         'application/octet-stream': true, //針對application/octet-stream壓縮的話, Content-Length得要回傳壓縮後的資料長度
+                    //     },
+                    // },
                 },
-                // compression: { //壓縮須納入通用訊息處理(obj2u8arr與u8arr2obj), 其他傳輸或提供下載檔案等, 通常為已壓縮, 故不須指定壓縮
-                //     minBytes: {
-                //         value: 1024, //超過1KB才壓縮
-                //     },
-                //     mime: {
-                //         'application/json': true,
-                //         'text/html': true,
-                //         'application/octet-stream': true, //針對application/octet-stream壓縮的話, Content-Length得要回傳壓縮後的資料長度
-                //     },
-                // },
-            },
-        })
+            }
+        }
+
+        //create server
+        //corsOrigins 陣列之合法性交 hapi 判定(不在本套件重寫一份 hapi 之規則, 第十二輪 A 卷 ③-4、B 卷 ①-4): 元素非字串(其 lib/cors.js 之 origin.indexOf 拋 TypeError)、
+        //'*' 與其他來源並存(lib/cors.js 之 Hoek.assert)等, hapi 皆於建構時同步拋出 —— 原本建構子因此同步拋錯, 違反「建構期失敗以 error 事件通知、不拋出」。
+        //拒絕者改以停用 CORS 重建並告知; 非 corsOrigins 所致者(此時已無可退之設定)維持原行為再拋
+        try {
+            server = Hapi.server(optServer(corsOrigins))
+        }
+        catch (err) {
+            if (!bCorsGiven || corsOrigins === null) {
+                throw err
+            }
+            console.log('invalid corsOrigins', err) //hapi 之原因(含其驗證註記)只供除錯; 事件訊息維持穩定字面
+            errsOpt.push(msgInvalidCors)
+            corsOrigins = null
+            server = Hapi.server(optServer(corsOrigins))
+        }
 
     }
 
@@ -996,6 +1110,11 @@ function WConverhpServer(opt = {}) {
     //建構期失敗: 暫存資料夾無法建立(見 errCreateTemp); 須於 evEmitDelay 定義之後
     if (isestr(errCreateTemp)) {
         evEmitDelay('error', `create pathUploadTemp[${pathUploadTemp}] error: ${errCreateTemp}`)
+    }
+
+    //建構期失敗: 曝露與存取控制選項有給而無效(見 errsOpt, 帳本 R26), 一個選項一則
+    for (let msg of errsOpt) {
+        evEmitDelay('error', msg)
     }
 
     //checkConn, 各路由呼叫verifyConn之唯一出口, 拋錯或reject一律視為未通過, 各路由不得再自行呼叫verifyConn
@@ -1160,6 +1279,22 @@ function WConverhpServer(opt = {}) {
             query: ctx.query,
         })
         return null
+    }
+
+    //requireListener, 上傳管線受理新工作之請求(/slc, 與 /ulctr 之 check-total-hash、check-slices-hash、merge-slices-push)於產生任何副作用前之接聽者判定(帳本 R12 之延伸, 第十二輪)。回傳 null 代表放行
+    //why: /main 與三條下載路由之請求本身即派發應用端事件, 由 callApp 於派發前判定; 上傳管線受理新工作之請求(寫切片、受理合併、查雜湊)不派發事件,
+    //原本無人接聽 upload 時照樣落檔並回 success —— verifyConn 未給(預設全放行)時任何匿名請求皆可寫入 pathUploadTemp, 不用上傳者永遠不會清理;
+    //client 之 upload() 亦把整檔傳完、合併完, 才於 merge-slices-get 失敗。對標 S3 之 CreateMultipartUpload、tus 之 Creation: 受理不了就在傳任何資料前失敗
+    //順序為「權限(admit) → 路由層參數 → 接聽者 → 副作用」: 未通過權限者不得知接聽狀態; 路由層參數錯誤仍為 param(可證明不需重試); worker 內檢核之參數(fileSize、fileSliceHashs)在其後
+    //無人接聽屬狀態不穩(接聽者可能稍後註冊), 依重試原則不標示 retryable; 先組回覆再通報(帳本 R10 之結構層: 非做不可之事排在回報之前)
+    let requireListener = (spec, reply) => {
+        let msg = noListenerOf(ev, spec.event)
+        if (!isestr(msg)) {
+            return null
+        }
+        let r = reply.app(msg)
+        evEmit('error', msg)
+        return r
     }
 
     //readOutput, 三條下載路由對應用端 download 事件回傳值之逐欄處置: 依 spec.fields 之**順序**讀取(attempt, 見帳本 R1)並判定(validDownloadField), 任一欄失敗即銷毀已取得之串流、發一則帶真因之事件、回錯誤封包
@@ -1346,6 +1481,13 @@ function WConverhpServer(opt = {}) {
                     pm.reject(`receive payload error: ${getErrorMessage(err)}`)
                 })
 
+                //check, 前端於上方監聽註冊之前(admit 等待 verifyConn 期間)即已中斷: error/close 已於註冊前發過而不會再發, end 亦永不發生,
+                //不補判則 pm 永不 settle、handler 永不終結且 0 則事件(實測 tmp/r12/probe_abort_admit.mjs, 第十二輪 C 卷 ①-2)。屬帳本 R12「現在的狀態」, 註冊後同步判定即無時窗
+                if (req.payload.destroyed) {
+                    evEmit('error', 'receive payload error: closed before receive')
+                    pm.reject('receive payload error: closed before receive')
+                }
+
                 return pm
             }
 
@@ -1451,6 +1593,17 @@ function WConverhpServer(opt = {}) {
                     return reply.param('invalid chunkTotal in payload')
                 }
                 chunkTotal = cint(chunkTotal)
+            }
+
+            //requireListener, 路由層參數檢核之後、任何副作用(worker、合併)之前確認 upload 有接聽者(見 requireListener)
+            //merge-slices-get 刻意不經此: 其為已承接工作之查詢、結果回放與狀態復原 —— S3(本隊列已消費、結果已儲存)依設計不呼叫應用端而回儲存之結果(重送冪等),
+            //S2 在途消費由同一隊列之併發查詢共用(見 managerMergeSlices 檔頭狀態表), 此時應用端是否仍在接聽與該次回應無關, 擋下即使已處理完之上傳於回應遺失後之重送變失敗;
+            //需要派發應用端者(S2 未派發)由 callApp 於派發點判定
+            if (mode !== 'merge-slices-get') {
+                let refused = requireListener(spec, reply)
+                if (refused) {
+                    return refused
+                }
             }
 
             //filename, 從payload接收, **原樣**交予應用端(check-total-hash 之去重與 merge-slices-get 之消費皆同), 於此讀一次而非各模式各讀一份
@@ -1665,6 +1818,12 @@ function WConverhpServer(opt = {}) {
                 return reply.param('invalid packageId in headers')
             }
 
+            //requireListener, 路由層參數檢核之後、開啟寫入串流之前確認 upload 有接聽者(見 requireListener); 早返時本體未讀完, hapi 回應即帶 connection: close, 與本路由其他早返同
+            let refused = requireListener(spec, reply)
+            if (refused) {
+                return refused
+            }
+
             //pathFileChunk
             let pathFileChunk = path.resolve(pathUploadTemp, `${packageId}_${chunkIndex}`)
             // console.log('pathFileChunk', pathFileChunk)
@@ -1786,6 +1945,13 @@ function WConverhpServer(opt = {}) {
                 req.payload.on('close', () => {
                     onAbort('closed before end')
                 })
+
+                //check, 前端於上方監聽註冊之前(admit 等待 verifyConn 期間)即已中斷: error/close 已於註冊前發過而不會再發,
+                //不補判則寫入 fd 永不關閉、不完整切片殘留、handler 永不終結且 0 則事件(實測 tmp/r12/probe_abort_admit.mjs, 第十二輪 C 卷 ①-2);
+                //走既有之 onAbort(中斷收尾之唯一路徑: 關閉 fd → close 時刪除切片、一則事件、reject), 註冊後同步判定即無時窗
+                if (req.payload.destroyed) {
+                    onAbort('closed before receive')
+                }
 
                 return pm
             }
@@ -2177,7 +2343,7 @@ function WConverhpServer(opt = {}) {
     //「Cannot stop server while in initializing phase」, 而伺服器隨後照樣起來並持續服務(port可連線且回HTTP 200);
     //亦即呼叫端以為停了而實際上沒有。本promise已帶catch故恆resolve, stop 內await它不會再拋
     let pmStart = null
-    if (get(opt, 'serverHapi')) {
+    if (bServerHapi) {
 
         //route, 註冊於外部伺服器之失敗(路由衝突、apiName 非法)須以建構期事件通知而不拋出
         //why: 自建伺服器之同一失敗於 async 之 startServer 內發生而走 error 事件, 外部伺服器原本於建構子內同步拋出 ——

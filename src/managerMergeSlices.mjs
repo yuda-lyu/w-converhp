@@ -27,7 +27,7 @@ import mergeSlices from './mergeSlices.wk.umd.js'
 //    fpd <fileHash>.done  合併完成, 內容為空; 只於核對雜湊相符後寫入
 //    fpe <fileHash>.error 合併失敗, 內容為原因
 //    fpr <fileHash>.q<隊列>.ro  本隊列已消費(應用端 upload 事件已成功處理)之結果, 內容為 obj2u8arr({ ro })
-//  記憶體: merging(合併或驗證進行中之 fp), consuming(消費進行中之 queueId → promise); 行程重啟即清空, 磁碟狀態不受影響
+//  記憶體: merging(合併或驗證進行中之 fp), consuming(消費進行中之隊列結果檔路徑 fpr → promise); 行程重啟即清空, 磁碟狀態不受影響
 //  不變式: **fpd 存在 ⇒ fp 之雜湊 = fileHash**; fpd 之寫入者只有「合併後核對相符」與 verifyMerged 兩處, 且新一代合併開始前必先刪除舊 fpd
 //  qGet 依下列順序判定, 每一狀態皆有終結或進行中之明確回答, 不存在「永遠 merging」:
 //    S3 fpr 在                 → success(儲存之結果), 不再呼叫應用端: 回應遺失後重送、逾時重送、遲到重送皆得與首次相同之結果(冪等)
@@ -43,8 +43,11 @@ import mergeSlices from './mergeSlices.wk.umd.js'
 //merging, 合併或驗證進行中之合併檔路徑集合(記憶體內), 供 qPush 避免重入、qGet 回 merging; 以路徑為鍵使同行程內多個伺服器實例(不同 pathUploadTemp)互不影響
 let merging = new Set()
 
-//consuming, 消費進行中之 queueId → promise, 使同一隊列之併發查詢(client 逾時重送而前一請求仍在應用端處理中)共用同一次應用端呼叫, 不多重觸發
-//以 queueId 而非路徑為鍵即可隔離同行程內多個伺服器實例: queueId 為 <時間>|<6 字亂數>|<fileHash>(見 qPush), 不同 pathUploadTemp 之實例撞號須同秒、同亂數、同 fileHash, 且撞號之後果只是共用一次消費(B 卷 B11)
+//consuming, 消費進行中之隊列 → promise, 使同一隊列之併發查詢(client 逾時重送而前一請求仍在應用端處理中)共用同一次應用端呼叫, 不多重觸發
+//鍵為本隊列結果檔之絕對路徑(ps.fpr, 含 pathUploadTemp、fileHash 與隊列段), 使同行程內多個伺服器實例(不同 pathUploadTemp)互不共用:
+//原以 queueId 為鍵, 理由為「不同實例撞號須同秒、同亂數、同 fileHash」—— 該理由只涵蓋偶然撞號, 涵蓋不到蓄意重送:
+//請求端可把 A 實例之 queueId 原樣送到 B 實例, B 之暫存夾亦有同一檔之合併檔時即共用 A 之在途消費, B 不呼叫自己的應用端(即使 B 無接聽者)而回 A 之結果(實測第十二輪 C 卷 ①-1)
+//同一實例內 fpr 與 queueId 一一對應, 併發共用之語意不變
 let consuming = new Map()
 
 //getPaths
@@ -131,8 +134,9 @@ let readStored = (ps, funLog) => {
 //consume, S2 之消費: 同一 queueId 併發共用同一次呼叫; 應用端結果 undefined 正規化為 null(序列化無法表達 undefined, 首次回應與重送回應須一致);
 //成功即儲存, 儲存失敗只記錄(應用端已處理, 仍回 success; 之後重送會再呼叫應用端); 應用端拒絕原樣向外拋, 不儲存
 //undefined 之正規化伺服器端之 procApp 亦已做; 此處保留為本模組之儲存不變式(readStored 要求自有 ro 鍵), 不依賴注入之 funConsume 做過
-let consume = (id, ps, funConsume, funLog) => {
-    let pm = consuming.get(id)
+let consume = (ps, funConsume, funLog) => {
+    let key = ps.fpr //見 consuming 之說明: 含暫存夾之絕對路徑, 跨實例不共用
+    let pm = consuming.get(key)
     if (pm) {
         return pm
     }
@@ -170,9 +174,9 @@ let consume = (id, ps, funConsume, funLog) => {
             return ro
         })
         .finally(() => {
-            consuming.delete(id)
+            consuming.delete(key)
         })
-    consuming.set(id, pm)
+    consuming.set(key, pm)
     return pm
 }
 
@@ -357,7 +361,7 @@ let qGet = async(id, pathUploadTemp, opt = {}) => {
                 path: ps.fp,
             }
         }
-        let ro = await consume(id, ps, funConsume, funLog) //應用端拒絕於此向外拋
+        let ro = await consume(ps, funConsume, funLog) //應用端拒絕於此向外拋
         return {
             state: 'success',
             msg: ro,

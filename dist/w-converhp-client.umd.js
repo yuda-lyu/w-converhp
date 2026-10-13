@@ -1,5 +1,5 @@
 /*!
- * w-converhp-client v2.1.6
+ * w-converhp-client v2.1.7
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */

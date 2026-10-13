@@ -108,7 +108,9 @@ let downloadRoutes = {
 
 //allRoutes, 六路由軸(供「同一種失敗 × 六路由」之行為表, 見 test/api-errorEventOnce.test.mjs)
 //  apiType: verifyConn 所見之 apiType; api: handler 事件所見之 api; authFrom: 應用端所見之 authorization 來源(header 原樣 / query 之 token 由套件合成為 `<tokenType> <token>`, 第十一輪 B4)
-//  parse: 本體是否由 hapi 解析(為 true 者其解析失敗須回套件錯誤封包, 第十一輪 A1; /main 為 parse:false 自行解碼亦同); appEvent: 本路由直接觸發之應用端事件(無者為 null)
+//  parse: 本體是否由 hapi 解析(為 true 者其解析失敗須回套件錯誤封包, 第十一輪 A1; /main 為 parse:false 自行解碼亦同); appEvent: 本路由之 requestOf 直接觸發之應用端事件(無者為 null)
+//  event: 本路由所服務之應用端事件(與 src/routeSpec.mjs 之 event 對照); 該事件無人接聽時請求須立即終結而不得產生副作用(第十二輪)。
+//         與 appEvent 語意不同而並存: /ulctr 之 requestOf(check-slices-hash)與 /slc 不派發 upload(appEvent 為 null), 但兩者皆服務 upload 而受閘門約束
 //  errorStatus: 各種錯誤之 HTTP 狀態碼(同 downloadRoutes); requestOf(port, scn): 正常形狀之請求, scn 為交予應用端之 func / fileId(以之決定應用端行為); malformedOf(port): 本體無法解析之請求(不適用者為 null)
 let st200 = { permission: 200, param: 200, app: 200, output: 200, packet: 200 }
 let jsonInit = (body) => ({ method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' }, body })
@@ -118,6 +120,7 @@ let allRoutes = {
         key: 'main',
         apiType: 'main',
         api: 'apiMain',
+        event: 'execute',
         authFrom: 'header',
         parse: false,
         appEvent: 'execute',
@@ -129,6 +132,7 @@ let allRoutes = {
         key: 'ulctr',
         apiType: 'upload-controller',
         api: 'apiUploadCheck',
+        event: 'upload',
         authFrom: 'header',
         parse: true,
         appEvent: null,
@@ -140,6 +144,7 @@ let allRoutes = {
         key: 'slc',
         apiType: 'upload-slice',
         api: 'apiUploadSlice',
+        event: 'upload',
         authFrom: 'header',
         parse: false,
         appEvent: null,
@@ -151,6 +156,7 @@ let allRoutes = {
         key: 'dwgfn',
         apiType: 'download-get-filename',
         api: 'apiDownloadGetFilename',
+        event: 'download',
         authFrom: 'header',
         parse: true,
         appEvent: 'download',
@@ -162,6 +168,7 @@ let allRoutes = {
         key: 'dwgf',
         apiType: 'download-get-file',
         api: 'apiDownloadGetFile',
+        event: 'download',
         authFrom: 'query',
         parse: false,
         appEvent: 'download',
@@ -173,12 +180,37 @@ let allRoutes = {
         key: 'dw',
         apiType: 'download',
         api: 'apiDownload',
+        event: 'download',
         authFrom: 'header',
         parse: true,
         appEvent: 'download',
         errorStatus: st200,
         requestOf: (port, scn) => ({ url: `http://127.0.0.1:${port}/api/dw`, init: jsonInit(JSON.stringify({ fileId: scn })) }),
         malformedOf: (port) => ({ url: `http://127.0.0.1:${port}/api/dw`, init: jsonInit('{"fileId":') }),
+    },
+}
+
+
+//ulctrModes, /ulctr 之 mode 軸之成員全集(第十二輪, 帳本 R8 / R12)
+//  gated: upload 無接聽者時是否於任何副作用前即被擋(上傳管線受理新工作之請求); 不擋者以 why 寫明理由(要少測或不擋須講得出為什麼)
+//  payloadOf(fileHash, queueId): 該模式之最小合法請求本體
+let ulctrModes = {
+    'check-total-hash': {
+        gated: true,
+        payloadOf: (fileHash) => ({ mode: 'check-total-hash', fileHash, filename: 'a.bin', fileSize: 16 }),
+    },
+    'check-slices-hash': {
+        gated: true,
+        payloadOf: (fileHash) => ({ mode: 'check-slices-hash', fileHash, fileSliceHashs: [{ i: 0, h: 'x' }] }),
+    },
+    'merge-slices-push': {
+        gated: true,
+        payloadOf: (fileHash) => ({ mode: 'merge-slices-push', fileHash, chunkTotal: 1 }),
+    },
+    'merge-slices-get': {
+        gated: false,
+        why: '已承接工作之查詢、結果回放與狀態復原: S3 之儲存結果回放不呼叫應用端(重送冪等), S2 在途消費由同隊列共用, 需派發者由 callApp 於派發點判定',
+        payloadOf: (fileHash, queueId) => ({ mode: 'merge-slices-get', fileHash, filename: 'a.bin', queueId }),
     },
 }
 
@@ -332,7 +364,8 @@ let fetchDownload = async(port, route, fileId, opt = {}) => {
 
 //r, 本檔對測試提供之軸與工具(各成員之用途; 全部皆有實際取用者, 見帳本 R23)
 //  downloadRoutes                 下載三路由之成員全集與其請求形狀、欄位順序、錯誤狀態碼
-//  allRoutes                      六路由之成員全集(含 apiType、handler 之 api、authorization 來源、可否解析之本體)
+//  allRoutes                      六路由之成員全集(含 apiType、handler 之 api、所服務之事件、authorization 來源、可否解析之本體)
+//  ulctrModes                     /ulctr 之 mode 全集與其「無接聽者時是否被擋」(不擋者附理由)
 //  downloadRouteKeys(excludes)    取下載路由之成員清單; 少測一個須以理由排除
 //  downloadRouteKeysRequiring     取以某欄位為必要之成員; NotRequiring 為其互補集
 //  downloadRouteKeysByBody        依回應本體形式取成員(stream 或 json)
@@ -342,6 +375,7 @@ let fetchDownload = async(port, route, fileId, opt = {}) => {
 let r = {
     downloadRoutes,
     allRoutes,
+    ulctrModes,
     downloadRouteKeys,
     downloadRouteKeysRequiring,
     downloadRouteKeysNotRequiring,
