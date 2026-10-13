@@ -101,6 +101,28 @@ window.tBadFunc = async () => {
     return { state: r.state, msg: r.msg, errs }
 }
 
+//tRejCancelled, 應用端以 wsemi 取消家族之形狀拒絕(帳本 R29): 打包產物之結局判定須與 nodejs 同(原值、每次嘗試一則、重試)
+window.tRejCancelled = async () => {
+    let wo = mk({ retryMain: 1 })
+    let errs = []
+    wo.on('error', (e) => errs.push(e))
+    let r = await cat(() => wo.execute('rejCancelled', {}, () => {}))
+    return { state: r.state, msg: r.msg, errs }
+}
+
+//tGetTokenCancelled, getToken 以取消形狀拒絕: 該次嘗試之失敗, 照常重試且每次一則, 最終以原值拒絕
+window.tGetTokenCancelled = async () => {
+    let nGt = 0
+    let wo = mk({ retryMain: 1, getToken: () => {
+        nGt += 1
+        return Promise.reject({ reason: 'cancelled', code: 8 })
+    } })
+    let errs = []
+    wo.on('error', (e) => errs.push(e))
+    let r = await cat(() => wo.execute('echo', { u8a: new Uint8Array(1), txt: 'x' }, () => {}))
+    return { state: r.state, msg: r.msg, errs, nGt }
+}
+
 window.tNoToken = async () => {
     let wo = mk({ retryMain: 0, getToken: () => '' })
     wo.on('error', () => {})
@@ -123,6 +145,9 @@ window.tNoToken = async () => {
             rsv.push({ func, len: input.u8a ? Object.keys(input.u8a).length : 0, txt: input.txt })
             if (func === 'echo') {
                 pm.resolve({ u8a: input.u8a, txt: input.txt })
+            }
+            else if (func === 'rejCancelled') {
+                pm.reject({ reason: 'cancelled', code: 7 })
             }
             else {
                 pm.reject('invalid func')
@@ -232,6 +257,35 @@ window.tNoToken = async () => {
 
         //error 事件須收到同一則訊息, 且每次嘗試僅 emit 一次
         assert.strict.deepEqual(r.errs, ['invalid func'])
+    })
+
+    it('應用端以取消形狀({ reason: cancelled })拒絕時, 瀏覽器端(打包產物)須收到同一值、每次嘗試一則、伺服端被呼叫 1+retryMain 次(帳本 R29; 修正前為空字串、0 則、1 次)', async function() {
+        let page = await openPage()
+        let n0 = rsv.filter((v) => v.func === 'rejCancelled').length
+
+        let r = await page.evaluate(() => window.tRejCancelled())
+        let v = { reason: 'cancelled', code: 7 }
+
+        //使用者觀察: reject 且為應用端之原值(非 Error 者原樣交出)
+        assert.strict.deepEqual(r.state, 'reject')
+        assert.strict.deepEqual(r.msg, v)
+
+        //每次嘗試失敗恰一則事件, 值同拒絕值
+        assert.strict.deepEqual(r.errs, [v, v])
+
+        //後端副作用: 凡失敗皆重試, 伺服端被呼叫 1+retryMain 次
+        assert.strict.deepEqual(rsv.filter((x) => x.func === 'rejCancelled').length - n0, 2)
+    })
+
+    it('getToken 以取消形狀拒絕時, 瀏覽器端(打包產物)須以原值拒絕、每次嘗試一則、getToken 1+retryMain 次(帳本 R13 #4a、R29; 修正前為空字串、0 則、1 次)', async function() {
+        let page = await openPage()
+
+        let r = await page.evaluate(() => window.tGetTokenCancelled())
+        let v = { reason: 'cancelled', code: 8 }
+        assert.strict.deepEqual(r.state, 'reject')
+        assert.strict.deepEqual(r.msg, v)
+        assert.strict.deepEqual(r.errs, [v, v])
+        assert.strict.deepEqual(r.nGt, 2)
     })
 
     it('權限驗證失敗時, 瀏覽器端須收到permission denied', async function() {

@@ -107,6 +107,20 @@ window.tDownloadManager = async (fileId, o) => {
     let r = await cat(() => wo.download(fileId, () => {}, {}))
     return { state: r.state, msg: String(r.msg) }
 }
+
+//tManagerGetTokenCancelled, 下載管理器路徑之取檔名(/dwgfn)請求, 其 getToken 以取消形狀拒絕(帳本 R13 #4a、R29):
+//該次嘗試之失敗, 照常重試且每次一則, 最終以原值拒絕、不交給瀏覽器
+window.tManagerGetTokenCancelled = async (fileId) => {
+    let nGt = 0
+    let wo = mk({ retryDownload: 1, getToken: () => {
+        nGt += 1
+        return Promise.reject({ reason: 'cancelled', code: 9 })
+    } })
+    let errs = []
+    wo.on('error', (e) => errs.push(e))
+    let r = await cat(() => wo.download(fileId, () => {}, {}))
+    return { state: r.state, msg: r.msg, errs, nGt }
+}
 `)
 
         wsv = await startServer({
@@ -379,6 +393,24 @@ window.tDownloadManager = async (fileId, o) => {
 
         //對照: 修正前之 URL 帶 token=undefined 會通過本 verifyConn(isestr('undefined') 為真)而觸發下載; 現須無任何 /dwgf 請求, 或其授權字串不含 undefined
         assert.strict.deepEqual(auths.every((v) => !/undefined|null/.test(v.authorization)), true, JSON.stringify(auths))
+    })
+
+    it('downloadByManager=true時, 取檔名之請求其 getToken 以取消形狀拒絕: 須以原值拒絕、每次嘗試一則、getToken 1+retryDownload 次、不交給瀏覽器下載(帳本 R13 #4a、R29; 修正前為空字串、0 則、1 次)', async function() {
+        let page = await openPage()
+        let nDl = 0
+        page.on('download', () => {
+            nDl += 1
+        })
+        let fileId = 'mgr-gettoken-cancelled'
+        let r = await page.evaluate((fid) => window.tManagerGetTokenCancelled(fid), fileId)
+        let v = { reason: 'cancelled', code: 9 }
+        assert.strict.deepEqual(r.state, 'reject')
+        assert.strict.deepEqual(r.msg, v)
+        assert.strict.deepEqual(r.errs, [v, v])
+        assert.strict.deepEqual(r.nGt, 2)
+        await w.delay(500)
+        assert.strict.deepEqual(nDl, 0, '不得交給瀏覽器下載')
+        assert.strict.deepEqual(rsv.filter((x) => x.fileId === fileId).length, 0, '取檔名之請求未送出, 伺服器 download 事件不得觸發')
     })
 
     it('downloadByManager=true時, 交給瀏覽器之 token 須為 /dwgfn 成功後重取之當下值(修正前: 於 /dwgfn 之前取, 一次性 token 拿到的是較舊者)', async function() {

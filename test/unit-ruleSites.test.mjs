@@ -370,7 +370,7 @@ describe('unit-ruleSites', function() {
         }
     })
 
-    it('R5 error 事件發送站點(總量, 帳本維護提示): server 26(即時 21 + 建構期脫勾 4 + 監聽器出錯之通報 1)、client 10(呼叫層級之 ctx.emit 9 + 入口之 evEmit 1)', function() {
+    it('R5 error 事件發送站點(總量, 帳本維護提示): server 26(即時 21 + 建構期脫勾 4 + 監聽器出錯之通報 1)、client 11(呼叫層級之 ctx.emit 10 + 入口之 evEmit 1)', function() {
         //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
         //第九輪 23 → 26: procApp 之「無人接聽」通報 ×1(R12)、stop 之停止失敗通報 ×1(R11 之建構期同族)、
         ///dwgfn 之 filename 正規化失敗 ×1(R3: 協定鍵內之值亦會靜默消失)
@@ -385,7 +385,8 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
         //2026-10-13(前端中止, 帳本 R27): client 之 error 事件改由呼叫層級之 ctx.emit 發出(中止後不發), 只有入口之 `invalid opt.signal` 仍為 evEmit(其時尚無中止範圍);
         //站點 10 → 10: +1(invalid opt.signal)、−1(兩處 cbProgress 保護收斂為 ctx.wrapProgress 一處, 同 R10)。原規劃之 10 → 11 未計入該收斂
-        assert.strict.deepEqual(countAll(src.client, /(?:evEmit|ctx\.emit)\('error'/g), 10, `R5 client 之站點數 ${hint}`)
+        //2026-10-14(帳本 R29, 主控裁示 N6): 10 → 11, upload 之雜湊計算失敗改為入口失敗(一則事件 + classifyFailure 之值), 原以原始錯誤物件拒絕且 0 則
+        assert.strict.deepEqual(countAll(src.client, /(?:evEmit|ctx\.emit)\('error'/g), 11, `R5 client 之站點數 ${hint}`)
     })
 
     it('R28 測試建構伺服器一律給 pathUploadTemp(落 test/_tmp/<案名>/), 不得取預設值而於 repo 根建立 uploadTemp/', function() {
@@ -454,7 +455,7 @@ describe('unit-ruleSites', function() {
         let c = src.client
         let iCtx = c.indexOf('let genCallCtx = (scope) => {')
         let iOpen = c.indexOf('let openCall = (opt) => {')
-        let iAfterOpen = c.indexOf('let symNoRetry = Symbol(', iOpen)
+        let iAfterOpen = c.indexOf('let noRetrySet = new WeakSet(', iOpen) //2026-10-14: openCall 之後之第一個定義由 symNoRetry 改為 noRetrySet(帳本 R29)
         assert.strict.deepEqual(iCtx > 0 && iOpen > iCtx && iAfterOpen > iOpen, true, 'R27 找不到 genCallCtx 與 openCall 之定義(或順序改變)')
 
         //ctx 只由入口建立: genCallCtx 定義 1 + openCall 內呼叫 1; 三個公開方法皆經 openCall, 皆以 ctx.run 執行本體(download 依環境兩分支)
@@ -556,6 +557,69 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(iHash > 0 && iHash < iRename && iRename < iDone, true, 'R18 順序須為: 核對雜湊 → rename → 寫 .done')
     })
 
+    it('R29 一次嘗試之結局不得以外來值之形狀判定; 不需重試以自建包裝之參照識別; 成功須以肯定式證明(2026-10-14)', function() {
+        //why: 審計 run01 —— 嘗試結果交給 wsemi 之 pmConvertResolve 分類, 其取消第三態把 reason 為 'cancelled' 之外來值改成空字串(0 則、不重試);
+        //isNoRetry 對任意失敗值讀 response.status 而把應用端之 { response: { status: 413 } } 判為不需重試; 下載以「沒有錯誤標頭」判成功;
+        //宿主之 axios.defaults.validateStatus 左右本套件之成敗(帳本 R29 之 why)。本條鎖住修正後之結構, 行為面由 test/api-clientOutcomeShapes.test.mjs 鎖
+        let c = src.client
+        let iCore = c.indexOf('let callApiCore = async() => {')
+        let iCallApi = c.indexOf('let callApi = async() => {')
+        assert.strict.deepEqual(iCore > 0 && iCallApi > iCore, true, 'R29 找不到 callApiCore 與 callApi 之定義(或順序改變)')
+
+        //1. 嘗試結果由本套件自己的 try/catch 分類: 不得 import 或使用 wsemi 之 pmConvertResolve / pm2resolve
+        assert.strict.deepEqual(countAll(c, /pmConvertResolve|pm2resolve/g), 0, 'R29 client 不得以 pmConvertResolve / pm2resolve 分類嘗試結果')
+        let iAttempt = c.indexOf('let attempt = async() => {', iCallApi)
+        let iLoop = c.indexOf(`while (r.state === 'error')`, iCallApi)
+        assert.strict.deepEqual(iAttempt > iCallApi && iAttempt < iLoop, true, 'R29 callApi 須以自身之 attempt(try/catch)取 { state, msg }')
+
+        //2. 413 只在 axios 之錯誤上判定: response.status 全檔只讀一處, 位於 callApiCore 之 axios 失敗處, 且同一行經 axios.isAxiosError
+        assert.strict.deepEqual(countAll(c, /response\.status'/g), 1, 'R29 response.status 只得讀一處')
+        let i413 = c.indexOf(`get(err, 'response.status') === 413`)
+        assert.strict.deepEqual(i413 > iCore && i413 < iCallApi, true, 'R29 413 之判定須位於 callApiCore 內(axios 之失敗處)')
+        let line413 = c.slice(c.lastIndexOf('\n', i413), c.indexOf('\n', i413))
+        assert.strict.deepEqual(line413.includes('axios.isAxiosError(err)'), true, 'R29 413 之判定須經 axios.isAxiosError')
+
+        //3. 不需重試以自建包裝之參照識別: isNoRetry / unwrapNoRetry 只以 noRetrySet.has 判定, 不讀失敗值之任何屬性
+        assert.strict.deepEqual(c.includes('let noRetrySet = new WeakSet()'), true, 'R29 須以 WeakSet 識別自建之包裝')
+        let bodyOf = (name) => {
+            let i = c.indexOf(`let ${name} = (`)
+            let j = c.indexOf('\n    }', i)
+            return (i < 0 || j < 0) ? '' : c.slice(i, j)
+        }
+        for (let name of ['isNoRetry', 'unwrapNoRetry']) {
+            let b = bodyOf(name)
+            assert.strict.deepEqual(b.includes('noRetrySet.has(msg)'), true, `R29 ${name} 須以 noRetrySet.has 判定`)
+            assert.strict.deepEqual(/isobj\(|get\(|\[sym/.test(b), false, `R29 ${name} 不得讀失敗值之屬性`)
+        }
+        assert.strict.deepEqual(/symNoRetry/.test(c), false, 'R29 不得再以 Symbol 鍵之形狀識別包裝')
+
+        //4. classifyFailure 之讀取包 try: instanceof 與 response.statusText 皆在 try 內(讀不出者視為非 Error 而原樣交出, 惡意值原樣)
+        let iCf = c.indexOf('function classifyFailure(res) {')
+        let cf = c.slice(iCf, c.indexOf('\n}', iCf))
+        assert.strict.deepEqual(/try\s*\{\s*bErr = res instanceof Error/.test(cf), true, 'R29 classifyFailure 之 instanceof 須在 try 內')
+        assert.strict.deepEqual(/try\s*\{\s*statusText = get\(res, 'response\.statusText'\)/.test(cf), true, 'R29 classifyFailure 之 statusText 讀取須在 try 內')
+
+        //5. 下載成功之肯定式判定: downloadStream 先證明有本套件之下載標頭(Content-Disposition), 才解檔名
+        let iDs = c.indexOf('let downloadStream = async(res) => {')
+        let iCd = c.indexOf(`headers['content-disposition']`, iDs)
+        let iInv = c.indexOf('invalid download response from server', iDs)
+        let iDec = c.indexOf('decodeFilenameFromHeader(', iDs)
+        assert.strict.deepEqual(iDs > 0 && iCd > iDs && iInv > iCd && iDec > iInv, true, 'R29 downloadStream 須於解檔名前驗本套件之下載標頭')
+
+        //6. validateStatus 明給於請求組態(不取宿主之 axios.defaults)
+        let iS = c.indexOf('let s = {')
+        let iVs = c.indexOf('validateStatus:')
+        assert.strict.deepEqual(countAll(c, /validateStatus:/g), 1, 'R29 validateStatus 須明給且只一處')
+        assert.strict.deepEqual(iVs > iS && iVs < iCore, true, 'R29 validateStatus 須位於 send 之請求組態 s')
+
+        //7. fetchToken 一律 await, 不以 wsemi 之 ispm 判斷(thenable 亦經 undefined/null 之正規化)
+        assert.strict.deepEqual(countAll(c, /ispm\(/g), 0, 'R29 client 不得以 ispm 判斷 getToken 之回傳值')
+
+        //8. 伺服端 canonProtocolValue 以 typeof 判 function/symbol, 不以 wsemi 之 isfun 檢視應用端值(同 procApp)
+        let cp = sect('canonProtocolValue')
+        assert.strict.deepEqual(cp !== '' && !/isfun\(/.test(cp) && /typeof v/.test(cp), true, 'R29 canonProtocolValue 須以 typeof 判定, 不得用 isfun')
+    })
+
     it('CLAUDE_rulebook.md 須存在且涵蓋本檔之全部規則', function() {
         //帳本自 2026-09-10 起獨立為 CLAUDE_rulebook.md(原位於 CLAUDE.md 之「規則帳本」一節);
         //CLAUDE.md 只留工作規則與指向兩個附檔之說明, 執行經驗另於 CLAUDE_experience.md
@@ -564,7 +628,7 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'CLAUDE_rulebook.md 缺少標題')
         //第十二輪: 補 R19–R26(原清單只到 R18, R19–R25 缺頁不會紅 —— 與上述第十輪之教訓同型, B 卷 ③-6)
         //2026-10-13: 補 R27(前端中止之單一擁有者)
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ']) {
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ']) {
             assert.strict.deepEqual(doc.includes(r), true, `CLAUDE_rulebook.md 缺少 ${r.trim()}`)
         }
         assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE_rulebook.md 之盤點指令數不足')

@@ -80,7 +80,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line281">line 281</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line291">line 291</a>
     </li></ul></dd>
     
 
@@ -317,7 +317,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入取得使用者token的回調函數，預設()=&gt;''。未給或給予非函數者一律視為不帶token(每次請求送出空token，不另發事件)，伺服器端之verifyConn若要求token即以permission denied拒絕。可回傳字串或promise；回undefined或null視為未帶token(送出空token，不送字面之undefined)。<strong>每一次請求嘗試各呼叫一次</strong>(含重試，故一次execute為1+retryMain次)，使重試帶當下之token；瀏覽器下載管理器路徑(downloadByManager=true)於取檔名之請求外，另於導覽至下載網址前再呼叫一次，故為(1+retryDownload)+1次(該次拋錯時download以錯誤拒絕並發一則error事件；此時伺服器已因取檔名之請求觸發過一次download事件而沒有下載發生)；快取與否由應用端自行決定</p></td>
+            <td class="description last"><p>輸入取得使用者token的回調函數，預設()=&gt;''。未給或給予非函數者一律視為不帶token(每次請求送出空token，不另發事件)，伺服器端之verifyConn若要求token即以permission denied拒絕。可回傳字串、promise或thenable(一律await)；回undefined或null(含promise或thenable解出者)視為未帶token(送出空token，不送字面之undefined)。拋錯或reject之值不論形狀(含形似取消、形似413者與惡意值)一律為該次嘗試之失敗，照常重試且每次一則error事件，最終以原值拒絕(Error者為其訊息)。<strong>每一次請求嘗試各呼叫一次</strong>(含重試，故一次execute為1+retryMain次)，使重試帶當下之token；瀏覽器下載管理器路徑(downloadByManager=true)於取檔名之請求外，另於導覽至下載網址前再呼叫一次，故為(1+retryDownload)+1次(該次拋錯時download以錯誤拒絕並發一則error事件；此時伺服器已因取檔名之請求觸發過一次download事件而沒有下載發生)；快取與否由應用端自行決定</p></td>
         </tr>
 
     
@@ -477,7 +477,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）</p></td>
+            <td class="description last"><p>輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413(指本套件之請求所收到之HTTP狀態；應用端或getToken交出之值不論形狀皆不據以判定，如{response:{status:413}}照常重試)。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）</p></td>
         </tr>
 
     
@@ -590,7 +590,7 @@
 
         
 <div class="param-desc">
-    <p>回傳事件物件，可使用函數execute、upload、download，可監聽事件error。<strong>監聽器須為同步函數，不可為async函數、亦不可回傳promise</strong>：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。<strong>error事件之契約：每一次請求嘗試失敗恰發一則</strong>(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload)一則。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。<strong>中止(opt.signal)</strong>：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止<strong>該次呼叫</strong>(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以<strong>signal.reason原樣</strong>拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。<strong>判別中止請以signal.aborted</strong>(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為<strong>結果未知</strong>(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而<strong>不可中止</strong>(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交</p>
+    <p>回傳事件物件，可使用函數execute、upload、download，可監聽事件error。<strong>監聽器須為同步函數，不可為async函數、亦不可回傳promise</strong>：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。<strong>error事件之契約：每一次請求嘗試失敗恰發一則</strong>(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload、upload之輸入讀取失敗即雜湊計算失敗)一則，不重試。<strong>結局之判定</strong>：伺服器回傳值(含應用端之拒絕值)與getToken之拒絕值一律原樣交出，不以形狀判定(形似取消之{reason:'cancelled'}、形似413之{response:{status:413}}皆照常重試並逐次發事件)；惡意值(如已撤銷之Proxy)亦原樣交給error監聽器與呼叫端，其讀取由監聽器與呼叫端自行負責。下載須取得本套件之下載回應(帶Content-Disposition)才算成功，否則(如網址誤指他站而回2xx之網頁)以'invalid download response from server'拒絕並照常重試。請求之成敗依本套件明給之validateStatus(2xx)判定，不受宿主之axios.defaults影響；惟Node.js下使用axios之預設實例，宿主掛於其上之攔截器亦作用於本套件之請求(已知限制，瀏覽器之dist自帶axios而不受影響)。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。<strong>中止(opt.signal)</strong>：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止<strong>該次呼叫</strong>(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以<strong>signal.reason原樣</strong>拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。<strong>判別中止請以signal.aborted</strong>(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為<strong>結果未知</strong>(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而<strong>不可中止</strong>(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交</p>
 </div>
 
 
@@ -654,7 +654,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line1496">line 1496</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line1555">line 1555</a>
     </li></ul></dd>
     
 
@@ -1052,7 +1052,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line1265">line 1265</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line1324">line 1324</a>
     </li></ul></dd>
     
 
@@ -1402,7 +1402,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line1356">line 1356</a>
+        <a href="WConverhpClient.mjs.html">WConverhpClient.mjs</a>, <a href="WConverhpClient.mjs.html#line1415">line 1415</a>
     </li></ul></dd>
     
 
@@ -1555,7 +1555,7 @@
                 </td>
             
 
-            <td class="description last"><p>輸入資料,ArrayBufferView以位元組計、字串以UTF-8位元組計,其餘以錯誤拒絕並發一則error事件</p></td>
+            <td class="description last"><p>輸入資料,ArrayBufferView以位元組計、字串以UTF-8位元組計,其餘以錯誤拒絕並發一則error事件;上傳期間輸入無法讀取者(如File選取後被修改或刪除而雜湊計算失敗)以訊息字串拒絕並發一則error事件、不重試</p></td>
         </tr>
 
     
@@ -1763,7 +1763,7 @@
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Oct 13 2026 21:38:13 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Oct 14 2026 01:32:25 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

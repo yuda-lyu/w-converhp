@@ -362,6 +362,81 @@ let fetchDownload = async(port, route, fileId, opt = {}) => {
 }
 
 
+//rejectShapes, 外來拒絕值之形狀軸(2026-10-14, 帳本 R8 之延伸、R29): 伺服器轉交之應用端拒絕值與 getToken 之拒絕值共用
+//成員由契約與判定站點推導, 不由已知缺陷推導(經驗 E1): 契約「非 Error 者不論形狀皆原樣交出」(client 之 classifyFailure)→ 原始型別、空字串、陣列、物件;
+//每個曾以值之形狀判定結局之站點 → 其觸發形狀(why 註明站點)。新增以形狀判定之站點時, 其觸發形狀須同時加入本軸
+//value 為工廠, 每次呼叫產生新值(使斷言之 deepEqual 不因共用參照而失真)
+let rejectShapes = {
+    str: { value: () => 'plain string', why: '最常見之拒絕值' },
+    emptyStr: { value: () => '', why: '空字串: 須與「被吞成空字串」以事件數區分' },
+    num: { value: () => 404, why: '數字' },
+    zero: { value: () => 0, why: 'falsy 之數字' },
+    falsy: { value: () => false, why: 'falsy 之布林' },
+    nul: { value: () => null, why: 'null(undefined 經伺服器正規化為 null, 屬 codec 之界, 見帳本已知限制 L2)' },
+    arr: { value: () => ['a', 'b'], why: '陣列' },
+    obj: { value: () => ({ code: 1, msg: '中文' }), why: '一般物件' },
+    cancelled: { value: () => ({ reason: 'cancelled', code: 7 }), why: 'wsemi 取消家族之形狀: 修正前 pmConvertResolve 判為第三態, 以空字串結束、0 則、不重試' },
+    cancelledBare: { value: () => ({ reason: 'cancelled' }), why: '同上, 只有 reason 一欄' },
+    status413: { value: () => ({ response: { status: 413 } }), why: 'axios 413 之形狀: 修正前 isNoRetry 對任意值讀 response.status 而判為不需重試' },
+    status413Msg: { value: () => ({ response: { status: 413 }, msg: 'upstream too large' }), why: '同上, 帶其他欄位' },
+}
+
+//rejectShapesCodec, 經伺服器 codec 之後才成形之成員: 觸發面是「抵達前端時之形狀」, 不是應用端寫下之形狀(JSON.stringify 先套 toJSON)
+//value 為應用端交出之值之工廠, arrive 為前端應收到之值
+let rejectShapesCodec = {
+    toJSONCancelled: {
+        value: () => {
+            return {
+                toJSON() {
+                    return { reason: 'cancelled', code: 9 }
+                },
+            }
+        },
+        arrive: { reason: 'cancelled', code: 9 },
+        why: '應用端之值不是取消形狀, 經 codec 後成為取消形狀',
+    },
+}
+
+//rejectSequences, 嘗試序列軸: 應用端逐次之結局(第 k 次嘗試之形狀); 'ok' 代表該次 resolve
+//應然由契約推得: 每次嘗試失敗恰一則事件、照常重試至成功或次數用盡(CLAUDE.md 之 failTwice 契約: 前兩次 reject、第三次 resolve, client 須最終成功)
+let rejectSequences = {
+    failTwiceCancelled: { seq: [{ reason: 'cancelled', code: 1 }, { reason: 'cancelled', code: 2 }, 'ok'], why: 'failTwice 契約以取消形狀實作' },
+    cancelledMiddle: { seq: ['boom', { reason: 'cancelled', code: 2 }, 'ok'], why: '取消形狀出現在中間之嘗試' },
+    cancelledThenFail: { seq: ['boom', 'boom2', { reason: 'cancelled', code: 3 }, 'boom4'], why: '取消形狀之後仍須重試, 最終拒絕值為最後一次之值' },
+}
+
+//hostileShapes, 惡意值之工廠: 每次呼叫產生一組新值(已撤銷之 Proxy 除參照比對外不可做任何操作)
+//只用於不經 codec 之值(getToken 之拒絕值); 伺服端之應用端拒絕值經 codec 後必為錯誤封包, 另見 test/api-hostileErrorValues.test.mjs
+let hostileShapes = () => {
+    let rv = Proxy.revocable({}, {})
+    rv.revoke()
+    let reasonGetterThrows = {}
+    Object.defineProperty(reasonGetterThrows, 'reason', {
+        get() {
+            throw new Error('reason getter boom')
+        },
+    })
+    let toStringTagThrows = {}
+    Object.defineProperty(toStringTagThrows, Symbol.toStringTag, {
+        get() {
+            throw new Error('toStringTag boom')
+        },
+    })
+    let responseGetterThrows = {}
+    Object.defineProperty(responseGetterThrows, 'response', {
+        get() {
+            throw new Error('response getter boom')
+        },
+    })
+    return {
+        revokedProxy: rv.proxy, //修正前: pmConvertResolve 讀 reason 拋錯 → 永不 settle + 未處理之 rejection
+        reasonGetterThrows, //同上
+        toStringTagThrows, //修正前: unwrapNoRetry 之 isobj 拋錯 → 0 則、不重試、值被換成訊息
+        responseGetterThrows, //修正前: isNoRetry 讀 response.status 拋錯 → 1 則、不重試
+    }
+}
+
+
 //r, 本檔對測試提供之軸與工具(各成員之用途; 全部皆有實際取用者, 見帳本 R23)
 //  downloadRoutes                 下載三路由之成員全集與其請求形狀、欄位順序、錯誤狀態碼
 //  allRoutes                      六路由之成員全集(含 apiType、handler 之 api、所服務之事件、authorization 來源、可否解析之本體)
@@ -372,6 +447,10 @@ let fetchDownload = async(port, route, fileId, opt = {}) => {
 //  downloadRouteKeysByStage       依會走到之下載來源階段取成員
 //  downloadErrorStatus(route,kind) 取某路由於某種錯誤之 HTTP 狀態碼
 //  fetchDownload(port,route,...)  依軸上之請求形狀打該路由並取回標頭與本體
+//  rejectShapes                   外來拒絕值之形狀軸(伺服器轉交之應用端值、getToken 之值; 帳本 R8 延伸、R29)
+//  rejectShapesCodec              經伺服器 codec 之後才成形之拒絕值(toJSON)
+//  rejectSequences                嘗試序列軸(第 k 次嘗試之結局)
+//  hostileShapes()                惡意值之工廠(getToken 之拒絕值)
 let r = {
     downloadRoutes,
     allRoutes,
@@ -383,6 +462,10 @@ let r = {
     downloadRouteKeysByStage,
     downloadErrorStatus,
     fetchDownload,
+    rejectShapes,
+    rejectShapesCodec,
+    rejectSequences,
+    hostileShapes,
 }
 
 

@@ -3,9 +3,12 @@ import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
+import axes from './tools/api-axes.mjs'
 import wPorts from './tools/ports.mjs'
 
 let { portOf } = wPorts
+
+let { rejectShapes } = axes
 
 
 describe('api-executeError', function() {
@@ -128,15 +131,19 @@ describe('api-executeError', function() {
         assert.strict.deepEqual(r.msg, { code: 'E42', detail: '錯誤詳情' })
     })
 
-    it('伺服器以任意形狀拒絕(數字/0/false/空字串/null/陣列/物件/字串)時, 呼叫端皆須收到同一值', async function() {
+    it('伺服器以任意形狀拒絕(形狀軸之全部成員, 含取消形狀與 413 形狀)時, 呼叫端皆須收到同一值且恰一則同值之事件', async function() {
         //外部應用端的拒絕值形狀列不完, 不得以形狀白名單判定; 本地傳輸層失敗一律為Error實例, 非Error者即為伺服器回傳值
-        let shapes = [404, 0, false, '', null, ['a', 'b'], { code: 1, msg: '中文' }, 'plain string']
-        for (let v of shapes) {
+        //成員取自 test/tools/api-axes.mjs 之 rejectShapes(帳本 R8): 原手寫之 8 員漏了曾被以形狀判定結局之 { reason: 'cancelled' }(修正前得空字串且 0 則)
+        //與 { response: { status: 413 } }(帳本 R29, 2026-10-14)—— 清單手寫在單一測試檔時, 新的判定站點之觸發形狀不會被補進來(經驗 E1)
+        for (let k of Object.keys(rejectShapes)) {
+            let v = rejectShapes[k].value()
             let wo = mkClient()
-            wo.on('error', () => {})
+            let evs = []
+            wo.on('error', (e) => evs.push(e))
             let r = await catchOf(() => wo.execute('shapeError', { v }, () => {}))
-            assert.strict.deepEqual(r.state, 'reject', JSON.stringify(v))
-            assert.strict.deepEqual(r.msg, v, `shape ${JSON.stringify(v)} -> ${JSON.stringify(r.msg)}`)
+            assert.strict.deepEqual(r.state, 'reject', `${k}: ${JSON.stringify(v)}`)
+            assert.strict.deepEqual(r.msg, v, `${k}: shape ${JSON.stringify(v)} -> ${JSON.stringify(r.msg)}`)
+            assert.strict.deepEqual(evs, [v], `${k}: retryMain 為 0 時恰一則, 值同拒絕值; 實得 ${JSON.stringify(evs)}`)
         }
     })
 

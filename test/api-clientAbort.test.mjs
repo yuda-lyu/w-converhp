@@ -177,6 +177,12 @@ describe('api-clientAbort', function() {
         })
         ws.on('execute', (func, input, pm) => {
             st.exec.calls += 1
+            if (String(func) === 'rejCancelled') {
+                //以 wsemi 取消家族之形狀拒絕(帳本 R29): 修正前 client 之 pmConvertResolve 判為第三態而以空字串結束, 先於呼叫端之中止
+                st.exec.done += 1
+                pm.reject({ reason: 'cancelled', code: 7 })
+                return
+            }
             if (String(func).startsWith('slow')) {
                 setTimeout(() => {
                     st.exec.done += 1
@@ -531,7 +537,7 @@ describe('api-clientAbort', function() {
             let rec = genRec()
             let wo = mkClient(rec)
             let out = []
-            for (let reason of ['stop-by-broadcast', { code: 'teardown' }]) {
+            for (let reason of ['stop-by-broadcast', { code: 'teardown' }, { reason: 'cancelled' }]) { //{ reason: 'cancelled' }: wsemi 取消家族之形狀亦須原樣(帳本 R29; 中止以狀態判, 不經任何形狀判定)
                 let ac = new AbortController()
                 let p = settle(wo.execute('slow', {}, null, { signal: ac.signal }))
                 setTimeout(() => ac.abort(reason), 100)
@@ -550,6 +556,26 @@ describe('api-clientAbort', function() {
             assert.strict.equal(rt.e, sig.reason)
             assert.strict.deepEqual(rt.e.name, 'TimeoutError')
             assert.strict.deepEqual(rec.events.length, 0)
+        })
+
+        it('應用端以取消形狀拒絕後, 呼叫端於退避中中止(reason 亦為取消形狀): 以 reason 原樣拒絕、中止前之一則事件保留(A5; 修正前於中止前即以空字串結束、0 則)', async function() {
+            let rec = genRec()
+            let wo = mkClient(rec, { opt: { retryMain: 3 } })
+            let ac = new AbortController()
+            rec.signal = ac.signal
+            let reason = { reason: 'cancelled', tag: 'abort' }
+            let done = false
+            let p = settle(wo.execute('rejCancelled', {}, null, { signal: ac.signal })).then((r) => {
+                done = true
+                return r
+            })
+            await waitFor(() => rec.events.length >= 1 || done) //第一次嘗試失敗之事件已發(修正後), 或呼叫已結束(修正前)
+            rec.abort(ac, reason)
+            let r = await p
+            assert.strict.deepEqual(r.ok, false)
+            assert.strict.equal(r.e, reason, `須以 signal.reason 原樣拒絕; 實得 ${JSON.stringify(r.e)}`)
+            assert.strict.deepEqual(rec.events.map((x) => x.v), [{ reason: 'cancelled', code: 7 }], '中止前之嘗試失敗恰一則, 值為應用端之拒絕值')
+            assert.strict.deepEqual(rec.after('events'), [], '中止後 0 則')
         })
 
         it('長壽 signal: 循序 100 次後外部監聽 0; 並發 30 次時每呼叫 1 個、結束後 0; 無 MaxListeners 警告(C6)', async function() {

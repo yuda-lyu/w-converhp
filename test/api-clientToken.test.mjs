@@ -84,15 +84,23 @@ describe('api-clientToken', function() {
         assert.strict.deepEqual(auths, ['Bearer tk1', 'Bearer tk2'])
     })
 
-    it('getToken 回 undefined 或 null 時, 送出之 Authorization 不得含字面 undefined / null', async function() {
-        for (let v of [undefined, null]) {
-            let wc = new WConverhpClient({ url: `http://127.0.0.1:${port}`, retryMain: 0, getToken: () => v })
+    it('getToken 回 undefined 或 null(含 thenable 解出者)時, 送出之 Authorization 不得含字面 undefined / null', async function() {
+        //thenable 兩員(2026-10-14): 修正前 fetchToken 以 wsemi 之 ispm 判斷是否 await, 一般物件之 thenable 不被認出而由 async 函數之回傳採納,
+        //跳過 undefined/null 之正規化 → 送出字面 `Bearer undefined`; 修正後一律 await(帳本 R13 #4a 之更正)
+        let cases = {
+            'undefined': () => undefined,
+            'null': () => null,
+            'thenable 解出 undefined': () => ({ then: (resolve) => resolve(undefined) }),
+            'thenable 解出 null': () => ({ then: (resolve) => resolve(null) }),
+        }
+        for (let k of Object.keys(cases)) {
+            let wc = new WConverhpClient({ url: `http://127.0.0.1:${port}`, retryMain: 0, getToken: cases[k] })
             wc.on('error', () => {})
             auths.length = 0
             used.clear()
             await wc.execute('f', {}).then(() => {}, () => {})
-            assert.strict.deepEqual(auths.length, 1, `getToken 回 ${v}: 前提為請求有送達`)
-            assert.strict.deepEqual(/undefined|null/.test(auths[0]), false, `getToken 回 ${v}: 實得 Authorization=${JSON.stringify(auths[0])}`)
+            assert.strict.deepEqual(auths.length, 1, `getToken 回 ${k}: 前提為請求有送達`)
+            assert.strict.deepEqual(/undefined|null/.test(auths[0]), false, `getToken 回 ${k}: 實得 Authorization=${JSON.stringify(auths[0])}`)
         }
     })
 

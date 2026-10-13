@@ -94,6 +94,7 @@ let alloc = [
     ['api-clientAbort', 3, '主伺服器 + sizeSlice 不一致之伺服器(回應已到時中止) + 大切片伺服器(切片本體傳送中中止)'],
     ['api-hostLifecycle', 1, '子行程內之伺服器生命週期'],
     ['e2e-abort', 1, ''],
+    ['api-clientOutcomeShapes', 2, '主伺服器 + 非本套件之 2xx 回應之 http 伺服器(網址誤指 SPA 主機)'],
 ]
 
 //segs, 依 alloc 之順序自 base 起連續配發

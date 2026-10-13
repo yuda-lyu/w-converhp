@@ -444,11 +444,16 @@ function destroyStreamRead(v) {
  * 於包入協定外殼前先把這三種值轉為null(與procApp對output已有之處置一致), 協定鍵遂於結構上不可能消失,
  * 不需encode後再decode回來檢查(大輸出之代價加倍)
  *
+ * 型別以 typeof 判定, 不用 wsemi 之 isfun(與 procApp 同一規則, 帳本 R6、R29): 本函數檢視之值含**應用端之拒絕值**(replyPacket 之 out.error),
+ * 可為任意值; isfun(lodash 之 isFunction)讀 Symbol.toStringTag 並觸發 Proxy 之 has 陷阱, 已撤銷之 Proxy 或拋錯之 toStringTag getter 即拋,
+ * 例外逸出 handler 而回裸 HTTP 500 且 0 則事件(審計 run01 實測)。typeof 對任何值皆不拋; 無法序列化之惡意值交由其後 encodeOut 之嚴格模式收斂為錯誤封包 + 一則事件
+ *
  * @param {*} v 輸入協定鍵之值
  * @returns {*} 回傳可安全序列化之值
  */
 function canonProtocolValue(v) {
-    if (v === undefined || isfun(v) || typeof v === 'symbol') {
+    let tp = typeof v
+    if (v === undefined || tp === 'function' || tp === 'symbol') {
         return null
     }
     return v

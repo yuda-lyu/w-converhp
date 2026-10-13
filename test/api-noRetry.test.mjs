@@ -83,6 +83,10 @@ describe('api-noRetry', function() {
                 pm.resolve({ ok: 1 })
                 return
             }
+            if (func === 'status413') {
+                pm.reject({ response: { status: 413 } }) //形似 axios 之 413 錯誤之應用端值(帳本 R29)
+                return
+            }
             pm.reject('invalid func')
         })
         wsv.on('upload', (input, pm) => {
@@ -156,6 +160,14 @@ describe('api-noRetry', function() {
         assert.strict.deepEqual(r.state, 'reject')
         assert.strict.deepEqual(r.msg, 'Payload Too Large')
         assert.strict.deepEqual(r.nRetry, 0)
+    })
+
+    it('應用端以形似 HTTP 413 之物件({ response: { status: 413 } })拒絕時須照常重試 retryMain 次, 且呼叫端收到原值(對照組: 413 只在本套件之請求收到之 HTTP 狀態上判定; 修正前以形狀判為不需重試)', async function() {
+        this.timeout(20000)
+        let r = await runCapture(() => mkClient({ retryMain: 2 }).execute('status413', {}, () => {}))
+        assert.strict.deepEqual(r.state, 'reject')
+        assert.strict.deepEqual(r.msg, { response: { status: 413 } })
+        assert.strict.deepEqual(r.nRetry, 2)
     })
 
     it('nodejs download 之 fileId 為空(invalid fileId in payload)時須不重試, 且呼叫端收到原始錯誤字串', async function() {

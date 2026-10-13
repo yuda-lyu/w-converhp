@@ -2,6 +2,7 @@ import assert from 'assert'
 import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
+import WConverhpClient from '../src/WConverhpClient.mjs'
 import axes from './tools/api-axes.mjs'
 import wPorts from './tools/ports.mjs'
 
@@ -81,6 +82,16 @@ describe('api-hostileErrorValues', function() {
             rv.revoke()
             return rv.proxy
         },
+        'Symbol.toStringTag拋錯': () => {
+            //2026-10-14(帳本 R6、R29): 伺服端 canonProtocolValue 原以 wsemi 之 isfun(讀 Symbol.toStringTag)檢視應用端之拒絕值, 此形狀即拋而回裸 HTTP 500
+            let o = {}
+            Object.defineProperty(o, Symbol.toStringTag, {
+                get() {
+                    throw new Error('toStringTag boom')
+                }
+            })
+            return o
+        },
         'get陷阱全拋之Proxy': () => {
             return new Proxy({}, {
                 get() {
@@ -106,6 +117,8 @@ describe('api-hostileErrorValues', function() {
     //mode, 由各測試設定: '' 為不注入, 其餘為 shapes 之鍵
     let modeVerify = ''
     let modeListener = ''
+    let modeReject = '' //應用端以該形狀拒絕(pm.reject), 而非拋出
+    let nRejectUpload = 0 //upload 監聽器以 modeReject 拒絕之次數上限(其後接受, 使合併輪詢結束)
 
     before(async function() {
         this.timeout(20000)
@@ -137,7 +150,19 @@ describe('api-hostileErrorValues', function() {
             if (modeListener !== '') {
                 throw shapes[modeListener]()
             }
+            if (modeReject !== '') {
+                pm.reject(shapes[modeReject]())
+                return
+            }
             pm.resolve({ ok: 1 })
+        })
+        wsv.on('upload', (input, pm) => {
+            if (modeReject !== '' && nRejectUpload > 0) {
+                nRejectUpload -= 1
+                pm.reject(shapes[modeReject]())
+                return
+            }
+            pm.resolve({ got: input.from })
         })
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('handler', () => {})
@@ -226,6 +251,62 @@ describe('api-hostileErrorValues', function() {
             assert.strict.deepEqual(typeof m === 'string' && m.length > 0, true, `${k}: ${JSON.stringify(m)}`)
         }
         modeVerify = ''
+    })
+
+    //postMain, 以本套件之封包直打 /main(不經 client), 取回 HTTP 狀態、Return-Type 與解析後之本體
+    let postMain = async(func) => {
+        errs = []
+        let r = await fetch(`http://127.0.0.1:${port}/api/main`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/octet-stream' },
+            body: Buffer.from(w.obj2u8arr({ func, input: {} })),
+        })
+        let status = r.status
+        let returnType = r.headers.get('return-type')
+        let u8a = new Uint8Array(Buffer.from(await r.arrayBuffer()))
+        let data = w.u8arr2obj(u8a, { returnWithStateAndMsg: true })
+        await w.delay(250)
+        return { status, returnType, data, nErrs: errs.length, errs: [...errs] }
+    }
+
+    it('execute 監聽器以各種惡意形狀拒絕(pm.reject)時, 須回 HTTP 200 + 錯誤封包而非裸 500; 無法序列化者為 output can not be serialized 且恰一則事件, 其餘 0 則(修正前已撤銷之 Proxy、get 陷阱全拋之 Proxy、拋錯之 Symbol.toStringTag 為裸 500 且 0 則)', async function() {
+        this.timeout(120000)
+        for (let k of shapeKeys) {
+            modeReject = k
+            let r = await postMain('hostileReject')
+            let tag = `${k}: ${JSON.stringify({ status: r.status, returnType: r.returnType, state: r.data.state, errs: r.errs })}`
+            assert.strict.deepEqual(r.status, 200, tag) //帳本 R6: 不得回裸 500
+            assert.strict.deepEqual(r.returnType, 'error', tag)
+            assert.strict.deepEqual(r.data.state, 'success', `${tag} —— 本體須為可解析之本套件封包`)
+            let bSer = r.data.msg.error === 'output can not be serialized'
+            assert.strict.deepEqual(r.nErrs, bSer ? 1 : 0, tag) //帳本 R5: 無法序列化為一次失敗恰一則; 應用端拒絕本身 0 則
+        }
+        for (let k of ['已撤銷之Proxy', 'get陷阱全拋之Proxy', 'Symbol.toStringTag拋錯']) {
+            modeReject = k
+            let r = await postMain('hostileReject')
+            assert.strict.deepEqual(r.data.msg.error, 'output can not be serialized', k)
+        }
+        modeReject = ''
+    })
+
+    it('upload 監聽器於合併消費時以惡意形狀拒絕(已撤銷之 Proxy、拋錯之 Symbol.toStringTag): 前端每次嘗試收到 output can not be serialized 之錯誤封包、伺服器每次一則, 應用端其後接受即完成(修正前前端得 Internal Server Error、伺服器 0 則)', async function() {
+        this.timeout(120000)
+        for (let k of ['已撤銷之Proxy', 'Symbol.toStringTag拋錯']) {
+            modeReject = k
+            nRejectUpload = 2
+            errs = []
+            let wo = new WConverhpClient({ url: `http://127.0.0.1:${port}`, apiName: 'api', getToken: () => 't', retryUpload: 0 })
+            let evs = []
+            wo.on('error', (e) => evs.push(e))
+            let b = Buffer.from(`hostile-upload-${k}-${'x'.repeat(100)}`)
+            let r = await wo.upload(`hostile-${shapeKeys.indexOf(k)}.bin`, b).then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }))
+            let tag = `${k}: ${JSON.stringify(r)} evs=${JSON.stringify(evs)} errs=${JSON.stringify(errs)}`
+            assert.strict.deepEqual(r, { ok: true, v: { got: 'merge-slices-get' } }, tag)
+            assert.strict.deepEqual(evs, ['output can not be serialized', 'output can not be serialized'], tag)
+            assert.strict.deepEqual(errs.filter((x) => x.includes('output can not be serialized')).length, 2, tag)
+        }
+        modeReject = ''
+        nRejectUpload = 0
     })
 
     it('經歷全部惡意形狀後伺服器仍須存活且行為正常(對照組)', async function() {
