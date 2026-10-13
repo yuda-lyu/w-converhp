@@ -47,6 +47,8 @@ describe('api-uploadInputTypes', function() {
         if (wsv) {
             await wsv.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true })
     })
 
     //bytesOf, 取得輸入之位元組(期望值)

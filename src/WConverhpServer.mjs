@@ -669,7 +669,7 @@ function callApp(ev, evEmit, name, args, pm, funError) {
  * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設。給予serverHapi時不作用
  * @param {Boolean} [opt.useInert=true] 輸入是否提供瀏覽pathStaticFiles資料夾內檔案之布林值，預設true。靜態檔案不經verifyConn，即對所有連線者公開。未給(undefined或null)時取預設；有給但非布林值(如字串'false'、數值0)時不提供靜態檔案並發一則error事件，不會退回提供。給予serverHapi時不作用
  * @param {String} [opt.pathStaticFiles='dist'] 輸入當useInert=true時提供瀏覽資料夾字串，預設'dist'。未給(undefined或null)時取預設；有給但非有效字串時不提供靜態檔案並發一則error事件，不會改為公開預設資料夾。給予serverHapi時不作用
- * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'。資料夾內除切片與合併檔外另有狀態標記檔(<fileHash>.done為合併完成、<fileHash>.error為合併失敗、<fileHash>.q<隊列>.ro為該次上傳已由upload事件處理完成之結果)，為合併佇列之狀態載體，前端重送查詢時據以回傳相同結果而不重複觸發upload事件；上傳可能仍在進行時不得刪除，應用端可依修改時間清理確定已結束者
+ * @param {String} [opt.pathUploadTemp='./uploadTemp'] 輸入暫時存放切片上傳檔案資料夾字串，預設'./uploadTemp'。資料夾內除切片與合併檔外另有狀態標記檔(<fileHash>.done為合併完成、<fileHash>.error為合併失敗、<fileHash>.q<隊列>.ro為該次上傳已由upload事件處理完成之結果)，為合併佇列之狀態載體，前端重送查詢時據以回傳相同結果而不重複觸發upload事件；上傳可能仍在進行時不得刪除，應用端可依修改時間清理確定已結束者。本套件不自動清除此資料夾內之任何檔案：被放棄之上傳(含前端中止)留下之切片、合併檔與狀態標記檔皆留存(再次上傳同一內容時據以續傳或去重)
  * @param {String} [opt.apiName='api'] 輸入API名稱字串，預設'api'
  * @param {String} [opt.tokenType='Bearer'] 輸入token類型字串，預設'Bearer'
  * @param {Integer} [opt.sizeSlice=1024*1024] 輸入切片上傳檔案之切片檔案大小整數，單位為Byte，預設為1024*1024。須與前端之sizeSlice一致，伺服器以此為單一切片請求(/slc)之本體上限並據以判定切片是否完整，check-total-hash會回傳此值供前端比對，不一致時前端upload會以sizeSlice mismatch訊息終止

@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
@@ -10,6 +11,10 @@ let { portOf } = wPorts
 describe('api-executeError', function() {
 
     let port = portOf('api-executeError')
+
+    //pathUploadTemp, 本檔之上傳暫存夾, 測完即刪(after)
+    //why 不用伺服器之預設值(./uploadTemp): 預設值落在 repo 根, 本檔雖不上傳, 建構伺服器即於該處建立資料夾(帳本 R28)
+    let pathUploadTemp = './test/_tmp/api-executeError'
     let url = `http://localhost:${port}`
     let wsv = null
 
@@ -22,6 +27,7 @@ describe('api-executeError', function() {
             port,
             apiName: 'api',
             pathStaticFiles: '.',
+            pathUploadTemp,
             verifyConn: async({ authorization }) => {
                 let token = w.strdelleft(authorization, 7) //刪除Bearer
                 return w.isestr(token)
@@ -70,8 +76,10 @@ describe('api-executeError', function() {
 
     })
 
-    after(function() {
-        wsv.stop()
+    after(async function() {
+        await wsv.stop()
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true })
     })
 
     //mkClient

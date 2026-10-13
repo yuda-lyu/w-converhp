@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
@@ -81,6 +82,8 @@ describe('api-errorEventOnce', function() {
     after(async function() {
         await wsvA.stop()
         await wsvB.stop()
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(fd, { recursive: true, force: true })
     })
 
     //hit, 打一格並取觀察值

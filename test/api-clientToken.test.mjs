@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
@@ -60,6 +61,8 @@ describe('api-clientToken', function() {
         if (wsv) {
             await wsv.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync('./test/_tmp/uploadTemp-api-clientToken', { recursive: true, force: true })
     })
 
     it('重試時須重取 getToken: 一次性 token 下, 首次暫時失敗後之重試須帶新 token 而成功(修正前沿用舊 token 而被拒)', async function() {

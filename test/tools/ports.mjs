@@ -91,6 +91,9 @@ let alloc = [
     ['api-uploadNoListener', 3, '無 upload 接聽者 + 有接聽者(對照組、S2、S3、once 在途) + 第二實例(在途消費之跨實例隔離)'],
     ['api-optionsFailClosed', 13, 'verifyConn:false + verifyConn:null 對照組 + corsOrigins(無效 3、明示停用 3、合法寬鬆 2)+ useInert 無效 + pathStaticFiles 無效 + 靜態檔對照組'],
     ['api-abortDuringAdmit', 1, ''],
+    ['api-clientAbort', 3, '主伺服器 + sizeSlice 不一致之伺服器(回應已到時中止) + 大切片伺服器(切片本體傳送中中止)'],
+    ['api-hostLifecycle', 1, '子行程內之伺服器生命週期'],
+    ['e2e-abort', 1, ''],
 ]
 
 //segs, 依 alloc 之順序自 base 起連續配發

@@ -46,6 +46,8 @@ describe('api-hostileRequestJson', function() {
         if (wsv) {
             await wsv.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync('./test/_tmp/uploadTemp-api-hostileRequestJson', { recursive: true, force: true })
     })
 
     let call = async(p, body, contentType, ms = 5000) => {

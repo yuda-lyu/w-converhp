@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import w from 'wsemi'
@@ -88,6 +89,10 @@ describe('api-noListener', function() {
     after(async function() {
         if (srv) {
             await srv.wsv.stop()
+        }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        for (let i = 0; i < nSrv; i++) {
+            fs.rmSync(`./test/_tmp/noListener_${portOf('api-noListener', i)}`, { recursive: true, force: true })
         }
     })
 

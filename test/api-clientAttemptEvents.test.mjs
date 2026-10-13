@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import http from 'http'
 import path from 'path'
 import w from 'wsemi'
@@ -51,6 +52,8 @@ describe('api-clientAttemptEvents', function() {
         srvHang.closeAllConnections()
         await new Promise((resolve) => srv500.close(resolve))
         await new Promise((resolve) => srvHang.close(resolve))
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(fd, { recursive: true, force: true })
     })
 
     let run = async(optClient, fn) => {

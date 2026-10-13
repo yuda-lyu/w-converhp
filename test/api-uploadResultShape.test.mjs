@@ -39,6 +39,8 @@ describe('api-uploadResultShape', function() {
         if (wsv) {
             await wsv.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true })
     })
 
     it('同一檔連傳兩次(合併路徑、去重路徑), 應用端不帶值時兩者皆須回 null, 與 execute 一致', async function() {

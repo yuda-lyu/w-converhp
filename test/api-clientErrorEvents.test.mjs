@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import path from 'path'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
@@ -37,6 +38,8 @@ describe('api-clientErrorEvents', function() {
         for (let s of servers) {
             await s.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(fd, { recursive: true, force: true })
     })
 
     let countEvents = async(p, fn) => {

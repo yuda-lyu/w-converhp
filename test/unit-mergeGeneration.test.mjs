@@ -51,4 +51,9 @@ describe('unit-mergeGeneration', function() {
         assert.strict.deepEqual(fs.statSync(fp).size, full.length)
     })
 
+    after(function() {
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(fd, { recursive: true, force: true })
+    })
+
 })

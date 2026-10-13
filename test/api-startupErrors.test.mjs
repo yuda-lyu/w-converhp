@@ -76,4 +76,9 @@ describe('api-startupErrors', function() {
         assert.strict.deepEqual(evs[0].includes('start server error'), true, evs[0])
     })
 
+    after(function() {
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(fd, { recursive: true, force: true })
+    })
+
 })

@@ -77,6 +77,8 @@ describe('api-uploadMergeIntegrity', function() {
         if (wsv) {
             await wsv.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true })
     })
 
     it('切片內容之雜湊與 fileHash 不符時, 合併須以失敗終結: 不得寫 .done、不得呼叫應用端(修正前 success 交出錯檔)', async function() {

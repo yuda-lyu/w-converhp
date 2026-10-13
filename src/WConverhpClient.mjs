@@ -23,11 +23,14 @@ import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
 import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import pmConvertResolve from 'wsemi/src/pmConvertResolve.mjs'
-import delay from 'wsemi/src/delay.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
 import retryDelay from './retryDelay.mjs'
+import wAbortScope from './abortScope.mjs'
+
+
+let { isAbortSignal, genAbortScope } = wAbortScope
 
 
 /**
@@ -98,13 +101,22 @@ function drainResponse(res) {
 //saveStreamToFile, nodejs 之落檔: 以 pipeline 把回應串流寫入 fdDownload/filename, 回傳落點絕對路徑
 //path, fs, stream 使用動態 import 且以變數字串給予, 否則用於前端時會被 webpack 偵測而報錯(**不可改為字面量**; 唯一保護為 e2e-download 之真瀏覽器)
 //串流出錯由 pipeline 回報; 其餘同步失敗(路徑判定、mkdir、lstat)直接拋出, 由呼叫端排空對端串流後進重試
-async function saveStreamToFile(streamRecv, fdDownload, filename) {
+//scope 為本呼叫之中止範圍(ctx.scope, 帳本 R27): 已中止者不建檔; 建檔後中止者於 abort() 之同步期間即關閉寫入並刪除不完整檔
+//why 不只靠 pipeline 之錯誤分支刪: 該分支於串流銷毀、寫入 fd 關閉之後才執行(run02 實測: 拒絕當下 10/10 仍在, setImmediate 後才刪),
+//呼叫端於拒絕時即看得到不完整檔; 且「取消後立刻重新下載同一檔」時, 晚到之刪除會刪掉新下載之檔、晚到之建檔(標頭已到時中止, 續行仍走到此處)會截斷新下載之檔 ——
+//故已中止者不建檔、建檔後之中止當下刪除, 其後錯誤分支不再刪。建檔前之判斷與建檔、註冊之間皆為同步執行, 中止無從插入
+async function saveStreamToFile(streamRecv, fdDownload, filename, scope) {
     let cImPath = 'path'
     let cImFs = 'fs'
     let cImStream = 'stream'
     let path = await import(cImPath)
     let fs = await import(cImFs)
     let stream = await import(cImStream)
+
+    //check, 已中止者不建檔(以 reason 拒絕; 呼叫端排空對端串流後交 callApi, 已中止者不重試)
+    if (scope && scope.isAborted()) {
+        throw scope.reason()
+    }
 
     //fdDownload, 只有nodejs下載才使用fdDownload
     fs.mkdirSync(fdDownload, { recursive: true }) //須使用mkdirSync, 不要用fsIsFolder與fsCreateFolder避免編譯
@@ -133,19 +145,39 @@ async function saveStreamToFile(streamRecv, fdDownload, filename) {
     //streamWriter
     let streamWriter = fs.createWriteStream(fp)
 
+    //removePartial, 刪除不完整檔, 只刪一次(中止時已刪者, 其後之錯誤分支不得再刪: 同一路徑可能已是下一次下載之新檔)
+    //不完整檔須刪除, 否則殘留部分內容會被當成已下載之檔案; 刪除失敗不影響reject(重試會以寫入模式覆蓋)
+    let bRemoved = false
+    let removePartial = () => {
+        if (bRemoved) {
+            return
+        }
+        bRemoved = true
+        try {
+            fs.unlinkSync(fp)
+        }
+        catch (e) {}
+    }
+
+    //offAbort, 中止時當下關閉寫入並刪除不完整檔; 落檔結束(不論成敗)即取消註冊, 已完成之檔不因其後之中止而被刪
+    let offAbort = scope
+        ? scope.onAbort(() => {
+            try {
+                streamWriter.destroy()
+            }
+            catch (e) {}
+            removePartial()
+        })
+        : () => {}
+
     //pipeline, 不用streamRecv.pipe(streamWriter): .pipe()不會因源串流出錯或中途斷線而關閉目的串流, 伺服器串流中途失敗時finish永不發生,
     //本promise永不settle(axios之timeout只涵蓋到回應標頭, 不涵蓋串流本體)、寫入fd開啟、殘留部分檔; pipeline對源與目的任一方出錯或提前關閉皆銷毀雙方並回報,
     //使失敗能reject而進入send之重試(傳輸不穩須重試, 前提是失敗要被偵測到)
     return new Promise((resolve, reject) => {
         stream.pipeline(streamRecv, streamWriter, (err) => {
+            offAbort()
             if (err) {
-
-                //不完整檔須刪除, 否則殘留部分內容會被當成已下載之檔案; 刪除失敗不影響reject(重試會以寫入模式覆蓋)
-                try {
-                    fs.unlinkSync(fp)
-                }
-                catch (e) {}
-
+                removePartial()
                 reject(err)
                 return
             }
@@ -190,7 +222,7 @@ function classifyFailure(res) {
  * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
- * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload)一則。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器
+ * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload)一則。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。**中止(opt.signal)**：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止**該次呼叫**(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以**signal.reason原樣**拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。**判別中止請以signal.aborted**(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為**結果未知**(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而**不可中止**(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交
  * @example
  *
  * import path from 'path'
@@ -351,6 +383,96 @@ function WConverhpClient(opt) {
         })
     }
 
+    //genCallCtx, 一次公開呼叫(execute、upload、download)之脈絡, 為中止語意之單一擁有者(帳本 R27): 該呼叫對外之全部輸出 ——
+    //error 事件(emit)、console 訊息(log)、應用端之 cbProgress(wrapProgress)與 getToken(callApp)—— 一律經此物件之出口, 出口於中止後一律不輸出;
+    //公開 promise 之結局由 run 之入口競速決定: 中止時尚未 settle 者一律以 reason 拒絕, 即使內部已取得回應而續行尚未執行(契約 C7)
+    //why: 前端原無「一次公開呼叫」之範圍概念, 對外輸出散在各站點直接呼叫。run01 之模擬 v1 逐等待點判中止, 獨立複審即找出四個「下一個沒寫到之站點」——
+    //中止後仍呼叫 cbProgress(axios 之進度節流於取消時 flush: 瀏覽器於 abort() 同步期間、nodejs 於其後數 ms)、仍發 error、於回應已到而續行未執行之窗口以值 resolve、仍呼叫 getToken。
+    //故收斂為兩個擁有者: run(入口競速)保證 promise 之結局, 出口保證對外輸出; 各等待點之判斷(send 開頭、重試迴圈、切片迴圈等)只是提早停工、釋放資源之最佳化
+    let genCallCtx = (scope) => {
+        let ctx = {}
+
+        //scope, 本呼叫之中止範圍(見 src/abortScope.mjs)
+        ctx.scope = scope
+
+        //emit, 本呼叫之 error 事件出口
+        ctx.emit = (...args) => {
+            if (scope.isAborted()) {
+                return
+            }
+            evEmit(...args)
+        }
+
+        //log, 本呼叫之 console 訊息出口(重試訊息與回應形狀異常之診斷)
+        ctx.log = (...args) => {
+            if (scope.isAborted()) {
+                return
+            }
+            console.log(...args)
+        }
+
+        //wrapProgress, 應用端 cbProgress 之出口(帳本 R9、R13 之單一擁有者): 未給或非函數者補預設、同步拋錯只報首次一則 error 而不影響本呼叫之結果、中止後不呼叫
+        //why 只報首次: 進度回呼於單次請求內會觸發數十至數百次, 逐次通報會把 error 通道灌爆; 「本次之進度回呼壞了」為一個事實, 故一則
+        //why 中止後不呼叫須在此守: axios 取消時會補送節流中之進度(helpers/throttle.js 之 flush), 傳輸層不保證取消後不再回呼
+        ctx.wrapProgress = (cb) => {
+            if (!isfun(cb)) {
+                cb = () => {}
+            }
+            let bErr = false
+            return (msg) => {
+                if (scope.isAborted()) {
+                    return
+                }
+                try {
+                    cb(msg)
+                }
+                catch (err) {
+                    if (!bErr) {
+                        bErr = true
+                        ctx.emit('error', `cbProgress error: ${getErrorMessage(err)}`)
+                    }
+                }
+            }
+        }
+
+        //callApp, 應用端非同步回呼(getToken)之出口: 已中止即不呼叫, 懸置中被中止即不再等待(應用端回傳之 promise 本身無法取消)
+        ctx.callApp = (fn) => {
+            return scope.race(fn)
+        }
+
+        //run, 入口競速: 公開方法之本體與中止競速, 結束時(不論成敗)移除對外部 signal 之監聽; 本體於中止後之續行由 race 接住, 不成未處理之 rejection
+        ctx.run = async(fnCore) => {
+            try {
+                return await scope.race(fnCore)
+            }
+            finally {
+                scope.dispose()
+            }
+        }
+
+        return ctx
+    }
+
+    //openCall, 公開方法之入口(依序): ①opt.signal 之型別檢核 —— 有給(非 undefined、null)而非 AbortSignal 者入口即拒絕並發一則 error 事件, 型別不對時無從判斷是否已中止, 故排最前;
+    //②已中止 —— 以 signal.reason 拒絕、0 則事件、不呼叫 getToken、不送出(先於其他入口檢核, 使「中止之後 0 則事件」無例外); ③建立本呼叫之 ctx。
+    //其餘入口檢核(upload 輸入不支援、未給 fdDownload、輸入無法序列化)於 ctx 建立後由各方法經 ctx.emit 進行
+    //回傳 { err } 或 { reason, bAborted } 或 { ctx }
+    let openCall = (opt) => {
+        let signal = get(opt, 'signal', null)
+        if (signal !== null && signal !== undefined && !isAbortSignal(signal)) {
+            let msg = `invalid opt.signal: must be an AbortSignal`
+            evEmit('error', msg) //本套件 client 唯一不經 ctx 之 error 事件: 此時尚無中止範圍(帳本 R27)
+            return { err: msg }
+        }
+        let scope = genAbortScope(signal)
+        if (scope.isAborted()) {
+            let reason = scope.reason()
+            scope.dispose()
+            return { bAborted: true, reason }
+        }
+        return { ctx: genCallCtx(scope) }
+    }
+
     //symNoRetry, 標記「可證明不需重試」之錯誤: 伺服器於error封包標示retryable為false(參數檢核類, 結果僅由請求內容決定), 或HTTP 413(本體超過伺服器上限, 上限為伺服器建構參數, 重送同一本體必同一結果且每次重送整包)
     //以Symbol為鍵避免與伺服器回傳之任意值撞名; 僅於send內部流轉, 交予呼叫端前解包, 呼叫端仍收到原始error值; 其餘(permission denied、應用端reject、斷線等)皆屬狀態不穩, 依重試原則照常重試
     let symNoRetry = Symbol('noRetry')
@@ -391,8 +513,9 @@ function WConverhpClient(opt) {
     //對標: socket.io-client 之 connect_error 不論傳輸方式、每次嘗試皆發出
     //事件值經 classifyFailure, 與最終拒絕值同一算法: 非 Error 者(伺服器回傳值)原樣; Error 者取可讀訊息(HTTP statusText 優先, 如 413 為 Payload Too Large; 帳本 R10)
     //合併輪詢無限(JSDoc 明載持續輪詢直到應用端接受), 故長時間斷線之 upload() 會持續產生事件(每輪最多 1+retryUpload 則, 速率受退避約束); 為「重試導致等待久」同族之刻意, 已於 JSDoc 明載(B 卷 B1)
-    let attemptFailed = (msg) => {
-        evEmit('error', classifyFailure(unwrapNoRetry(msg)))
+    //事件經本呼叫之 ctx 發出(帳本 R27): 中止後之失敗不是「一次嘗試之失敗」, 不發
+    let attemptFailed = (ctx, msg) => {
+        ctx.emit('error', classifyFailure(unwrapNoRetry(msg)))
     }
 
     //getUrlUse
@@ -451,8 +574,13 @@ function WConverhpClient(opt) {
         return bb
     }
 
-    //send
-    let send = async(type, pkg, opt = {}) => {
+    //send, 本呼叫之一個請求(含其重試鏈); ctx 為本呼叫之脈絡(帳本 R27), 由公開方法入口建立後明傳
+    let send = async(ctx, type, pkg, opt = {}) => {
+
+        //check, 已中止者不送出(提早停工之最佳化; 結局之正確性由 ctx.run 之入口競速保證)
+        if (ctx.scope.isAborted()) {
+            return Promise.reject(ctx.scope.reason())
+        }
 
         //headers
         let headers = get(opt, 'headers')
@@ -468,30 +596,11 @@ function WConverhpClient(opt) {
         }
         // console.log('dataType', dataType)
 
-        //cbProgress
-        let cbProgress = get(opt, 'cbProgress')
-        if (!isfun(cbProgress)) {
-            cbProgress = () => {}
-        }
-
-        //cbProgressSafe, 交予axios之onUploadProgress/onDownloadProgress專用
+        //cbProgressSafe, 交予axios之onUploadProgress/onDownloadProgress專用, 經本呼叫之進度出口 ctx.wrapProgress(補預設、拋錯只報首次、中止後不呼叫)
         //why: 該兩個回呼由axios於其自己的堆疊上呼叫(axios/lib/helpers/progressEventReducer.js), 不在本函數之try涵蓋範圍內,
         //其同步拋錯直接成為uncaughtException而**殺掉整個node行程**(實測tmp/probe_r9_verify.mjs第3節);
         //而server側對應用端監聽器之拋錯早已由evEmit攔截並承諾「不會使伺服器行程崩潰」—— 同型能力只保護了一邊
-        //sendDataSlice內之直接呼叫(cbProgressSlice/cbProgressMerge)不套用: 其落在呼叫鏈之promise內, 拋錯使該次promise reject而非殺行程
-        //只報首次: 進度回呼於單次請求內會觸發數十至數百次, 逐次通報會把error通道灌爆; 「本次請求之進度回呼壞了」為一個事實, 故一則
-        let bCbProgressErr = false
-        let cbProgressSafe = (msg) => {
-            try {
-                cbProgress(msg)
-            }
-            catch (err) {
-                if (!bCbProgressErr) {
-                    bCbProgressErr = true
-                    evEmit('error', `cbProgress error: ${getErrorMessage(err)}`)
-                }
-            }
-        }
+        let cbProgressSafe = ctx.wrapProgress(get(opt, 'cbProgress'))
 
         //retry
         let retry = get(opt, 'retry')
@@ -534,7 +643,7 @@ function WConverhpClient(opt) {
             }
             catch (err) {
                 let msg = `input can not be serialized: ${getErrorMessage(err)}`
-                evEmit('error', msg)
+                ctx.emit('error', msg)
                 return Promise.reject(msg)
             }
         }
@@ -588,7 +697,7 @@ function WConverhpClient(opt) {
 
             //nodejs, 落檔(見 saveStreamToFile); 任何失敗皆先排空對端串流再向外拋(進入 send 之重試: 傳輸不穩須重試, 前提是失敗要被偵測到)
             try {
-                return await saveStreamToFile(streamRecv, get(opt, 'fdDownload', ''), filename)
+                return await saveStreamToFile(streamRecv, get(opt, 'fdDownload', ''), filename, ctx.scope)
             }
             catch (err) {
                 drainResponse(res)
@@ -603,6 +712,7 @@ function WConverhpClient(opt) {
             data: dd,
             headers: {}, //於每次嘗試由 callApiCore 組裝(含每次重取之 token)
             timeout,
+            signal: ctx.scope.signal, //本呼叫之中止範圍內部之 signal(中止即中止在途請求並銷毀串流回應); 未給 opt.signal 之呼叫為 undefined, 組態與未支援中止前相同
             maxContentLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             maxBodyLength: Infinity, //1024 * 1024 * 1024, Infinity //axios於nodejs中會限制內容大小故需改為無限
             // decompress: true, //axios於nodejs中預設為true
@@ -648,7 +758,8 @@ function WConverhpClient(opt) {
             //why: 原本於重試迴圈外只取一次 —— 重試沿用同一個 token, 「token 已過期、應用端之 getToken 已換發新 token」一類之 permission denied 其重試永遠無效;
             //而權限屬非同步系統、permission denied 須重試(專案重試原則), 重試要有意義就得帶上當下之 token。業界作法同: token 更新後以新 token 重送(axios-auth-refresh)
             //另 getToken 拋錯原本不重試, 與「凡請求失敗一律重試」不一致; getToken 之呼叫次數因此為 1+重試次數, 快取由應用端決定
-            let token = await fetchToken()
+            //經本呼叫之應用端回呼出口 ctx.callApp: 已中止即不呼叫, 懸置中被中止即不再等待(帳本 R27)
+            let token = await ctx.callApp(() => fetchToken())
             s.headers = {
                 Authorization: `${tokenType} ${token}`,
                 ...ct,
@@ -711,8 +822,18 @@ function WConverhpClient(opt) {
             let n = 0
             while (r.state === 'error') {
 
+                //check, 已中止者不發事件、不重試(中止造成之失敗如 axios 之 CanceledError 不是一次嘗試之失敗; 結局由 ctx.run 之入口競速決定)
+                if (ctx.scope.isAborted()) {
+                    return Promise.reject(ctx.scope.reason())
+                }
+
                 //attemptFailed, 每次嘗試失敗恰一則事件(唯一擁有者, 見其說明)
-                attemptFailed(r.msg)
+                attemptFailed(ctx, r.msg)
+
+                //check, 中止可能發生於上一行之 error 監聽器內(重入): 退避開始前再判一次, 不印退避訊息、不重試
+                if (ctx.scope.isAborted()) {
+                    return Promise.reject(ctx.scope.reason())
+                }
 
                 //check, 可證明不需重試者直接中止, 減少無效重試(413每次都重送整包本體)
                 if (isNoRetry(r.msg)) {
@@ -727,13 +848,13 @@ function WConverhpClient(opt) {
                     break
                 }
 
-                //delay
+                //delay, 可被中止之退避(中止即清除計時器並以 reason 拒絕)
                 let t = retryDelay(n)
-                console.log(`wait ${dig(t / 1000, 1)}(second) to retry...`)
-                await delay(t)
+                ctx.log(`wait ${dig(t / 1000, 1)}(second) to retry...`)
+                await ctx.scope.delay(t)
 
                 //retry
-                console.log(`retry n=${n}...`)
+                ctx.log(`retry n=${n}...`)
                 r = await fun(s)
                 // console.log(`retry n=${n} done`)
 
@@ -748,11 +869,16 @@ function WConverhpClient(opt) {
         }
 
         //callApi, 最終失敗值經 classifyFailure(伺服器回傳值原樣, 本地失敗取可讀訊息); 事件已於重試迴圈內逐次發出(attemptFailed), 此處不再發
+        //已中止者以 signal.reason 原樣拒絕, 不經 classifyFailure(DOMException 為 Error 實例, 經之會被改寫成訊息字串)
         await callApi()
             .then((res) => {
                 pm.resolve(res)
             })
             .catch((res) => {
+                if (ctx.scope.isAborted()) {
+                    pm.reject(ctx.scope.reason())
+                    return
+                }
                 pm.reject(classifyFailure(res))
             })
 
@@ -760,7 +886,7 @@ function WConverhpClient(opt) {
     }
 
     //sendPkg
-    let sendPkg = async(type, data, cbProgress) => {
+    let sendPkg = async(ctx, type, data, cbProgress) => {
         //主要為中心化控制器使用, 通過execute進行上下傳數據
 
         //bb
@@ -772,7 +898,7 @@ function WConverhpClient(opt) {
             let re = obj2u8arr(data, { returnWithStateAndMsg: true })
             if (get(re, 'state') !== 'success') {
                 let msg = `input can not be serialized: ${get(re, 'msg', 'unknown error')}`
-                evEmit('error', msg)
+                ctx.emit('error', msg)
                 return Promise.reject(msg)
             }
             let u8a = re.msg
@@ -788,7 +914,7 @@ function WConverhpClient(opt) {
         }
 
         //send
-        let res = await send(type, bb, { dataType: 'blob', retry: retryMain, cbProgress })
+        let res = await send(ctx, type, bb, { dataType: 'blob', retry: retryMain, cbProgress })
 
         return res
     }
@@ -806,34 +932,14 @@ function WConverhpClient(opt) {
     }
 
     //sendDataSlice
-    let sendDataSlice = async(fileTotalName, bb, cbProgress) => {
+    let sendDataSlice = async(ctx, fileTotalName, bb, cbProgress) => {
 
-        //cbProgress, 與send內同一道防呆: 本函數直接呼叫cbProgress(不經send), 故須自行給預設
-        //why: send已對其opt.cbProgress補預設, 故execute與download省略cbProgress皆正常, 唯獨upload會於首片上傳完成時拋
-        //「cbProgress is not a function」—— 三個公開方法對同一個選用參數行為不一致
-        if (!isfun(cbProgress)) {
-            cbProgress = () => {}
-        }
-
-        //cbProgress之保護: 進度回呼為**通知通道**, 其失敗不得決定上傳之成敗
-        //why: 同一個cbProgress原有三種下場 —— 切片進度拋錯使該次promise reject(上傳失敗)、
+        //cbProgress, 本函數直接呼叫cbProgress(不經send), 故於最前即經本呼叫之進度出口 ctx.wrapProgress(補預設、拋錯只報首次、中止後不呼叫; 與send之cbProgressSafe為同一個擁有者, 帳本R9、R13)
+        //why 補預設: 原本只有send對其opt.cbProgress補預設, upload會於首片上傳完成時拋「cbProgress is not a function」—— 三個公開方法對同一個選用參數行為不一致
+        //why 包裝: 進度回呼為**通知通道**, 其失敗不得決定上傳之成敗。同一個cbProgress原有三種下場 —— 切片進度拋錯使該次promise reject(上傳失敗)、
         //bAllHash路徑拋錯亦使上傳失敗、而合併完成通知拋錯時例外沿.then傳到checkMerging之.catch(() => {})被吞掉,
-        //pm遂**永不settle**, upload()永久懸置且0則事件、0行console(實測: 前者142ms reject, 後者12000ms未settle)
-        //收斂為一種下場: 一律不影響結果, 只留一則error事件(與send內之cbProgressSafe同一規則, 見帳本R13)
-        //只報首次: 切片進度於單次上傳內會觸發chunkTotal次, 逐次通報會把error通道灌爆
-        let bCbProgErr = false
-        let cbProgressRaw = cbProgress
-        cbProgress = (msg) => {
-            try {
-                cbProgressRaw(msg)
-            }
-            catch (err) {
-                if (!bCbProgErr) {
-                    bCbProgErr = true
-                    evEmit('error', `cbProgress error: ${getErrorMessage(err)}`)
-                }
-            }
-        }
+        //pm遂**永不settle**, upload()永久懸置且0則事件、0行console(實測: 前者142ms reject, 後者12000ms未settle); 收斂為一種下場: 一律不影響結果, 只留一則error事件
+        cbProgress = ctx.wrapProgress(cbProgress)
 
         //n, 輸入已由 upload 入口正規化為 Blob(含 File)或位元組視圖(見 normalizeUploadInput), 故大小只有兩種取法
         //why: 原本以 bb.size、bb.length 依序猜 —— ArrayBuffer 兩者皆無而取 1(雜湊卻以整個 ArrayBuffer 計, 應用端以 success 收到 1 byte),
@@ -876,12 +982,13 @@ function WConverhpClient(opt) {
 
         //fileTotalHash
         // console.log(`calc hash for fileTotalSize[${fileTotalSize}]...`)
-        let fileTotalHash = await calcHash(bb)
+        //雜湊為本地計算無法取消: 中止時不再等待其結果(已中止者不開始), 計算本身於背景跑完
+        let fileTotalHash = await ctx.scope.race(() => calcHash(bb))
         // console.log(`calc hash for fileTotalSize[${fileTotalSize}] done`, fileTotalHash)
 
         //send check-total-hash
         // console.log(`send check-total-hash...`)
-        let resUpCkt = await send('upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json', retry: retryUpload })
+        let resUpCkt = await send(ctx, 'upload-controller', { mode: 'check-total-hash', fileHash: fileTotalHash, filename: fileTotalName, fileSize: fileTotalSize }, { dataType: 'json', retry: retryUpload })
         // console.log('resUpCkt', resUpCkt)
         //bAllHash: false:
         //  resUpCkt {
@@ -924,7 +1031,7 @@ function WConverhpClient(opt) {
         //故於此提早以明確訊息終止, 否則前端只會收到Payload Too Large而無從得知是組態不符; 舊版伺服器不回傳sizeSlice, 略過檢查以維持相容
         if (ispint(resUpCkt.sizeSlice) && resUpCkt.sizeSlice !== sizeSlice) {
             let msg = `sizeSlice mismatch: client[${sizeSlice}] and server[${resUpCkt.sizeSlice}] must be equal`
-            evEmit('error', msg)
+            ctx.emit('error', msg)
             return Promise.reject(msg)
         }
 
@@ -954,7 +1061,7 @@ function WConverhpClient(opt) {
                 let chunk = bb.slice(start, end)
 
                 //fileSliceHash
-                let fileSliceHash = await calcHash(chunk)
+                let fileSliceHash = await ctx.scope.race(() => calcHash(chunk))
                 // console.log('fileSliceHash', fileSliceHash)
 
                 //push
@@ -968,7 +1075,7 @@ function WConverhpClient(opt) {
 
             //send check-slices-hash
             // console.log(`send check-slices-hash...`)
-            let resUpCks = await send('upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json', retry: retryUpload })
+            let resUpCks = await send(ctx, 'upload-controller', { mode: 'check-slices-hash', fileHash: fileTotalHash, fileSliceHashs }, { dataType: 'json', retry: retryUpload })
             // console.log('resUpCks', resUpCks)
             // resUpCks {
             //   slks: [
@@ -992,6 +1099,11 @@ function WConverhpClient(opt) {
         //upload slice
         // console.log(`upload slice...`)
         for (let i = 0; i < chunkTotal; i++) {
+
+            //check, 已中止者不再處理後續切片(提早停工之最佳化; 進度出口另於中止後不呼叫)
+            if (ctx.scope.isAborted()) {
+                return Promise.reject(ctx.scope.reason())
+            }
 
             //check
             if (resUpCkt.slks.indexOf(i) >= 0) {
@@ -1017,7 +1129,7 @@ function WConverhpClient(opt) {
             }
 
             //send slice
-            await send('slice', chunk, {
+            await send(ctx, 'slice', chunk, {
                 headers: hd,
                 dataType: 'blob',
                 cbProgress: (msg) => {
@@ -1038,11 +1150,11 @@ function WConverhpClient(opt) {
 
         //send merge-slices-push
         // console.log(`send merge-slices-push...`)
-        let resUpMgp = await send('upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json', retry: retryUpload })
+        let resUpMgp = await send(ctx, 'upload-controller', { mode: 'merge-slices-push', fileHash: fileTotalHash, chunkTotal }, { dataType: 'json', retry: retryUpload })
         // console.log('resUpMgp', resUpMgp)
 
-        //checkMerging
-        let checkMerging = () => {
+        //checkMerging, 合併輪詢; ctx 為本呼叫之脈絡(明傳, 帳本 R27): 中止即停止輪詢並以 reason 拒絕, 在途之查詢由同一範圍中止
+        let checkMerging = (ctx) => {
             let pm = genPm()
 
             //queueId
@@ -1065,9 +1177,14 @@ function WConverhpClient(opt) {
 
                 //send merge-slices-get
                 // console.log(`send merge-slices-get...`)
-                send('upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json', retry: retryUpload })
+                send(ctx, 'upload-controller', { mode: 'merge-slices-get', fileHash: fileTotalHash, filename: fileTotalName, queueId }, { dataType: 'json', retry: retryUpload })
                     .then((res) => {
                         // console.log('res', res)
+
+                        //check, 回應到達時已中止(pm 已由 onAbort 拒絕): 不 settle、不發事件、不呼叫進度回呼
+                        if (ctx.scope.isAborted()) {
+                            return
+                        }
                         // res => {
                         //   queueId,
                         //   state,
@@ -1099,7 +1216,7 @@ function WConverhpClient(opt) {
                             clearInterval(t)
 
                             //reject, state為'error'時會於msg提供錯誤訊息; 為伺服器回之業務錯誤(HTTP 請求本身成功, 不經 callApi 之迴圈), 於此發事件(見 attemptFailed; 第十輪 F6 之站點)
-                            attemptFailed(res.msg)
+                            attemptFailed(ctx, res.msg)
                             pm.reject(res.msg)
 
                         }
@@ -1115,19 +1232,50 @@ function WConverhpClient(opt) {
 
             }, 2000)
 
+            //onAbort, 中止: 停止輪詢並以 reason 拒絕(輪詢依設計持續至應用端接受為止, 中止為呼叫端結束它之手段, 如以 AbortSignal.timeout 設整體上限)
+            ctx.scope.onAbort((reason) => {
+                clearInterval(t)
+                pm.reject(reason)
+            })
+
             return pm
         }
 
         //checkMerging
-        let resMg = await checkMerging()
+        let resMg = await checkMerging(ctx)
         // console.log('resMg', resMg)
 
         // console.log(`upload slice done`)
         return resMg
     }
 
-    //execute
-    let execute = async(func, input, cbProgress) => {
+    /**
+     * 呼叫伺服器之函數(經伺服器之execute事件)
+     *
+     * @memberof WConverhpClient
+     * @instance
+     * @param {String} func 輸入函數名稱字串
+     * @param {*} input 輸入資料,須可序列化(不可含BigInt或循環參照)
+     * @param {Function} [cbProgress] 輸入進度回呼函數,傳入{prog,p,m},m為'upload'或'download'。同步拋錯只發一則error事件而不影響結果;中止後不再被呼叫
+     * @param {Object} [opt={}] 輸入設定物件,預設{}
+     * @param {AbortSignal} [opt.signal] 輸入中止訊號,中止即以signal.reason拒絕本次呼叫,其後不再重試、不再發error事件、不再呼叫getToken與cbProgress;以signal.aborted判別中止;伺服端已開始之處理照常完成,結果未知。有給而非AbortSignal者入口即拒絕並發一則error事件。詳見建構函數之@returns
+     * @returns {Promise} 回傳Promise,resolve為伺服器函數之輸出,reject為錯誤訊息、伺服器之錯誤值或中止時之signal.reason
+     */
+    //execute, 公開方法: 入口(openCall)→ 入口競速(ctx.run)→ 本體(executeCore)
+    let execute = async(func, input, cbProgress, opt = {}) => {
+        let o = openCall(opt)
+        if (o.err) {
+            return Promise.reject(o.err)
+        }
+        if (o.bAborted) {
+            return Promise.reject(o.reason)
+        }
+        let ctx = o.ctx
+        return ctx.run(() => executeCore(ctx, func, input, cbProgress))
+    }
+
+    //executeCore
+    let executeCore = async(ctx, func, input, cbProgress) => {
 
         //msg
         let msg = {
@@ -1140,7 +1288,7 @@ function WConverhpClient(opt) {
         //sendPkg
         let state = ''
         let res = null
-        await sendPkg('basic', msg, cbProgress)
+        await sendPkg(ctx, 'basic', msg, cbProgress)
             .then((msg) => {
                 // console.log('msg', msg)
 
@@ -1153,7 +1301,7 @@ function WConverhpClient(opt) {
 
                 //check, 若為非物件為非預期錯誤
                 if (!iseobj(msg)) {
-                    console.log('msg is not an effective object', msg)
+                    ctx.log('msg is not an effective object', msg)
                     state = 'error'
                     res = 'msg is not an effective object'
                     return
@@ -1161,7 +1309,7 @@ function WConverhpClient(opt) {
 
                 //check, 若不存在output為非預期錯誤, msg格式為{func,input,output}但input會刪除
                 if (!haskey(msg, 'output')) {
-                    console.log('invalid msg.output', msg)
+                    ctx.log('invalid msg.output', msg)
                     state = 'error'
                     res = 'invalid msg.output'
                     return
@@ -1178,7 +1326,7 @@ function WConverhpClient(opt) {
         //check
         if (state === '') {
             // console.log('invalid state', r)
-            evEmit('error', `invalid state`)
+            ctx.emit('error', `invalid state`)
             return Promise.reject('invalid state')
         }
 
@@ -1192,22 +1340,47 @@ function WConverhpClient(opt) {
         return res
     }
 
-    //upload
-    let upload = async(filename, input, cbProgress) => {
+    /**
+     * 切片上傳檔案(經伺服器之upload事件)
+     *
+     * @memberof WConverhpClient
+     * @instance
+     * @param {String} filename 輸入檔名字串(伺服器端以filename原值與其淨化值filenameSafe交給應用端)
+     * @param {Blob|File|ArrayBuffer|ArrayBufferView|String} input 輸入資料,ArrayBufferView以位元組計、字串以UTF-8位元組計,其餘以錯誤拒絕並發一則error事件
+     * @param {Function} [cbProgress] 輸入進度回呼函數,傳入{prog,p,m}。同步拋錯只發一則error事件而不影響上傳結果;中止後不再被呼叫
+     * @param {Object} [opt={}] 輸入設定物件,預設{}
+     * @param {AbortSignal} [opt.signal] 輸入中止訊號,中止即以signal.reason拒絕本次上傳(含雜湊計算之等待、各切片、合併輪詢),其後不再重試、不再發error事件、不再呼叫getToken與cbProgress;伺服器已存之切片保留供續傳,已受理之合併照常完成,結果未知。可用AbortSignal.timeout(ms)為整個上傳(含依設計持續至應用端接受為止之合併輪詢)設上限。詳見建構函數之@returns
+     * @returns {Promise} 回傳Promise,resolve為伺服器upload事件之結果,reject為錯誤訊息、伺服器之錯誤值或中止時之signal.reason
+     */
+    //upload, 公開方法: 入口(openCall)→ 入口競速(ctx.run)→ 本體(uploadCore)
+    let upload = async(filename, input, cbProgress, opt = {}) => {
+        let o = openCall(opt)
+        if (o.err) {
+            return Promise.reject(o.err)
+        }
+        if (o.bAborted) {
+            return Promise.reject(o.reason)
+        }
+        let ctx = o.ctx
+        return ctx.run(() => uploadCore(ctx, filename, input, cbProgress))
+    }
+
+    //uploadCore
+    let uploadCore = async(ctx, filename, input, cbProgress) => {
 
         //bb, 輸入之正規化(見 normalizeUploadInput); 不支援者於入口拒絕, 不進入任何請求與重試(與 download 之 fdDownload 同一作法)
         let bb = normalizeUploadInput(input)
         if (bb === null) {
             let msg = `invalid input for upload: must be a Blob, File, ArrayBuffer, ArrayBufferView or string`
-            evEmit('error', msg)
+            ctx.emit('error', msg)
             return Promise.reject(msg)
         }
 
-        return sendDataSlice(filename, bb, cbProgress)
+        return sendDataSlice(ctx, filename, bb, cbProgress)
     }
 
     //downloadNodejs
-    let downloadNodejs = async(fileId, cbProgress, opt = {}) => {
+    let downloadNodejs = async(ctx, fileId, cbProgress, opt = {}) => {
 
         //check, fdDownload為nodejs下載之落地資料夾, 未給即必然失敗, 故於入口拒絕
         //why: 原無此檢核, 未給時直到downloadStream才以 fs.mkdirSync('') 拋 ENOENT(實測 tmp/probe_r9_hostile.mjs 之 E1),
@@ -1217,20 +1390,20 @@ function WConverhpClient(opt) {
         let fdDownload = get(opt, 'fdDownload', '')
         if (!isestr(fdDownload)) {
             let msg = `invalid fdDownload for download in nodejs`
-            evEmit('error', msg)
+            ctx.emit('error', msg)
             return Promise.reject(msg)
         }
 
-        //send download
+        //send download, 中止時 axios 銷毀串流回應; 不完整檔由 saveStreamToFile 於 abort() 之同步期間即刪除(見其說明)
         let msg = { fileId }
-        let resMg = await send('download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress })
+        let resMg = await send(ctx, 'download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress })
         // console.log('resMg', resMg)
 
         return resMg
     }
 
     //downloadBrowser
-    let downloadBrowser = async(fileId, cbProgress, opt = {}) => {
+    let downloadBrowser = async(ctx, fileId, cbProgress, opt = {}) => {
         //交由瀏覽器下載與管理故無法監聽進度, 不使用cbProgress
 
         //downloadByManager
@@ -1245,7 +1418,7 @@ function WConverhpClient(opt) {
 
             //send download-get-filename
             let msg = { fileId }
-            let resMg = await send('download-get-filename', msg, { dataType: 'json', retry: retryDownload })
+            let resMg = await send(ctx, 'download-get-filename', msg, { dataType: 'json', retry: retryDownload })
             // console.log('resMg', resMg)
 
             //filename
@@ -1256,13 +1429,17 @@ function WConverhpClient(opt) {
             //why 於 dwgfn 成功後才取: 此 token 是**下一個請求**(瀏覽器導覽至 /dwgf)要用的, 取值點須貼著使用點 ——
             //原本於 dwgfn 之前取, 中間隔了 dwgfn 之 1+retryDownload 次嘗試與其退避延遲(可達數秒), 短效 token 之應用端交給瀏覽器的是過期值(A 卷 §③-3.2)
             //拋錯屬入口失敗(不在 send 之重試鏈內), 一則事件 + 拒絕, 不原樣逸出; 處置留在呼叫點而不包進 fetchToken(另一呼叫點之處置為進重試, 兩者不同)
+            //經本呼叫之應用端回呼出口 ctx.callApp: 已中止即不呼叫 getToken, 懸置中被中止即不再等待; 中止者以 reason 拒絕而不發 getToken error
             let token = ''
             try {
-                token = await fetchToken()
+                token = await ctx.callApp(() => fetchToken())
             }
             catch (err) {
+                if (ctx.scope.isAborted()) {
+                    return Promise.reject(ctx.scope.reason())
+                }
                 let msgErr = `getToken error: ${getErrorMessage(err)}`
-                evEmit('error', msgErr)
+                ctx.emit('error', msgErr)
                 return Promise.reject(msgErr)
             }
             // console.log('token', token)
@@ -1275,6 +1452,11 @@ function WConverhpClient(opt) {
             //其他路由的token走Authorization header不受影響, 唯獨此處走query string
             let url = `${urlUse}?fileId=${encodeURIComponent(fileId)}&token=${encodeURIComponent(token)}`
             // console.log('url', url)
+
+            //check, 交給瀏覽器下載管理器前最後一次檢查: 交出後之下載由瀏覽器執行與管理, 本套件不可中止(JSDoc 明載)
+            if (ctx.scope.isAborted()) {
+                return Promise.reject(ctx.scope.reason())
+            }
 
             //透過a元素打url下載, 讓瀏覽器認定為直接下載模式, 由瀏覽器展示下載進度與排入正在下載清單
             let a = document.createElement('a')
@@ -1289,7 +1471,7 @@ function WConverhpClient(opt) {
 
             //send download
             let msg = { fileId }
-            let resMg = await send('download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress })
+            let resMg = await send(ctx, 'download', msg, { ...opt, dataType: 'json', retry: retryDownload, cbProgress })
             // console.log('resMg', resMg)
 
             return resMg
@@ -1297,14 +1479,33 @@ function WConverhpClient(opt) {
 
     }
 
-    //download
+    /**
+     * 下載檔案(經伺服器之download事件)
+     *
+     * @memberof WConverhpClient
+     * @instance
+     * @param {*} fileId 輸入檔案識別值
+     * @param {Function} [cbProgress] 輸入進度回呼函數,傳入{prog,p,m};瀏覽器以下載管理器下載時不使用。中止後不再被呼叫
+     * @param {Object} [opt={}] 輸入設定物件,預設{}
+     * @param {String} [opt.fdDownload] 輸入nodejs下載之落地資料夾字串,nodejs必填,未給即入口拒絕並發一則error事件
+     * @param {Boolean} [opt.downloadByManager=true] 輸入瀏覽器是否交由瀏覽器之下載管理器下載布林值,預設true
+     * @param {AbortSignal} [opt.signal] 輸入中止訊號,中止即以signal.reason拒絕本次下載;nodejs之不完整檔於abort()之同步期間即刪除(拒絕時已不存在,其後立即重新下載同一檔不受影響),尚未開始寫檔者不再建檔;瀏覽器以下載管理器下載時,交給瀏覽器之後即不可中止(之前之取檔名與取token可中止)。詳見建構函數之@returns
+     * @returns {Promise} 回傳Promise,resolve於nodejs為落地之絕對路徑、於瀏覽器為{filename,bb}或交給下載管理器之檔名,reject為錯誤訊息、伺服器之錯誤值或中止時之signal.reason
+     */
+    //download, 公開方法: 入口(openCall)→ 入口競速(ctx.run)→ 本體(依環境為 downloadBrowser 或 downloadNodejs)
     let download = async(fileId, cbProgress, opt = {}) => {
+        let o = openCall(opt)
+        if (o.err) {
+            return Promise.reject(o.err)
+        }
+        if (o.bAborted) {
+            return Promise.reject(o.reason)
+        }
+        let ctx = o.ctx
         if (env === 'browser') {
-            return downloadBrowser(fileId, cbProgress, opt)
+            return ctx.run(() => downloadBrowser(ctx, fileId, cbProgress, opt))
         }
-        else {
-            return downloadNodejs(fileId, cbProgress, opt)
-        }
+        return ctx.run(() => downloadNodejs(ctx, fileId, cbProgress, opt))
     }
 
     //save

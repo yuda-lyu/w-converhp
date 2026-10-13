@@ -13,6 +13,10 @@ describe('api-uploadLargeFile', function() {
 
     let port = portOf('api-uploadLargeFile')
 
+    //pathUploadTemp, 本檔之上傳暫存夾, 測完即刪(after)
+    //why 不用伺服器之預設值(./uploadTemp): 預設值落在 repo 根, 而本檔之應用端只刪合併檔與 .done, 合併查詢之結果檔(.ro)每跑一次留一個(run02 盤點: 已累積 117 個)
+    let pathUploadTemp = './test/_tmp/api-uploadLargeFile'
+
     let ms = []
 
     let runServer = () => {
@@ -23,6 +27,7 @@ describe('api-uploadLargeFile', function() {
             port,
             apiName: 'api',
             pathStaticFiles: '.', //要存取專案資料夾下web.html, 故不能給dist
+            pathUploadTemp,
             verifyConn: async ({ apiType, authorization, query, headers, req }) => {
                 // console.log('verifyConn', `apiType[${apiType}]`, `authorization[${authorization}]`)
                 let token = w.strdelleft(authorization, 7) //刪除Bearer
@@ -148,6 +153,11 @@ describe('api-uploadLargeFile', function() {
         r = JSON.stringify(r)
         let rr = res
         assert.strict.deepEqual(r, rr)
+    })
+
+    after(function() {
+        //清除本檔之暫存夾(伺服器已於 run 內之 5 秒計時器停止)
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true })
     })
 
 })

@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import wPorts from './tools/ports.mjs'
@@ -30,6 +31,8 @@ describe('api-payloadParseFail', function() {
 
     after(async function() {
         await wsv.stop()
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync('./test/_tmp/uploadTemp-api-payloadParseFail', { recursive: true, force: true })
     })
 
     let post = async(route, body, ct = 'application/json') => {

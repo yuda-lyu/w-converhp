@@ -92,8 +92,10 @@ describe('api-verifyConnError', function() {
 
     })
 
-    after(function() {
-        wsv.stop()
+    after(async function() {
+        await wsv.stop()
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync('./test/_tmp/uploadTemp-api-verifyConnError', { recursive: true, force: true })
     })
 
     for (let mode of ['throw', 'reject']) {

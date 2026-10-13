@@ -35,6 +35,10 @@ let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer }
 describe('e2e-download', function() {
 
     let port = portOf('e2e-download')
+
+    //pathUploadTemp, 本檔之上傳暫存夾, 測完即刪(after)
+    //why 不用伺服器之預設值(./uploadTemp): 預設值落在 repo 根, 本檔雖不上傳, 建構伺服器即於該處建立資料夾(帳本 R28)
+    let pathUploadTemp = path.resolve(projRoot, 'test', '_tmp', 'e2e-download')
     let baseUrl = `http://${HOST}:${port}`
     let urlCross = `http://localhost:${port}` //跨來源案例用: 與頁面之 127.0.0.1 為不同 origin(見檔頭說明)
     let fpSrc = path.resolve(projRoot, 'test', '1mb.7z')
@@ -108,6 +112,7 @@ window.tDownloadManager = async (fileId, o) => {
         wsv = await startServer({
             port,
             apiName: 'api',
+            pathUploadTemp,
             verifyConn: async({ apiType, authorization, query }) => {
                 //記錄 /dwgf 實際收到的授權字串與 fileId, 供驗證 client 組 URL 時有正確 encode
                 if (apiType === 'download-get-file') {
@@ -162,10 +167,11 @@ window.tDownloadManager = async (fileId, o) => {
 
     })
 
-    after(function() {
+    after(async function() {
         if (wsv) {
-            wsv.stop()
+            await wsv.stop()
         }
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true }) //清除本檔之上傳暫存夾
 
         //清除本檔之下載落地檔(dl-manager-*)
         //why 本檔自己清: e2e-setup 之 cleanup 自本輪起只刪自己行程之子夾(--parallel 下不可刪整個 test/_tmp),

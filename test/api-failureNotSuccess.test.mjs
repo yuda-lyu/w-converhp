@@ -1,4 +1,5 @@
 import assert from 'assert'
+import fs from 'fs'
 import stream from 'stream'
 import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
@@ -76,6 +77,8 @@ describe('api-failureNotSuccess', function() {
         if (wsv) {
             await wsv.stop()
         }
+        //清除本檔之暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(`./test/_tmp/failureNotSuccess_${port}`, { recursive: true, force: true })
     })
 
     //post, 打 /ulctr 並取回應標頭

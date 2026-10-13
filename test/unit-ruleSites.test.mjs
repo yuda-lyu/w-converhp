@@ -197,7 +197,7 @@ describe('unit-ruleSites', function() {
             .join('\n')
     }
 
-    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 30', function() {
+    it('R10 取因表達式一律經 getErrorMessage: 禁用寫法須為 0, 站點須為 29', function() {
         //why: err 為應用端 throw/reject 之任意值, 其 message 可為拋錯之 getter、toString 可拋錯。
         //以 err.message / get(err,'message',err) / String(err) 組訊息, 即於 catch 內再拋 —— 保護層自身失效。
         //實測後果: verifyConn 為此形狀 → 裸 HTTP 500 + 0 則事件; 監聽器為此形狀 → 請求永久懸置。
@@ -229,7 +229,8 @@ describe('unit-ruleSites', function() {
         ///ulctr 之 internal ×1; managerMergeSlices 之 removeStateFile ×1 與 invalid queueId 樣板 ×1; client 之 send 之 JSON 序列化 ×1
         //第十一輪 28 → 30: server 之 failPayload +1、readOutput 統一三路由之欄位失敗訊息(取代 /dwgf 與 /dw 之 fileSize 樣板, −1);
         //client 之 classifyFailure +1(取代 get(res,'stack'); attemptFailed 之事件值亦經之)、downloadBrowser 之 getToken 拋錯 +1; 本數為總量鎖(帳本維護提示), 禁用寫法為 0 那條才是擁有者鎖
-        assert.strict.deepEqual(nGood, 30, `R10 站點數 ${hint}`)
+        //2026-10-13(前端中止, 帳本 R27)30 → 29: client 之兩處 cbProgress 保護(send 之 cbProgressSafe、sendDataSlice 之包裝)收斂為呼叫層級之 ctx.wrapProgress 一處(−1)
+        assert.strict.deepEqual(nGood, 29, `R10 站點數 ${hint}`)
     })
 
     it('R10 之擴充: 請求端之任意 JSON 值不得直接進樣板', function() {
@@ -369,7 +370,7 @@ describe('unit-ruleSites', function() {
         }
     })
 
-    it('R5 error 事件發送站點(總量, 帳本維護提示): server 26(即時 21 + 建構期脫勾 4 + 監聽器出錯之通報 1)、client 10', function() {
+    it('R5 error 事件發送站點(總量, 帳本維護提示): server 26(即時 21 + 建構期脫勾 4 + 監聽器出錯之通報 1)、client 10(呼叫層級之 ctx.emit 9 + 入口之 evEmit 1)', function() {
         //其中建構期之 start server error 走 evEmitDelay(見 R11), 監聽器出錯之通報則於形狀轉接器 funEmitOfPkg 內發出
         //第九輪 23 → 26: procApp 之「無人接聽」通報 ×1(R12)、stop 之停止失敗通報 ×1(R11 之建構期同族)、
         ///dwgfn 之 filename 正規化失敗 ×1(R3: 協定鍵內之值亦會靜默消失)
@@ -382,7 +383,140 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(countAll(src.server, /evEmit\('error'/g), 21, `R5 即時派發之站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /evEmitDelay\('error'/g), 4, `R5 建構期脫勾派發之站點數 ${hint}`)
         assert.strict.deepEqual(countAll(src.server, /ev\.emit\('error'/g), 1, `R5 監聽器出錯之通報站點數 ${hint}`)
-        assert.strict.deepEqual(countAll(src.client, /evEmit\('error'/g), 10, `R5 client 之站點數 ${hint}`)
+        //2026-10-13(前端中止, 帳本 R27): client 之 error 事件改由呼叫層級之 ctx.emit 發出(中止後不發), 只有入口之 `invalid opt.signal` 仍為 evEmit(其時尚無中止範圍);
+        //站點 10 → 10: +1(invalid opt.signal)、−1(兩處 cbProgress 保護收斂為 ctx.wrapProgress 一處, 同 R10)。原規劃之 10 → 11 未計入該收斂
+        assert.strict.deepEqual(countAll(src.client, /(?:evEmit|ctx\.emit)\('error'/g), 10, `R5 client 之站點數 ${hint}`)
+    })
+
+    it('R28 測試建構伺服器一律給 pathUploadTemp(落 test/_tmp/<案名>/), 不得取預設值而於 repo 根建立 uploadTemp/', function() {
+        //why: 伺服器之 pathUploadTemp 預設為 ./uploadTemp(cwd 為 repo 根), 建構即建立該資料夾; run02、run03 盤點有 9 檔取預設 ——
+        //其一(api-uploadLargeFile)每跑一次留一個合併結果檔(.ro), 已累積 117 個; 其餘 8 檔不上傳, 只是每次重建 repo 根之空資料夾
+        let files = [
+            ...fs.readdirSync('test').filter((n) => n.endsWith('.mjs')).map((n) => `test/${n}`),
+            ...fs.readdirSync('test/tools').filter((n) => n.endsWith('.mjs')).map((n) => `test/tools/${n}`),
+        ]
+
+        //enclosed, 自開括號(或開大括號)起以配對取出其內文(含跨行)
+        let enclosed = (s, iOpen, open, close) => {
+            let depth = 0
+            for (let i = iOpen; i < s.length; i++) {
+                if (s[i] === open) {
+                    depth += 1
+                }
+                else if (s[i] === close) {
+                    depth -= 1
+                    if (depth === 0) {
+                        return s.slice(iOpen + 1, i)
+                    }
+                }
+            }
+            return null
+        }
+
+        //objOf, 參數為識別字時(如 new WConverhpServer(opt)), 取同檔內在該呼叫之前最近一次 `let <識別字> = {` 之物件內文
+        let objOf = (s, id, iBefore) => {
+            let iLast = -1
+            for (let m of s.matchAll(new RegExp(`let ${id} = \\{`, 'g'))) {
+                if (m.index < iBefore) {
+                    iLast = m.index + m[0].length - 1
+                }
+            }
+            return iLast < 0 ? null : enclosed(s, iLast, '{', '}')
+        }
+
+        let n = 0
+        let bad = []
+        for (let fp of files) {
+            let s = readCode(fp)
+            for (let m of s.matchAll(/new WConverhpServer\(|(?<!function )startServer\(/g)) {
+                //test/tools/e2e-setup.mjs 之 startServer 以 `...opt` 轉交, 由其呼叫端各自給(呼叫端皆在本掃描內)
+                if (fp === 'test/tools/e2e-setup.mjs' && m[0].startsWith('new ')) {
+                    continue
+                }
+                n += 1
+                let a = enclosed(s, m.index + m[0].length - 1, '(', ')')
+                let id = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(a || '')
+                let body = id ? objOf(s, id[1], m.index) : a
+                if (body === null || !/\bpathUploadTemp\b/.test(body)) {
+                    bad.push(`${fp}:${s.slice(0, m.index).split('\n').length}`)
+                }
+            }
+        }
+        assert.strict.deepEqual(n >= 70, true, `R28 建構站點只掃到 ${n} 個(掃描失效?)`)
+        assert.strict.deepEqual(bad, [], `R28 以下建構站點未給 pathUploadTemp(將於 repo 根建立 uploadTemp/): ${bad.join(', ')}`)
+    })
+
+    it('R27 一次公開呼叫對外之全部輸出經其 ctx 之出口; 公開 promise 與中止競速(前端中止之單一擁有者)', function() {
+        //why: 前端原無「一次公開呼叫」之範圍概念, error 事件、cbProgress、console 訊息、getToken 散在各站點直接呼叫。
+        //run01 之模擬 v1 逐等待點判中止, 獨立複審找出之四個缺口(中止後仍呼叫 cbProgress、仍發 error、於續行窗口以值 resolve、仍呼叫 getToken)全是「下一個沒寫到之站點」。
+        //本條鎖住兩個擁有者: ①入口(openCall → ctx.run 之入口競速)②出口(ctx.emit / ctx.log / ctx.wrapProgress / ctx.callApp)。
+        //日後新增之對外輸出若繞過 ctx(直接 evEmit('error'、console.log、呼叫 fetchToken、自行包裝 cbProgress), 本條即紅; 行為面由 test/api-clientAbort.test.mjs 與 test/e2e-abort.test.mjs 鎖
+        let c = src.client
+        let iCtx = c.indexOf('let genCallCtx = (scope) => {')
+        let iOpen = c.indexOf('let openCall = (opt) => {')
+        let iAfterOpen = c.indexOf('let symNoRetry = Symbol(', iOpen)
+        assert.strict.deepEqual(iCtx > 0 && iOpen > iCtx && iAfterOpen > iOpen, true, 'R27 找不到 genCallCtx 與 openCall 之定義(或順序改變)')
+
+        //ctx 只由入口建立: genCallCtx 定義 1 + openCall 內呼叫 1; 三個公開方法皆經 openCall, 皆以 ctx.run 執行本體(download 依環境兩分支)
+        assert.strict.deepEqual(countAll(c, /genCallCtx\(/g), 1, 'R27 genCallCtx 只得於 openCall 內呼叫一次(ctx 由入口建立)')
+        assert.strict.deepEqual(countAll(c, /openCall\(opt\)/g), 3, 'R27 execute、upload、download 皆須經 openCall')
+        assert.strict.deepEqual(countAll(c, /ctx\.run\(/g), 4, 'R27 公開方法之本體須經 ctx.run(入口競速): execute 1、upload 1、download 2')
+        for (let sig of ['let execute = async(func, input, cbProgress, opt = {}) => {', 'let upload = async(filename, input, cbProgress, opt = {}) => {', 'let download = async(fileId, cbProgress, opt = {}) => {']) {
+            assert.strict.deepEqual(c.includes(sig), true, `R27 公開方法之簽章須含 opt: ${sig}`)
+        }
+
+        //error 事件: 直接 evEmit('error' 只得於 openCall 內一處(invalid opt.signal, 其時尚無範圍); 其餘一律 ctx.emit
+        assert.strict.deepEqual(countAll(c, /evEmit\('error'/g), 1, 'R27 client 直接 evEmit(\'error\' 只得一處')
+        let iE = c.indexOf(`evEmit('error'`)
+        assert.strict.deepEqual(iE > iOpen && iE < iAfterOpen, true, 'R27 唯一之直接 evEmit(\'error\' 須位於 openCall 內')
+
+        //console 訊息: console.log 只得於 ctx.log 之實作內一處
+        assert.strict.deepEqual(countAll(c, /console\.log\(/g), 1, 'R27 client 之 console.log 只得於 ctx.log 內一處')
+        let iL = c.indexOf('console.log(')
+        assert.strict.deepEqual(iL > iCtx && iL < iOpen, true, 'R27 唯一之 console.log 須位於 genCallCtx 內')
+
+        //getToken: fetchToken 之呼叫皆經 ctx.callApp(已中止即不呼叫)
+        assert.strict.deepEqual(countAll(c, /fetchToken\(\)/g), 2, 'R27 fetchToken 之呼叫點須為 2(callApiCore、downloadBrowser 管理器路徑)')
+        assert.strict.deepEqual(countAll(c, /ctx\.callApp\(\(\) => fetchToken\(\)\)/g), 2, 'R27 fetchToken 須經 ctx.callApp 呼叫')
+
+        //cbProgress: 保護只由 ctx.wrapProgress 擁有(send 與 sendDataSlice 各包一次), 不得再自行手寫保護
+        assert.strict.deepEqual(countAll(c, /ctx\.wrapProgress\(/g), 2, 'R27 cbProgress 須經 ctx.wrapProgress(send、sendDataSlice 各一)')
+        assert.strict.deepEqual(countAll(c, /isfun\(cbProgress\)|cbProgressRaw|bCbProgressErr|bCbProgErr/g), 0, 'R27 不得於 ctx.wrapProgress 以外自行補預設或手寫進度保護')
+        let iSds = c.indexOf('let sendDataSlice = async(ctx, ')
+        let iWrap = c.indexOf('cbProgress = ctx.wrapProgress(cbProgress)', iSds)
+        let iFirstCall = c.indexOf('cbProgress({', iSds)
+        assert.strict.deepEqual(iSds > 0 && iWrap > iSds && iWrap < iFirstCall, true, 'R27 sendDataSlice 須於第一次呼叫 cbProgress 之前即經 ctx.wrapProgress')
+
+        //ctx 明傳: attemptFailed 之兩呼叫點、各內部函式之第一參數
+        assert.strict.deepEqual(countAll(c, /attemptFailed\(ctx, /g), 2, 'R27 attemptFailed 須以 ctx 明傳')
+        for (let sig of ['let send = async(ctx, type, pkg, opt = {}) => {', 'let sendPkg = async(ctx, type, data, cbProgress) => {', 'let sendDataSlice = async(ctx, fileTotalName, bb, cbProgress) => {', 'let checkMerging = (ctx) => {', 'let downloadNodejs = async(ctx, ', 'let downloadBrowser = async(ctx, ']) {
+            assert.strict.deepEqual(c.includes(sig), true, `R27 ctx 須明傳: ${sig}`)
+        }
+
+        //釋放資源之最佳化(非正確性之來源, 但須存在): 交 axios 之 signal、可中止之退避、合併輪詢之 onAbort
+        assert.strict.deepEqual(countAll(c, /signal: ctx\.scope\.signal/g), 1, 'R27 axios 組態須帶本呼叫之 signal')
+        assert.strict.deepEqual(countAll(c, /await ctx\.scope\.delay\(t\)/g), 1, 'R27 退避須可被中止')
+        assert.strict.deepEqual(countAll(c, /[^.\w]delay\(/g), 0, 'R27 不得使用不可中止之 delay')
+        assert.strict.deepEqual(countAll(c, /ctx\.scope\.onAbort\(/g), 1, 'R27 合併輪詢須於中止時停止')
+
+        //nodejs 下載之落檔: 已中止者不建檔、建檔後之中止於 abort() 之同步期間即刪不完整檔(拒絕當下即無殘檔; 「取消後立刻重下載」時不截斷、不刪到新檔)
+        assert.strict.deepEqual(c.includes(`saveStreamToFile(streamRecv, get(opt, 'fdDownload', ''), filename, ctx.scope)`), true, 'R27 nodejs 落檔須帶本呼叫之中止範圍')
+        let iSave = c.indexOf('async function saveStreamToFile(')
+        let iChk = c.indexOf('scope.isAborted()', iSave)
+        let iCreate = c.indexOf('fs.createWriteStream(fp)', iSave)
+        let iReg = c.indexOf('scope.onAbort(', iSave)
+        assert.strict.deepEqual(iSave > 0 && iChk > iSave && iChk < iCreate && iReg > iCreate, true, 'R27 saveStreamToFile 須於建檔前判中止、建檔後註冊中止時之刪除')
+
+        //下載管理器: 交給瀏覽器(a.click())不可撤銷, 須於取得 token 之後、交出之前判中止(入口競速只決定 promise 之結局, 擋不住已觸發之下載)
+        let iDb = c.indexOf('let downloadBrowser = async(ctx, ')
+        let iTok = c.indexOf('ctx.callApp(() => fetchToken())', iDb)
+        let iClick = c.indexOf('a.click()', iDb)
+        let iPre = c.lastIndexOf('if (ctx.scope.isAborted())', iClick)
+        assert.strict.deepEqual(iDb > 0 && iTok > iDb && iPre > iTok && iPre < iClick, true, 'R27 downloadBrowser 須於取 token 之後、a.click() 之前判中止')
+
+        //中止範圍之單一擁有者為 src/abortScope.mjs(帳本 R20 之 B: 有獨立單元測試)
+        assert.strict.deepEqual(c.includes(`import wAbortScope from './abortScope.mjs'`), true, 'R27 client 須自 src/abortScope.mjs 取得中止範圍')
+        assert.strict.deepEqual(countAll(c, /new AbortController\(|addEventListener\('abort'/g), 0, 'R27 client 不得自行建立 AbortController 或掛 abort 監聽(由 abortScope 擁有)')
     })
 
     it('R5 擁有者鎖(有分辨力者): 六路由之 verifyConn 與 handler 事件只由 admit 發; client「一次嘗試失敗」之事件只由 attemptFailed 發, 呼叫點恰為 callApi 迴圈與 checkMerging', function() {
@@ -429,7 +563,8 @@ describe('unit-ruleSites', function() {
         let doc = fs.readFileSync('CLAUDE_rulebook.md', 'utf8')
         assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'CLAUDE_rulebook.md 缺少標題')
         //第十二輪: 補 R19–R26(原清單只到 R18, R19–R25 缺頁不會紅 —— 與上述第十輪之教訓同型, B 卷 ③-6)
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ']) {
+        //2026-10-13: 補 R27(前端中止之單一擁有者)
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ']) {
             assert.strict.deepEqual(doc.includes(r), true, `CLAUDE_rulebook.md 缺少 ${r.trim()}`)
         }
         assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE_rulebook.md 之盤點指令數不足')

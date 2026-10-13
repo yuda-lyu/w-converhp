@@ -13,6 +13,10 @@ let { portOf } = wPorts
 describe('api-downloadVariants', function() {
 
     let port = portOf('api-downloadVariants')
+
+    //pathUploadTemp, 本檔之上傳暫存夾, 測完即刪(after)
+    //why 不用伺服器之預設值(./uploadTemp): 預設值落在 repo 根, 本檔雖不上傳, 建構伺服器即於該處建立資料夾(帳本 R28)
+    let pathUploadTemp = './test/_tmp/api-downloadVariants'
     let url = `http://localhost:${port}`
     let fdDownload = './tmp-api-downloadVariants' //各測試檔須用不同下載資料夾, 避免parallel互相干擾
     let fpSrc = './test/1mb.7z'
@@ -41,6 +45,7 @@ describe('api-downloadVariants', function() {
             port,
             apiName: 'api',
             pathStaticFiles: '.',
+            pathUploadTemp,
             verifyConn: async({ authorization }) => {
                 let token = w.strdelleft(authorization, 7) //刪除Bearer
                 return w.isestr(token)
@@ -83,8 +88,9 @@ describe('api-downloadVariants', function() {
 
     })
 
-    after(function() {
-        wsv.stop()
+    after(async function() {
+        await wsv.stop()
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true }) //清除本檔之上傳暫存夾
         try {
             fs.rmSync(fdDownload, { recursive: true, force: true }) //清除本測試之下載資料夾
         }

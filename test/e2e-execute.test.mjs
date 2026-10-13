@@ -1,4 +1,6 @@
 import assert from 'assert'
+import fs from 'fs'
+import path from 'path'
 import crypto from 'crypto'
 import w from 'wsemi'
 import setup from './tools/e2e-setup.mjs'
@@ -6,7 +8,7 @@ import wPorts from './tools/ports.mjs'
 
 let { portOf } = wPorts
 
-let { HOST, launchBrowser, buildClientBundle, writePage, startServer } = setup
+let { HOST, projRoot, launchBrowser, buildClientBundle, writePage, startServer } = setup
 
 
 /**
@@ -23,6 +25,10 @@ let { HOST, launchBrowser, buildClientBundle, writePage, startServer } = setup
 describe('e2e-execute', function() {
 
     let port = portOf('e2e-execute')
+
+    //pathUploadTemp, 本檔之上傳暫存夾, 測完即刪(after)
+    //why 不用伺服器之預設值(./uploadTemp): 預設值落在 repo 根, 本檔雖不上傳, 建構伺服器即於該處建立資料夾(帳本 R28)
+    let pathUploadTemp = path.resolve(projRoot, 'test', '_tmp', 'e2e-execute')
     let baseUrl = `http://${HOST}:${port}`
     let wsv = null
     let browser = null
@@ -106,6 +112,7 @@ window.tNoToken = async () => {
         wsv = await startServer({
             port,
             apiName: 'api',
+            pathUploadTemp,
             verifyConn: async({ authorization }) => {
                 let token = w.strdelleft(authorization, 7) //刪除 Bearer
                 return w.isestr(token)
@@ -125,11 +132,12 @@ window.tNoToken = async () => {
 
     })
 
-    after(function() {
+    after(async function() {
         if (wsv) {
-            wsv.stop()
+            await wsv.stop()
         }
-
+        //清除本檔之上傳暫存夾(測試中介資料測完即刪, 不留殘留)
+        fs.rmSync(pathUploadTemp, { recursive: true, force: true })
     })
 
     //每 case fresh browser (技能 §6)
