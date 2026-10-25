@@ -669,6 +669,9 @@ function callApp(ev, evEmit, name, args, pm, funError) {
 /**
  * 建立Hapi伺服器
  *
+ * 身分驗證責任(跨套件原則, 見自有套件庫主控之 dspec「使用者身分驗證原則」): 本套件不驗證token, 只於每次請求呼叫使用方注入之verifyConn(未給即全部放行);
+ * 使用方須自行完整驗證連線之token(token有效、本系統使用者存在且啟用、部署方授權), 上層(w-serv-webdata等)之執行身分另由使用方之getUserIdByToken驗證.
+ *
  * @class
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Integer} [opt.port=8080] 輸入Hapi伺服器所在port正整數，預設8080，須為1至65535。埠被占用等啟動失敗時不拋出，以error事件通知。本套件各整數選項(port、sizeSlice、sizeMsg、delayForSlice)須為安全整數(Number.isSafeInteger)，Infinity與超出安全範圍者(如Number.MAX_SAFE_INTEGER+1)一律視為無效取預設；另各依其用途有值域上限(port為65535、delayForSlice為計時器上限2147483647)，超過者亦取預設。給予serverHapi時不作用
