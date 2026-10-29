@@ -53,6 +53,7 @@ import evem from 'wsemi/src/evem.mjs'
 import evEmitBase from 'wsemi/src/evEmit.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
+import getTrace from 'wsemi/src/getTrace.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
@@ -279,6 +280,7 @@ function classifyFailure(res) {
  * @param {Integer} [opt.retryMain=3] 輸入主要控制器傳輸失敗重試次數整數，預設為3。凡失敗皆重試（含伺服器不穩、傳輸不穩、狀態不穩如permission denied與應用端reject），僅可證明不需重試之錯誤除外：伺服器標示retryable為false之參數檢核類錯誤，與HTTP 413(指本套件之請求所收到之HTTP狀態；應用端或getToken交出之值不論形狀皆不據以判定，如{response:{status:413}}照常重試)。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20（退避延遲為指數成長，次數無上限會使單次等待成長至數小時乃至溢位計時器）
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
+ * @param {Function} [opt.onTrace=null] 輸入觀察回調函數，格式為(e)=>{}，於重試退避與合併輪詢之內部事件發生當下同步呼叫，供測試與診斷以事件(而非等待毫秒)同步，非函數時忽略。e為凍結之事件物件{ type, ... }，欄位皆為原始值快照；type為'retry-wait'時為即將退避等待(含n為第幾次重試、delayMs為等待毫秒)，'retry'時為退避結束即將重試(含n)，'poll-tick'時為合併輪詢之每個2秒週期(含busy為前一條查詢是否仍在途而本週期不發)，'poll-result'時為一條合併查詢已有結果(含state為'success'、'error'、'pending'(伺服器回應尚未完成合併)或'fail'(查詢本身失敗，如網路斷訊，持續輪詢))，'poll-stop'時為合併輪詢已停止(含reason為'success'、'error'或'abort')。回調不帶接收者呼叫，其拋錯與回傳值(含rejection)皆忽略，不影響請求與結果；中止後不再通知重試事件，合併輪詢則僅通知一次reason為'abort'之'poll-stop'，在途查詢之結果不再通知。預設null
  * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload、upload之輸入讀取失敗即雜湊計算失敗)一則，不重試。**結局之判定**：伺服器回傳值(含應用端之拒絕值)與getToken之拒絕值一律原樣交出，不以形狀判定(形似取消之{reason:'cancelled'}、形似413之{response:{status:413}}皆照常重試並逐次發事件)；惡意值(如已撤銷之Proxy)亦原樣交給error監聽器與呼叫端，其讀取由監聽器與呼叫端自行負責。下載須取得本套件之下載回應(帶Content-Disposition)才算成功，否則(如網址誤指他站而回2xx之網頁)以'invalid download response from server'拒絕並照常重試。請求之成敗依本套件明給之validateStatus(2xx)判定，不受宿主之axios.defaults影響；惟Node.js下使用axios之預設實例，宿主掛於其上之攔截器亦作用於本套件之請求(已知限制，瀏覽器之dist自帶axios而不受影響)。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。**中止(opt.signal)**：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止**該次呼叫**(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以**signal.reason原樣**拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。**判別中止請以signal.aborted**(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為**結果未知**(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而**不可中止**(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交
  * @example
  *
@@ -421,6 +423,9 @@ function WConverhpClient(opt) {
         retryDownload = 2
     }
     retryDownload = Math.min(cint(retryDownload), maxRetryTimes) //超過上限者截為上限而非取預設: 取預設會減少重試次數, 而呼叫端給大值之意圖正是要多重試
+
+    //trace, 觀察回調(opt.onTrace), 未給或非函數時為null, 呼叫端以 if (trace) 略過組事件物件(未傳時零額外成本); 事件見建構函數之JSDoc
+    let trace = getTrace(opt)
 
     //env
     let env = isWindow() ? 'browser' : 'nodejs'
@@ -940,9 +945,15 @@ function WConverhpClient(opt) {
                 //delay, 可被中止之退避(中止即清除計時器並以 reason 拒絕)
                 let t = retryDelay(n)
                 ctx.log(`wait ${dig(t / 1000, 1)}(second) to retry...`)
+                if (trace) {
+                    trace('retry-wait', { n, delayMs: t })
+                }
                 await ctx.scope.delay(t)
 
                 //retry
+                if (trace) {
+                    trace('retry', { n })
+                }
                 ctx.log(`retry n=${n}...`)
                 r = await attempt()
                 // console.log(`retry n=${n} done`)
@@ -1277,9 +1288,15 @@ function WConverhpClient(opt) {
 
                 //check
                 if (bBusy) {
+                    if (trace) {
+                        trace('poll-tick', { busy: true })
+                    }
                     return
                 }
                 bBusy = true
+                if (trace) {
+                    trace('poll-tick', { busy: false })
+                }
 
                 //send merge-slices-get
                 // console.log(`send merge-slices-get...`)
@@ -1299,11 +1316,19 @@ function WConverhpClient(opt) {
                         //   msg: ...
                         // }
 
+                        //trace
+                        if (trace) {
+                            trace('poll-result', { state: (res.state === 'success' || res.state === 'error') ? res.state : 'pending' })
+                        }
+
                         //check
                         if (res.state === 'success') {
 
                             //clearInterval
                             clearInterval(t)
+                            if (trace) {
+                                trace('poll-stop', { reason: 'success' })
+                            }
 
                             //resolve, state為'success'時提取msg回傳
                             //settle須排在通知應用端之前(帳本R10之結構層): 原本 cbProgressMerge 排在前面, 而它會呼叫應用端之 cbProgress ——
@@ -1320,6 +1345,9 @@ function WConverhpClient(opt) {
 
                             //clearInterval
                             clearInterval(t)
+                            if (trace) {
+                                trace('poll-stop', { reason: 'error' })
+                            }
 
                             //reject, state為'error'時會於msg提供錯誤訊息; 為伺服器回之業務錯誤(HTTP 請求本身成功, 不經 callApi 之迴圈), 於此發事件(見 attemptFailed; 第十輪 F6 之站點)
                             attemptFailed(ctx, res.msg)
@@ -1331,6 +1359,9 @@ function WConverhpClient(opt) {
                     .catch(() => {
                         // console.log('merge-slices-get catch')
                         //可能發生網路斷訊錯誤, 不clearInterval, 持續輪循測試合併大檔之狀態; 此處不可console.log, 斷線期間每2秒會印一次
+                        if (trace &amp;&amp; !ctx.scope.isAborted()) {
+                            trace('poll-result', { state: 'fail' })
+                        }
                     })
                     .finally(() => {
                         bBusy = false //本條查詢(含其重試鏈)已結束, 下一個tick才可再發
@@ -1341,6 +1372,9 @@ function WConverhpClient(opt) {
             //onAbort, 中止: 停止輪詢並以 reason 拒絕(輪詢依設計持續至應用端接受為止, 中止為呼叫端結束它之手段, 如以 AbortSignal.timeout 設整體上限)
             ctx.scope.onAbort((reason) => {
                 clearInterval(t)
+                if (trace) {
+                    trace('poll-stop', { reason: 'abort' })
+                }
                 pm.reject(reason)
             })
 
@@ -1638,7 +1672,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Oct 25 2026 23:46:57 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Oct 29 2026 09:52:02 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
