@@ -80,7 +80,7 @@ describe('api-cors', function() {
         wsv2.on('error', () => {})
         wsv2.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await Promise.all([wsv.ready, wsv2.ready]) //待兩台伺服器就緒(ready)
 
     })
 

@@ -98,9 +98,7 @@ describe('api-uploadMergeError', function() {
             res.end()
 
         })
-        srv.listen(port)
-
-        await w.delay(500) //待伺服器啟動
+        await new Promise((resolve) => srv.listen(port, resolve)) //待 stub 伺服器開始監聽(listen 回呼)
 
     })
 

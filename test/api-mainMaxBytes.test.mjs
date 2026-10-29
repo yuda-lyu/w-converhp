@@ -120,7 +120,7 @@ describe('api-mainMaxBytes', function() {
         wsvDef.on('execute', onExec)
         wsvDef.on('error', () => {})
 
-        await w.delay(1000)
+        await Promise.all([wsv.ready, wsvDef.ready]) //待兩台伺服器就緒(ready)
     })
 
     after(function() {

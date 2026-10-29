@@ -95,6 +95,8 @@ let alloc = [
     ['api-hostLifecycle', 1, '子行程內之伺服器生命週期'],
     ['e2e-abort', 1, ''],
     ['api-clientOutcomeShapes', 2, '主伺服器 + 非本套件之 2xx 回應之 http 伺服器(網址誤指 SPA 主機)'],
+    ['api-serverReady', 3, '就緒伺服器 + 埠被占用之兩台(同一 port 起兩台) + stop 搶先之伺服器'],
+    ['api-clientTrace', 1, 'stub 伺服器(依本套件協定回應 merge-slices-get; 退避事件之連線失敗用 reserved.closed)'],
 ]
 
 //segs, 依 alloc 之順序自 base 起連續配發

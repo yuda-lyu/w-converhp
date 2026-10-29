@@ -47,7 +47,7 @@ let mkServer = async(opt = {}) => {
     wsv.on('error', (e) => {
         evs.push(String(e))
     })
-    await w.delay(600)
+    await wsv.ready //待伺服器就緒(ready)
     return { port, wsv, evs }
 }
 

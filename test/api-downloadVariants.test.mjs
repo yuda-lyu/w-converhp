@@ -84,7 +84,7 @@ describe('api-downloadVariants', function() {
         wsv.on('error', () => {})
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 

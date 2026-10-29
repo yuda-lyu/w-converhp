@@ -88,7 +88,7 @@ describe('api-verifyConnError', function() {
         wsv.on('handler', (d) => handled.push(d.api)) //只有通過授權才會 emit, 供對照組證明「確實放行」而非「恰好沒回 denied」
         wsv.on('error', (e) => errs.push(e))
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -107,7 +107,7 @@ describe('api-verifyConnError', function() {
                 assert.strict.deepEqual(r.body, { error: 'permission denied' })
 
                 //應用端須能透過 error 事件觀察到 verifyConn 失敗, 訊息須含 apiType 與原始錯誤
-                await w.delay(100) //eeEmit 為 setTimeout 發送
+                await w.delay(100) //evEmit 為同步派發, 此等待僅為防多餘第二則之觀察窗
                 assert.strict.deepEqual(errs.length, 1, JSON.stringify(errs))
                 assert.strict.deepEqual(errs[0].includes(`apiType[${rt.apiType}]`), true, errs[0])
                 assert.strict.deepEqual(errs[0].includes(mode === 'throw' ? 'verifyConn threw' : 'verifyConn rejected'), true, errs[0])
@@ -123,7 +123,7 @@ describe('api-verifyConnError', function() {
             assert.strict.deepEqual(r.status, 200, rt.name)
             assert.strict.notDeepEqual((r.body || {}).error, 'permission denied', rt.name)
         }
-        await w.delay(100) //eeEmit 為 setTimeout 發送
+        await w.delay(100) //evEmit 為同步派發, 此等待僅為防多餘 error 事件之觀察窗
         //六個路由都須真的走到授權之後(handler 事件僅於放行後 emit), 且各路由之 handler 標籤須正確(應用端靠它分辨路由), 不得有任何 error 事件
         assert.strict.deepEqual([...handled].sort(), routes().map((rt) => rt.api).sort())
         assert.strict.deepEqual(errs, [])

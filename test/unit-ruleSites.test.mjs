@@ -620,26 +620,26 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(cp !== '' && !/isfun\(/.test(cp) && /typeof v/.test(cp), true, 'R29 canonProtocolValue 須以 typeof 判定, 不得用 isfun')
     })
 
-    it('CLAUDE_rulebook.md 須存在且涵蓋本檔之全部規則', function() {
-        //帳本自 2026-09-10 起獨立為 CLAUDE_rulebook.md(原位於 CLAUDE.md 之「規則帳本」一節);
-        //CLAUDE.md 只留工作規則與指向兩個附檔之說明, 執行經驗另於 CLAUDE_experience.md
+    it('sgud/rule/rulebook.md 須存在且涵蓋本檔之全部規則', function() {
+        //帳本自 2026-09-10 起獨立為 CLAUDE_rulebook.md(原位於 CLAUDE.md 之「規則帳本」一節), 2026-10-22 起依全域設定之 sgud 配置移至 sgud/rule/rulebook.md(納入 git 版控);
+        //CLAUDE.md 只留工作規則與指向附檔之說明, 執行經驗另於 sgud/exp/experience.md
         //第十輪: 原清單只列 R1–R7, R8 以後之規則(本檔亦有其斷言)缺頁不會紅 —— 清單範圍比本檔所鎖之規則窄(帳本 R4b 之教訓同型)
-        let doc = fs.readFileSync('CLAUDE_rulebook.md', 'utf8')
-        assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'CLAUDE_rulebook.md 缺少標題')
+        let doc = fs.readFileSync('sgud/rule/rulebook.md', 'utf8')
+        assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'sgud/rule/rulebook.md 缺少標題')
         //第十二輪: 補 R19–R26(原清單只到 R18, R19–R25 缺頁不會紅 —— 與上述第十輪之教訓同型, B 卷 ③-6)
-        //2026-10-13: 補 R27(前端中止之單一擁有者)
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ']) {
-            assert.strict.deepEqual(doc.includes(r), true, `CLAUDE_rulebook.md 缺少 ${r.trim()}`)
+        //2026-10-13: 補 R27(前端中止之單一擁有者); 2026-10-29: 補 R30(計時器相關測試之同步點)
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ', '### R30 ']) {
+            assert.strict.deepEqual(doc.includes(r), true, `sgud/rule/rulebook.md 缺少 ${r.trim()}`)
         }
-        assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'CLAUDE_rulebook.md 之盤點指令數不足')
+        assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'sgud/rule/rulebook.md 之盤點指令數不足')
     })
 
-    it('CLAUDE.md 須指向 CLAUDE_rulebook.md 與 CLAUDE_experience.md', function() {
-        //why: 三檔分工(工作規則 / 規則帳本 / 執行經驗)只有 CLAUDE.md 會被自動載入,
-        //指標斷了等於另兩檔不存在 —— 而那正是「承諾由別處兌現卻無訊號」之同型(見 CLAUDE_experience.md 之 E15)
+    it('CLAUDE.md 須指向 sgud/rule/rulebook.md 與 sgud/exp/experience.md', function() {
+        //why: 工作規則 / 規則帳本 / 執行經驗三者分工, 只有 CLAUDE.md 會被自動載入,
+        //指標斷了等於另兩檔不存在 —— 而那正是「承諾由別處兌現卻無訊號」之同型(見 sgud/exp/experience.md 之 E15)
         let doc = fs.readFileSync('CLAUDE.md', 'utf8')
-        assert.strict.deepEqual(doc.includes('CLAUDE_rulebook.md'), true, 'CLAUDE.md 未指向 CLAUDE_rulebook.md')
-        assert.strict.deepEqual(doc.includes('CLAUDE_experience.md'), true, 'CLAUDE.md 未指向 CLAUDE_experience.md')
+        assert.strict.deepEqual(doc.includes('sgud/rule/rulebook.md'), true, 'CLAUDE.md 未指向 sgud/rule/rulebook.md')
+        assert.strict.deepEqual(doc.includes('sgud/exp/experience.md'), true, 'CLAUDE.md 未指向 sgud/exp/experience.md')
     })
 
 })

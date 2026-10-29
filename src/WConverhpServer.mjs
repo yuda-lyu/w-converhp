@@ -686,7 +686,7 @@ function callApp(ev, evEmit, name, args, pm, funError) {
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部('*'須單獨出現)，預設['*']。給予單一字串時視為只含該網域之陣列；給予false或[](含只有空字串者)代表停用跨域：不回應CORS標頭，瀏覽器無法跨來源讀取回應(伺服器端之存取控制仍由verifyConn決定)；陣列中之空字串會被忽略。給予其他值、或hapi不接受之陣列(如含非字串元素、'*'與其他網域並存)時同樣停用跨域並發一則error事件，不會退回允許全部，建構時亦不拋出。給予serverHapi時不作用(跨域由外部伺服器決定)，若仍有給予則發一則error事件告知。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
  * @param {Object} [opt.serverHapi=null] 輸入外部提供之Hapi伺服器物件，預設null。給予時本套件只於其上註冊通訊路由(不啟動伺服器、不註冊@hapi/inert)，故port、useInert、pathStaticFiles、corsOrigins不作用，跨域與靜態檔案由外部提供者自行設定；外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效。路由註冊失敗(如與既有路由衝突)時以error事件通知，已註冊之部分路由不會回復。此模式下伺服器之生命週期由外部提供者擁有，請勿呼叫回傳物件之stop：其會停止整台外部伺服器(含其上之其他路由)，並觸發外部伺服器之onPreStop、onPostStop擴充與stop事件(即使外部伺服器尚未啟動)；外部伺服器啟動期間呼叫則被hapi拒絕而以error事件通知
- * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；**filename為用戶端所給之原值、未經淨化、不可信**(可含路徑分隔符、`..`、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；**filenameSafe**為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋(外部serverHapi模式見該參數之說明)。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；upload之上傳管線亦同：未註冊upload監聽器時，切片上傳與check-total-hash、check-slices-hash、merge-slices-push於寫入任何暫存檔之前即以錯誤封包回應，前端upload於第一個請求(check-total-hash)即收到錯誤並依retryUpload重試後失敗，不會先傳完整檔(上傳途中才移除監聽器者，已傳之切片留於暫存資料夾，可續傳)；merge-slices-get對已承接之工作(已儲存結果之重送、同一隊列在途之消費)不受影響。而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
+ * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；**filename為用戶端所給之原值、未經淨化、不可信**(可含路徑分隔符、`..`、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；**filenameSafe**為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶ready屬性：Promise，供等待伺服器就緒而不必以固定毫秒等待。自建伺服器時，於已開始監聽(hapi之start完成)且建構期事件(以error事件通知之埠被占用、暫存資料夾無法建立、選項無效等)皆已派發之後resolve為true；啟動失敗時(失敗已以error事件通知)resolve為false。給予serverHapi時，於路由註冊完成且建構期事件皆已派發之後resolve(路由註冊失敗者為false)，伺服器之啟動仍由外部提供者擁有，不在其等待範圍。ready恆resolve、不reject，亦不影響stop；建構期事件於建構後以1ms計時器派發，故應用端須於建構後同步註冊error監聽器才收得到，而等ready之後再斷言建構期事件之數量不會有競態。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋(外部serverHapi模式見該參數之說明)。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；upload之上傳管線亦同：未註冊upload監聽器時，切片上傳與check-total-hash、check-slices-hash、merge-slices-push於寫入任何暫存檔之前即以錯誤封包回應，前端upload於第一個請求(check-total-hash)即收到錯誤並依retryUpload重試後失敗，不會先傳完整檔(上傳途中才移除監聽器者，已傳之切片留於暫存資料夾，可續傳)；merge-slices-get對已承接之工作(已儲存結果之重送、同一隊列在途之消費)不受影響。而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
  * @example
  *
  * import fs from 'fs'
@@ -2351,6 +2351,7 @@ function WConverhpServer(opt = {}) {
     //「Cannot stop server while in initializing phase」, 而伺服器隨後照樣起來並持續服務(port可連線且回HTTP 200);
     //亦即呼叫端以為停了而實際上沒有。本promise已帶catch故恆resolve, stop 內await它不會再拋
     let pmStart = null
+    let bRoutesOk = true
     if (bServerHapi) {
 
         //route, 註冊於外部伺服器之失敗(路由衝突、apiName 非法)須以建構期事件通知而不拋出
@@ -2361,6 +2362,7 @@ function WConverhpServer(opt = {}) {
             server.route([apiMain, apiUploadCheck, apiUploadSlice, apiDownloadGetFilename, apiDownloadGetFile, apiDownload])
         }
         catch (err) {
+            bRoutesOk = false
             console.log(`register routes error`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
             evEmitDelay('error', `register routes error: ${getErrorMessage(err)}`) //建構期, 應用端尚未註冊監聽器
         }
@@ -2368,12 +2370,27 @@ function WConverhpServer(opt = {}) {
     }
     else {
         pmStart = startServer()
+            .then(() => true)
             .catch((err) => {
                 //埠被占用(EADDRINUSE)等啟動失敗須攔截: 未await之promise被reject即為unhandledRejection, 整個行程會崩潰且應用端無從得知; 改以error事件通知, 由應用端決定處置
                 console.log(`start server error`, err)
                 evEmitDelay('error', `start server error: ${getErrorMessage(err)}`) //建構期, 應用端尚未註冊監聽器
+                return false
             })
     }
+
+    //ready, 就緒promise(對外, 見JSDoc), 供使用端與測試以「事件」而非固定毫秒等待同步伺服器就緒
+    //why 再接一個1ms計時器: 建構期事件(evEmitDelay)以1ms計時器脫勾派發, 而hapi之start可能在不足1ms內完成(失敗者亦同, 如埠被占用),
+    //直接以start完成resolve時建構期事件可能尚未派發, 使用端據以斷言「建構期恰N則事件」即有競態; 同長度之計時器依建立順序觸發(FIFO),
+    //此處之計時器建立於所有建構期事件之後(startServer為async, 其完成必晚於建構子同步段), 故其resolve時建構期事件必已派發完畢
+    let ready = (ispm(pmStart) ? pmStart : Promise.resolve(bRoutesOk))
+        .then((b) => {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve(b)
+                }, 1)
+            })
+        })
 
     //stop, 回傳promise供呼叫端等待真正停止; 其失敗以error事件通知而不外拋
     //why: 原實作為 `server.stop()` —— 既未await亦未catch, hapi之stop一旦reject即為unhandledRejection而使行程崩潰
@@ -2398,6 +2415,7 @@ function WConverhpServer(opt = {}) {
 
     //save
     ev.stop = stop
+    ev.ready = ready
 
     return ev
 }

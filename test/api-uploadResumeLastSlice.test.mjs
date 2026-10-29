@@ -33,7 +33,7 @@ describe('api-uploadResumeLastSlice', function() {
         })
         wsv.on('handler', (d) => handlers.push(d.api))
         wsv.on('error', () => {})
-        await w.delay(800)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {

@@ -61,7 +61,7 @@ describe('api-sliceAbort', function() {
         })
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -118,7 +118,26 @@ describe('api-sliceAbort', function() {
         for (let i = 0; i < 5; i++) {
             await sendSlice({ packageId, chunkIndex: i, chunkTotal, declared: 500000, body: Buffer.alloc(3000, 7), abort: true })
         }
-        await w.delay(1500) //待伺服器收尾(error/close 事件、fd 關閉、刪檔)
+
+        //待伺服器收尾(R-COND): 以斷言所需之效應本身為同步點, 不以固定毫秒 —— 5 條寫入串流皆已建立並 close(fd 關閉)、5 個不完整切片皆已刪除、每個切片之 error 事件皆已發出
+        //條件函式只讀狀態不拋錯; 多餘之串流或事件(缺陷形狀)不使條件落空, 留給下方原斷言以明確訊息報出
+        let isSettled = () => {
+            if (tracked.length < 5) {
+                return false
+            }
+            for (let i = 0; i < 5; i++) {
+                let t = tracked[i]
+                if (t.ws.closed !== true || fs.existsSync(t.path)) {
+                    return false
+                }
+                let k = `receive chunk[${i + 1}/${chunkTotal}] of packageId[${packageId}] error`
+                if (!errs.some((v) => typeof v === 'string' && v.indexOf(k) === 0)) {
+                    return false
+                }
+            }
+            return true
+        }
+        await w.waitFun(isSettled, { timeInterval: 10, attemptNum: 3000 })
 
         //每次斷線恰建立一條寫入串流
         assert.strict.deepEqual(tracked.length, 5, JSON.stringify(tracked.map((t) => path.basename(t.path))))
@@ -152,7 +171,9 @@ describe('api-sliceAbort', function() {
             assert.strict.deepEqual(r.aborted, false)
             assert.strict.deepEqual(r.raw.indexOf('200 OK') > 0, true, r.raw.slice(0, 80))
         }
-        await w.delay(500)
+
+        //待 2 條寫入串流皆已建立並 close(R-COND): 以斷言所需之效應本身為同步點, 不以固定毫秒; 回應已收到, 不發 error 事件屬同一請求處理中先於回應之行為, 無需另設否定觀察窗
+        await w.waitFun(() => tracked.length >= 2 && tracked.every((t) => t.ws.closed === true), { timeInterval: 10, attemptNum: 3000 })
 
         assert.strict.deepEqual(tracked.length, 2)
         for (let t of tracked) {

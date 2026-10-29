@@ -49,7 +49,7 @@ describe('api-storedResult', function() {
             pm.resolve({ consumed: nUpload })
         })
 
-        await w.delay(1200) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(function() {
@@ -84,7 +84,7 @@ describe('api-storedResult', function() {
         })
         let buf = Buffer.from(await r.arrayBuffer())
         let o = u8arr2obj(new Uint8Array(buf))
-        await w.delay(200) //eeEmit 為 setTimeout 派發
+        await w.delay(200) //evEmit 為同步派發, 事件於回應前已發出, 此等待僅為保守之 settle 窗(兼供「無事件」案之否定觀察)
         return { status: r.status, out: o.success, nUpload, errs: [...errs] }
     }
 
@@ -111,20 +111,20 @@ describe('api-storedResult', function() {
         assert.strict.deepEqual(r.errs.some((v) => v.includes(`no own 'ro' key`)), true, JSON.stringify(r.errs))
     })
 
-    it('[凍結待修 · 待 wsemi] 二進位區截尾之 .ro 目前仍被當成功並回傳截短之二進位', async function() {
+    it('二進位區截尾之 .ro 須視為未儲存並重新消費(#35 之第三種形狀; 改判自「凍結待修」: wsemi 1.9.29 之 decode 已驗證分塊 framing)', async function() {
         this.timeout(20000)
-        //本格為 #35 之第三種形狀, **本套件側修不掉**:
-        //截尾時長度表宣告與實際剩餘不符, 而 TypedArray.slice 只縮短不拋錯, 故 wsemi 之 decode 仍回 state success,
-        //本套件之「state 成功 + 自有 ro 鍵」兩道檢核皆通過, 無從分辨。須由 wsemi 於 decode 時驗證分塊 framing
-        //(各段宣告長度總和須恰等於剩餘位元組數)。wsemi 修正後本格須改判為「視為未儲存並重新消費」。
+        //本格為 #35 之第三種形狀。原「凍結待修 · 待 wsemi」: 截尾時長度表宣告與實際剩餘不符, 而 TypedArray.slice 只縮短不拋錯,
+        //舊版 wsemi 之 decode 仍回 state success, 本套件之「state 成功 + 自有 ro 鍵」兩道檢核皆通過而無從分辨(當時現況: 未重新消費、回傳截短之二進位)。
+        //改判理由(2026-10-29, 升 wsemi 至 1.9.29 後): wsemi 之 decode 於分塊 framing 不符時回失敗(invalid pks, total length exceeds the packet),
+        //本套件既有之「decode 失敗 → 視為壞包 → 視為未儲存並重新消費」即涵蓋此形狀(與第一案同路徑), 本格依該註記改判。
         let full = obj2u8arr({ ro: { bin: new Uint8Array([1, 2, 3, 4]) } })
         let cut = full.slice(0, full.length - 2) //截掉尾端 2 bytes
         let qid = mkState('aaaa000000000003', cut)
         let r = await get(qid, 'c.bin')
         assert.strict.deepEqual(r.out.state, 'success', JSON.stringify(r))
-        assert.strict.deepEqual(r.nUpload, 0, `現況: 未重新消費(壞包擋住了消費): ${JSON.stringify(r)}`)
-        assert.strict.deepEqual(r.out.msg.bin instanceof Uint8Array, true, JSON.stringify(r))
-        assert.strict.deepEqual(Array.from(r.out.msg.bin), [1, 2], `現況: 回傳被截短之二進位(原為 4 bytes): ${JSON.stringify(r)}`)
+        assert.strict.deepEqual(r.nUpload, 1, `須重新消費一次, 實得 ${r.nUpload}: ${JSON.stringify(r)}`)
+        assert.strict.deepEqual(r.out.msg, { consumed: 1 }, JSON.stringify(r))
+        assert.strict.deepEqual(r.errs.some((v) => v.includes('corrupted')), true, `須記錄一則壞包訊息: ${JSON.stringify(r.errs)}`)
     })
 
     it('對照組: 完好之 .ro 須直接回其儲存值且不重新消費(冪等保證不得因本次修正而失效)', async function() {

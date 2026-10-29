@@ -76,7 +76,7 @@ describe('api-errorEventOnce', function() {
         })
         wsvB = new WConverhpServer({ port: portB, useInert: false, pathUploadTemp: `${fd}/b`, verifyConn: verifyConnOf('b') })
         wsvB.on('error', (e) => errsB.push(String(e)))
-        await w.delay(900)
+        await Promise.all([wsvA.ready, wsvB.ready]) //待兩台伺服器就緒(ready)
     })
 
     after(async function() {

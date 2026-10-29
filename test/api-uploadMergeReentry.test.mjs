@@ -96,7 +96,7 @@ describe('api-uploadMergeReentry', function() {
         })
         wsv.on('error', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 

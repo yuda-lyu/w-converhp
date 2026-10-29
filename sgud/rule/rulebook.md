@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | [R1](#r1-應用端可控值之屬性讀取一律在-try-內) | 應用端可控值之屬性讀取一律在 try 內 | grep | 7 類 | 0 |
 | [R2](#r2-寫入回應標頭之值一律經值域檢核) | 寫入回應標頭之值一律經值域檢核 | grep | 14 | 0 |
-| [R3](#r3-codec-呼叫一律以嚴格模式取狀態) | codec 呼叫一律以嚴格模式取狀態 | grep | 9 | 0(1 待 wsemi) |
+| [R3](#r3-codec-呼叫一律以嚴格模式取狀態) | codec 呼叫一律以嚴格模式取狀態 | grep | 9 | 0(原 1 待 wsemi,2026-10-29 升 wsemi 1.9.29 後已解) |
 | [R4](#r4-數值選項一律經述詞--sink-上限) | 數值選項一律經述詞 + sink 上限 | grep | **21** | 0 |
 | [R4b](#r4b-檢核與正規化須成對isp0intispint--cint) | 檢核與正規化須成對(`isp0int`/`ispint` → `cint`) | grep | 10 | 0 |
 | [R4c](#r4c-重試次數與退避延遲須各自有上限) | 重試次數與退避延遲須各自有上限 | 常數 + 單元測試 | 2 | 0 |
@@ -45,6 +45,7 @@
 | [R27](#r27-一次公開呼叫對外之全部輸出經其-ctx-之出口公開-promise-與中止競速) | **一次公開呼叫對外之全部輸出經其 ctx 之出口;公開 promise 與中止競速**(前端中止) | 位置鎖 + 行為表 | 出口 5 類 / 入口 3 方法 / error 站點 11 | 0 |
 | [R28](#r28-測試建構伺服器一律給-pathuploadtemp落-test_tmp案名測完即刪不得取預設值而於-repo-根建立-uploadtemp) | **測試建構伺服器一律給 pathUploadTemp**(落 test/_tmp/<案名>/,測完即刪) | 位置鎖(unit-ruleSites) | 74 站點 | 0 |
 | [R29](#r29-一次嘗試之結局不得以外來值之形狀判定不需重試以自建包裝之參照識別成功須以肯定式證明) | **一次嘗試之結局不得以外來值之形狀判定**;不需重試以自建包裝之參照識別;成功須以肯定式證明 | 位置鎖 + 行為表 | 判定站點 6 | 0 |
+| [R30](#r30-計時器相關測試以被測物之事件或可觀察條件為同步點不以等待毫秒伺服器就緒等-ready自有計時器以-optontrace) | **計時器相關測試以被測物之事件或可觀察條件為同步點,不以等待毫秒**;伺服器就緒等 `ready`、自有計時器以 `opt.onTrace`、效能時限改邏輯順序 | grep + 行為表(`api-serverReady`、`api-clientTrace`)+ 負載試驗 | 鉤子 45 檔 + 輔助 3 + 直接 C 20 案 + (d) 6 案 | 0 |
 
 > **第十二輪之總結(2026-10-13)**:起因為 w-serv-hapi 之 agent 提出之外部建議四項(上傳管線不判接聽者即落檔、verifyConn 非函數即全放行、serverHapi 模式之 stop、corsOrigins 文件)。四項事實全屬實,但三項修法各撞既有設計(建構期失敗不拋出之通道、R12 之單一擁有者、merge-slices-get S3 之冪等、hapi 無移除路由 API)。方案經三份獨立複審(Claude Opus 5.5 ×2、Codex GPT-6.1-Sol ×1,各自於 HEAD 之 worktree 實跑)擴充為七個變更單元:**R12 延伸至上傳管線**(閘門 4 站點 + admit 期間中斷之補判 2 站點,後者為複審發現之既有缺陷:handler 永不終結、/slc 漏 fd)、合併佇列在途消費之跨實例隔離(複審發現)、**新立 R26**(verifyConn、corsOrigins、useInert、pathStaticFiles)、文件。外部建議之 #3 只補文件,改行為列下輪提案。逐條核對見當輪之 `tmp/r12-複審彙整.md`,定案方案見 `tmp/r12-全盤.md` §9。
 > 帳本自身之錯誤 2 件:R25 之執行指令 `--timeout 60000` 過期(package.json 為 180000)、`unit-ruleSites` 之「帳本須涵蓋全部規則」清單只列到 R18(R19–R25 缺頁不會紅);皆已更正。另 `tmp/measure_sites.mjs` 仍讀第十一輪併檔前之 `buildDownloadSource.mjs` 而無法執行,本輪以 `tmp/r12/sites.mjs`(同 `readCode` 剝註解規則、保留行號)產生逐站點清單。
@@ -181,7 +182,7 @@ grep -hn "obj2u8arr(\|u8arr2obj(" src/*.mjs | grep -v "import \|^[0-9]*:\s*//\|^
 | 8 | `managerMergeSlices.mjs:94` | decode | 磁碟 `.ro` | **已套**(P0a 修 #35);另要求解出之值為物件且**自有 `ro` 鍵**,不符者視為未儲存而落到 S2 重新消費 |
 | 9 | `managerMergeSlices.mjs:135`、`:145` | encode / decode | 應用端 upload 結果 | **已套**;`:145` 為 #34b 之修正:落地後解回 canonical 值並以之作為首次回應,使首次與重送必然相同、`toJSON` 只執行一次 |
 
-> **#35 之殘餘(本套件側修不掉)**:二進位區截尾時 wsemi 之 decode 仍回 `state:'success'`(`TypedArray.slice` 只縮短不拋錯),站點 8 的兩道檢核皆通過而無從分辨。須由 wsemi 於 decode 時驗證分塊 framing(各段宣告長度總和須等於剩餘位元組數)。已以 `test/api-storedResult.test.mjs` 之 `[凍結待修 · 待 wsemi]` 一格鎖住現況。
+> **#35 之殘餘(原「本套件側修不掉」;2026-10-29 已解)**:舊版 wsemi 於二進位區截尾時 decode 仍回 `state:'success'`(`TypedArray.slice` 只縮短不拋錯),站點 8 的兩道檢核皆通過而無從分辨,須由 wsemi 於 decode 時驗證分塊 framing。wsemi 1.9.29 之 decode 已驗證(`invalid pks, total length exceeds the packet`),截尾之 `.ro` 走與隨機壞位元組相同之「壞包 → 視為未儲存並重新消費」路徑;`test/api-storedResult.test.mjs` 原 `[凍結待修 · 待 wsemi]` 一格已依該格註記改判為「須視為未儲存並重新消費」。
 
 > **本條即本帳本存在的理由**:第四輪立下本規則時套了 4 個站點,剩下 3 個真缺口(5、7、8)被編成 **#26、#34、#35**,分別在第四輪、第五輪、第五輪「發現」。**三次發現是同一次遺漏。**
 
@@ -1536,6 +1537,54 @@ npx mocha --no-parallel test/unit-ruleSites.test.mjs --grep R29 --timeout 60000
 **機械化保護**:`test/unit-ruleSites.test.mjs` 之「R29」(位置鎖:不得 import `pmConvertResolve`/`pm2resolve`;`response.status` 只在 axios 失敗處且經 `axios.isAxiosError`;`isNoRetry`/`unwrapNoRetry` 只以 `noRetrySet.has`;`downloadStream` 先驗下載標頭;`validateStatus` 明給;伺服端 `canonProtocolValue` 不用 `isfun`)、`test/api-clientOutcomeShapes.test.mjs`(行為表:形狀軸 × 來源 × 路徑、序列、惡意值、codec 後之形狀、非本套件之 2xx 回應、宿主 validateStatus、雜湊失敗)、`test/api-noRetry.test.mjs`(413 形狀之對照組)、`test/api-hostileErrorValues.test.mjs`(伺服端拒絕值之惡意值)、`test/api-clientToken.test.mjs`(thenable)、`test/api-clientAbort.test.mjs`(中止 reason 為取消形狀、A5)。
 
 **分辨力**(2026-10-14 實測):新增與修改之測試 26 條中,修前 **23 條紅**(api/unit 於 src 仍為 HEAD 時直接跑;e2e 以 `git show HEAD:src/*` 之 repo 副本跑,因 e2e 自 src 打包)—— `api-clientOutcomeShapes` 11/12(對照組綠)、`api-executeError` 1、`api-noRetry` 1、`api-clientToken` 1、`api-hostileErrorValues` 2、`unit-ruleSites` 3(R5 總量、R27 錨點、R29)、`api-clientAbort` 之 A5 1、e2e 3(`e2e-execute` 2、`e2e-download` 1);修前即綠之 3 條為守門(新檔之對照組、C5 之取消形狀 reason、帳本須涵蓋 R29)。修後 `npm test` **512 passing / 0 failing**(基準 492 + 新增 20;`node toolg/gDistRollup.mjs` 重建前後各一次)。
+
+---
+
+### R30 計時器相關測試以被測物之事件或可觀察條件為同步點,不以等待毫秒;伺服器就緒等 `ready`、自有計時器以 `opt.onTrace`
+
+**狀態:2026-10-29 新立並套用(tm-converhp 輪,主控裁定 2026-10-29;制式規格 `C:\opensrcOper\dspec\計時器相關函數之觀察回調與測試.md` P1–P7),缺口 0**〔狀態細節見 `sgud/state/state.md`〕
+
+**規則**:
+
+1. **同步點是被測物自身的事件或可觀察條件,不是時間**。測試不得以「`delay`/`sleep`/`setTimeout(resolve, N)` 之後斷言某效應**已發生**」(肯定斷言)同步被測物:高負載下被測物慢於固定等待時,正確實作也會失敗。
+2. **伺服器就緒**:`new WConverhpServer(...)` 之後一律 `await wsv.ready`(自建伺服器:已監聽且建構期事件已派發;外部 `serverHapi`:路由註冊完成且建構期事件已派發;啟動失敗 resolve 為 `false` 而不 reject)。測試自建之 node `http` stub 以 `listen` 之回呼同步。`ready` 為本套件新增之對外 API(`src/WConverhpServer.mjs`,JSDoc `@returns`);其 resolve 刻意晚於建構期事件(再接一個同長度計時器,同長度計時器依建立順序觸發),使「建構期恰 N 則事件」可在 `await ready` 後直接斷言而無競態。
+3. **本套件自有計時器**(client 之合併輪詢 `setInterval`、重試退避 `scope.delay`)提供 `opt.onTrace`(`import getTrace from 'wsemi/src/getTrace.mjs'`,單一擁有者在 wsemi):事件 `retry-wait`、`retry`、`poll-tick`(busy)、`poll-result`(state)、`poll-stop`(reason),欄位為原始值、凍結、回調同步呼叫不帶接收者、拋錯與 rejection 皆忽略、非函數忽略、未傳時不組事件物件。測試以事件為同步點(`api-envelopeShape` [#33]、`api-clientAbort` 之退避中中止)。**伺服端 `evEmitDelay`(建構期 1ms 脫勾派發)不加 onTrace**(主控裁定 ⑥):測試改等 `ready` 或被測物自己的 `error` 事件。
+4. **無事件可等之效應**(檔案已刪、fd 已關、計數達到)以 `w.waitFun(條件, { timeInterval: 10, attemptNum: 3000 })` 等**斷言所需之效應本身**(條件成立才返回);`attemptNum` 為防懸置上限,不是同步點。
+5. **效應「不該等慢路徑」類(效能時限,規格 P6)不以牆鐘斷言**(`Date.now() - t0 < N`、`lag < N`):使慢路徑由測試持有、永不自行完成(deferred / `hold` 夾具 / `timeout: 0`),被測物若錯誤地等待它則整案懸置到看門狗(`within`)而**必定失敗**(與機器快慢無關);正確實作於慢路徑仍未完成時即 settle。不以放大門檻或重試處理。
+6. **否定觀察窗(固定等待之後斷言「沒有發生/計數為 0」)屬 A 類,允許**:負載只會漏抓不會誤判;窗保持短(≤2 秒)並註解「否定觀察窗」。**看門狗/防懸置上限(`Promise.race` 搭計時器)不是同步點**,其計時器須在 `finally` 清除。
+7. 測試註解不得再寫「eeEmit 為 setTimeout 發送/派發」:`evEmit` 為**同步**派發(R11),僅建構期失敗事件以 `evEmitDelay` 脫勾。
+
+**why**:`before` 啟動伺服器後 `await delay(600～1200)` 為 45 檔之同一樣式——高負載下啟動慢於等待即整檔失敗;直接 C 案以 `delay(N)` 當收尾之同步點(fd 關閉、刪檔、事件),負載下收尾較晚即誤失敗。計時器與 I/O 同在一個事件迴圈而互相抵銷,故單純 CPU 壓力常不誤失敗(規格 P7、`sgud/state/state.md` 負載試驗之誠實陳述),但事件同步消除了「固定時刻」假設。
+
+**對標**:wsemi `waitFun`/`domDetect` 等(`opt.onTrace`,wsemi-run06～09);Node `net.Server` 的 `'listening'` 事件、hapi `server.start()` 之 promise;Playwright 以條件偵測等待而非固定 `waitForTimeout`。
+
+**盤點指令**
+```bash
+git grep -nE "await (w\.)?delay\((500|600|700|800|900|1000|1200)\)" -- "test/api-*.test.mjs"        # 殘餘須全為 A 類(否定窗/輪詢間隔/settle), 逐項見下表; 新增者須先判類
+git grep -nE "待伺服器啟動" -- test                                                                   # 須只剩 test/tools/e2e-setup.mjs(e2e 輔助, 不屬本輪)
+git grep -nE "Date\.now\(\) - t0 <|lag < [0-9]" -- "test/api-*.test.mjs"                               # (d) 牆鐘斷言: 本輪 6 案已除, 殘餘須為 B 類(unit-abortScope 等)並有理由
+git grep -n "\.ready" -- "test/api-*.test.mjs" | wc -l                                                  # 鉤子/輔助改等 ready 之站點數
+npx mocha --no-parallel test/api-serverReady.test.mjs test/api-clientTrace.test.mjs --timeout 180000  # ready 與 onTrace 之語意/P3/P4(須獨占 port 區段, 用測試鎖執行)
+```
+
+**站點全集與判準**(2026-10-29 本輪確定,與 `timer-inv01-明細表` 之差異見 state.md):
+
+| 類 | 站點 | 數量 | 狀態 |
+|---|---|---|---|
+| C 鉤子 | 45 檔之 `before` 內 `delay(600～1200)` → `await <wsv>.ready`(多台 `Promise.all`;stub http 以 `listen` 回呼) | 45 檔(另 `api-startupErrors` 3、`api-optionsFailClosed` 6 個案內啟動亦改) | 已套 |
+| C 輔助 | `api-clientErrorEvents`/`api-noListener` 之 `mkServer`、`api-optionsFailClosed` 之 `corsCase` | 3 | 已套 |
+| C 直接 | 20 案(abortDuringAdmit 2、clientAbort 4、envelopeShape 1〔onTrace〕、optionsFailClosed 5、optionsRange 2、processSafety 1、sliceAbort 1〔+對照組 1〕、sliceDurable 1、startupErrors 3) | 20 | 已套 |
+| (d) 效能時限 | clientAbort 4(getToken 懸置、伺服端處理中、整檔雜湊、串流接收)、downloadShape 1、uploadInputTypes 1 | 6 | 已套(牆鐘斷言除,改邏輯順序) |
+| B 順手 | `api-clientAbort` 退避中中止(以 `retry-wait` 事件取代落點估計與 lag) | 1 | 已套 |
+| 刻意不動 | A 類否定窗/settle/fixture 延遲/看門狗;B 輪詢上限(`waitFor`、`pollUntilSettled`、`waitFile`);`unit-abortScope` 之 B 牆鐘 2 案;`api-hostLifecycle` 子行程輪詢 | — | 刻意不套(理由:否定窗負載只漏抓不誤判;輪詢上限已為條件式等待,上限即看門狗;abortScope 兩案為 B 而非 C/(d),非本輪範圍) |
+
+**機械化保護**:`test/api-serverReady.test.mjs`(`ready` 語意:5 案)、`test/api-clientTrace.test.mjs`(`opt.onTrace` 事件語意與 P3/P4 五種回調形態)、`test/unit-ruleSites.test.mjs`(帳本須涵蓋 R30)。
+
+**分辨力**(2026-10-29 實測;變異執行器對「新測試」與「改造前快照之舊測試」各跑一次同一份被變異之 src):
+- **一般變異**(拿掉案所保護之行為)40 項有效(另 1 項 `M-CA-411` 因對照組單獨 `--grep` 執行即紅〔新舊版皆然,既有時序相依〕而無效),第一輪新版擊殺 32;存活之 8 項為(a)單層防線變異——`ctx.run` 入口競速／`signal` 皆有多層冗餘防護,單拿掉一層不使「中止即拒絕」失效(clientAbort 之 4 個 (d) 案),(b)`ready` 提前 resolve 但未同時讓啟動變慢(`api-serverReady` 自建模式 1 項、鉤子代表檔 3 項;本機 start 僅數 ms,首個請求仍晚於它)。該 8 項另以「多層同時拿掉」(`abortScope` 忽略 signal)與「提前 resolve + 啟動延遲 300ms」之補強變異重做(`own2`),結果見本輪報告 §5.3(`tm-converhp-修正報告.md`)。
+- 新測試之分辨力優於舊測試者:`M-CA-466`(退避計時器不可被中止:新版以 `retry` 事件序擊殺,舊版 `lag<300` 因入口競速仍立即拒絕而存活)、`M-uploadInputTypes-1`(入口檢核晚於 getToken:新版持有 getToken 擊殺,舊版 `<1000ms` 存活)。
+- **延遲啟動對照實驗**(`server.start()` 前插 1500ms,只讓被測伺服器單獨變慢)8 個鉤子代表檔:**新版 8／8 仍綠(等 `ready`)、舊版 8／8 紅**(clientToken 1 紅、failureNotSuccess 5 紅、uploadResultShape 1 紅、envelopeIntegrity 4 紅、optionsRange 5 紅、startupErrors 2 紅、sliceAbort 1 紅、abortDuringAdmit 1 紅)——舊鉤子之固定等待(600～1200ms)在啟動慢於它時整檔失敗,此即本規則要消除之假設。
+- 負載試驗(8 壓力行程／lag 400:1000／lag 1500:3000 各 5 次,24 檔 136 案):C 類案失敗改造前 1(abortDuringAdmit「/main」於 lag 下 1/5)→改造後 0;鉤子失敗前後皆 0(同一事件迴圈內計時器與 I/O 同被延遲而互抵,見 state.md)。
 
 ---
 

@@ -167,7 +167,7 @@ describe('api-hostileErrorValues', function() {
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('handler', () => {})
 
-        await w.delay(1200) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 

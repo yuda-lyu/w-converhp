@@ -61,7 +61,7 @@ describe('api-sliceDurable', function() {
             pm.resolve({ size: fs.statSync(input.path).size })
         })
         wsv.on('error', (e) => errs.push(String(e)))
-        await w.delay(800)
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -103,7 +103,11 @@ describe('api-sliceDurable', function() {
         })
         finalErrFor = ''
         let o = w.u8arr2obj(new Uint8Array(await r.arrayBuffer()))
-        await w.delay(200)
+
+        //回應已到, 待伺服器收尾(R-COND): 以斷言所需之效應本身為同步點, 不以固定毫秒 —— error 事件已發(errs.length>=1)且失敗之切片檔已被清除(刪除發生於寫入串流 close 事件之後, 與 reply 競速)
+        let fpChunk = path.resolve(pathUploadTemp, 'finalerr01_0')
+        await w.waitFun(() => errs.length >= 1 && fs.existsSync(fpChunk) === false, { timeInterval: 10, attemptNum: 3000 })
+
         assert.strict.deepEqual(r.status, 200)
         assert.strict.deepEqual(r.headers.get('return-type'), 'error', JSON.stringify(o))
         assert.strict.deepEqual(o.error, 'write chunk[1/1] of packageId[finalerr01] error')

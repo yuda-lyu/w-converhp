@@ -1,7 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
-import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 import wPorts from './tools/ports.mjs'
@@ -50,7 +49,7 @@ describe('api-uploadPollSerial', function() {
         })
         wsv.on('error', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 

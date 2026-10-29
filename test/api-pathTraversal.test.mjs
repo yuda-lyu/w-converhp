@@ -82,7 +82,7 @@ describe('api-pathTraversal', function() {
         wsv.on('upload', (input, pm) => pm.resolve({ ok: true }))
         wsv.on('error', (e) => errs.push(String(e)))
 
-        await w.delay(1000)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(function() {
@@ -155,7 +155,7 @@ describe('api-pathTraversal', function() {
             }
             await w.delay(500)
         }
-        await w.delay(200) //eeEmit 為 setTimeout 發送
+        await w.delay(200) //evEmit 為同步派發(error 事件於 merge-slices-get 回應前即已發出), 此為輪詢結束後之 settle
 
         //前端: 固定訊息, 無路徑, 無 reason/path 欄位
         assert.strict.deepEqual(r.success.state, 'error', JSON.stringify(r))
@@ -197,8 +197,7 @@ describe('api-pathTraversal', function() {
                     res.end(body)
                 })
             })
-            srv.listen(port2)
-            await w.delay(300)
+            await new Promise((resolve) => srv.listen(port2, resolve)) //待 stub 開始監聽(listen 回呼), 不以固定毫秒等待
             fs.mkdirSync(fdDownload, { recursive: true })
             wo = new WConverhpClient({ url: `http://127.0.0.1:${port2}`, apiName: 'api', getToken: () => 't', retryDownload: 0 })
             wo.on('error', () => {})

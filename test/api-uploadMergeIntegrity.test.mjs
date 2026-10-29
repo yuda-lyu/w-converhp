@@ -70,7 +70,7 @@ describe('api-uploadMergeIntegrity', function() {
             calls.push(fs.statSync(input.path).size)
             pm.resolve({ size: fs.statSync(input.path).size })
         })
-        await w.delay(600)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {

@@ -147,7 +147,7 @@ describe('api-downloadShape', function() {
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -183,7 +183,7 @@ describe('api-downloadShape', function() {
             assert.strict.deepEqual(r.returnType, 'error', tag)
             assert.strict.deepEqual(r.retryable, null, tag) //應用端狀態, 依重試原則不得標示不重試
             assert.strict.deepEqual(r.error, msg, tag)
-            await w.delay(100) //eeEmit 為 setTimeout 發送
+            await w.delay(100) //evEmit 為同步派發(error 事件於回應前即已發出), 此窗僅供否定觀察(負載只會漏抓不會誤判)
             assert.strict.deepEqual(errs.length, 1, `${tag} errs=${JSON.stringify(errs)}`)
             assert.strict.deepEqual(errs[0].includes(`download fileId[${fileId}]`), true, errs[0])
         }
@@ -302,16 +302,32 @@ describe('api-downloadShape', function() {
     })
 
     it('nodejs client 對形狀錯誤須即時以該錯誤 reject, 而非等到閒置逾時', async function() {
-        this.timeout(20000)
-        let wo = new WConverhpClient({ url: `http://127.0.0.1:${port}`, apiName: 'api', getToken: () => 'token-for-test', retryDownload: 0, timeout: 15000 })
+        this.timeout(30000)
+
+        //timeout: 0 為不逾時(axios 閒置逾時關閉), 以邏輯順序而非牆鐘證明「即時 reject」:
+        //client 若錯誤地等待閒置逾時才 reject(或伺服器懸置連線而 client 只能等逾時), 無逾時可等即整案懸置, 由看門狗判為 pending 而必定失敗(與機器快慢無關);
+        //正確實作於收到形狀錯誤封包即 reject, 不倚賴任何逾時, 故看門狗不會觸發
+        let wo = new WConverhpClient({ url: `http://127.0.0.1:${port}`, apiName: 'api', getToken: () => 'token-for-test', retryDownload: 0, timeout: 0 })
         wo.on('error', () => {})
-        let t0 = Date.now()
-        let r = await Promise.race([
-            wo.download('no-stream', () => {}, { fdDownload }).then((msg) => ({ state: 'resolve', msg })).catch((msg) => ({ state: 'reject', msg })),
-            w.delay(5000).then(() => ({ state: 'pending' })),
-        ])
+
+        //看門狗: 僅防懸置(正確實作永不觸發), 不是同步點; 結束時清除計時器並以 AbortController 中止在途請求, 懸置時不遺留連線與部分檔
+        let ac = new AbortController()
+        let tmWatchdog = null
+        let pmWatchdog = new Promise((resolve) => {
+            tmWatchdog = setTimeout(() => resolve({ state: 'pending' }), 15000)
+        })
+        let r = null
+        try {
+            r = await Promise.race([
+                wo.download('no-stream', () => {}, { fdDownload, signal: ac.signal }).then((msg) => ({ state: 'resolve', msg })).catch((msg) => ({ state: 'reject', msg })),
+                pmWatchdog,
+            ])
+        }
+        finally {
+            clearTimeout(tmWatchdog)
+            ac.abort()
+        }
         assert.strict.deepEqual(r, { state: 'reject', msg: 'invalid streamRead' })
-        assert.strict.deepEqual(Date.now() - t0 < 3000, true, `${Date.now() - t0}ms`)
     })
 
 })

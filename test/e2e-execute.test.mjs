@@ -97,7 +97,7 @@ window.tBadFunc = async () => {
     let errs = []
     wo.on('error', (e) => errs.push(e))
     let r = await cat(() => wo.execute('nofunc', {}, () => {}))
-    await new Promise((res) => setTimeout(res, 300)) //eeEmit 以 setTimeout 發送
+    await new Promise((res) => setTimeout(res, 300)) //evEmit 為同步派發(事件於回應前即已發出), 此為 settle 窗, 僅供否定觀察(防多餘第二則)
     return { state: r.state, msg: r.msg, errs }
 }
 

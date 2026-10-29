@@ -76,7 +76,7 @@ describe('api-envelopeShape', function() {
             pm.resolve({ ok: 1 })
         })
 
-        await w.delay(1200) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(function() {
@@ -97,7 +97,7 @@ describe('api-envelopeShape', function() {
         })
         let buf = Buffer.from(await r.arrayBuffer())
         let o = u8arr2obj(new Uint8Array(buf))
-        await w.delay(200) //eeEmit 為 setTimeout 派發
+        await w.delay(200) //evEmit 為同步派發(事件皆於回應前發出), 此等待僅為否定觀察窗(防多餘第二則), 非同步點
         return { status: r.status, returnType: r.headers.get('return-type'), obj: o, nErrs: errs.length }
     }
 
@@ -176,22 +176,56 @@ describe('api-envelopeShape', function() {
         this.timeout(40000)
         uploadMode = 'bigint'
         errs = []
-        let wo = new WConverhpClient({ url: `http://127.0.0.1:${port}`, apiName: 'api', getToken: () => 't', retryUpload: 0, timeout: 8000 })
+
+        //onTrace, client 之觀察回調: 合併輪詢每條查詢有結果時通知 poll-result, 以之為同步點而不以固定毫秒等待輪詢之 2 秒週期
+        //伺服端同一輪查詢之 error 事件皆在回應之前同步發出, 故收到本輪結果時該輪事件已齊; 取第一個非 pending 者
+        //(pending 代表合併尚未完成、伺服器尚未呼叫應用端, 還沒有可觀察之失敗)
+        let resolveTrace = null
+        let pmTrace = new Promise((resolve) => {
+            resolveTrace = resolve
+        })
+        let wo = new WConverhpClient({
+            url: `http://127.0.0.1:${port}`,
+            apiName: 'api',
+            getToken: () => 't',
+            retryUpload: 0,
+            timeout: 8000,
+            onTrace: (e) => {
+                if (e.type === 'poll-result' && e.state !== 'pending') {
+                    resolveTrace(e)
+                }
+            },
+        })
         wo.on('error', () => {})
 
         //持續輪詢者於此不等其結束, 只觀察一輪之事件數
         let pmUp = wo.upload('b.bin', Buffer.alloc(400, 66), () => {}).catch(() => {})
-        await w.delay(6000)
+        let tWatch = null
+        try {
 
-        //每一輪查詢應恰產生一則「無法序列化」之事件; 取第一輪之窗口計數
-        let nSer = errs.filter((v) => v.includes('can not be serialized')).length
-        let nStore = errs.filter((v) => v.includes('can not serialize consumed result')).length
-        assert.strict.deepEqual(nStore, 0, `mmg 不得另報一則儲存失敗(同一失敗兩則): ${JSON.stringify(errs)}`)
-        assert.strict.deepEqual(nSer >= 1, true, `外層須報告此失敗: ${JSON.stringify(errs)}`)
-        assert.strict.deepEqual(nSer, errs.length, `不得有其他來源之事件混入: ${JSON.stringify(errs)}`)
+            //等第一輪合併查詢之結果(事件), 防懸置看門狗僅避免等不到時懸置, 不作為同步點
+            await Promise.race([
+                pmTrace,
+                new Promise((resolve, reject) => {
+                    tWatch = setTimeout(() => reject(new Error('等不到事件:poll-result')), 30000)
+                }),
+            ])
 
-        uploadMode = 'normal'
-        await pmUp
+            //每一輪查詢應恰產生一則「無法序列化」之事件; 取第一輪之窗口計數
+            let nSer = errs.filter((v) => v.includes('can not be serialized')).length
+            let nStore = errs.filter((v) => v.includes('can not serialize consumed result')).length
+            assert.strict.deepEqual(nStore, 0, `mmg 不得另報一則儲存失敗(同一失敗兩則): ${JSON.stringify(errs)}`)
+            assert.strict.deepEqual(nSer >= 1, true, `外層須報告此失敗: ${JSON.stringify(errs)}`)
+            assert.strict.deepEqual(nSer, errs.length, `不得有其他來源之事件混入: ${JSON.stringify(errs)}`)
+
+        }
+        finally {
+            clearTimeout(tWatch)
+
+            //改回 normal 使下一輪輪詢得 success, 輪詢隨之結束
+            uploadMode = 'normal'
+            await pmUp
+        }
     })
 
 })

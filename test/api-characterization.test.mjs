@@ -140,7 +140,7 @@ describe('api-characterization', function() {
         })
         await serverHapi.start()
 
-        await w.delay(1200) //待伺服器啟動
+        await Promise.all([wsv.ready, wsvExt.ready]) //待兩台伺服器就緒(ready): wsv 自建伺服器已開始監聽、wsvExt 之路由已註冊於(已 await start 之)外部 serverHapi
     })
 
     after(function() {
@@ -164,7 +164,7 @@ describe('api-characterization', function() {
             method: opt.method,
             range: opt.range,
             textLimit: 80,
-            settleMs: 150, //eeEmit 為 setTimeout 派發
+            settleMs: 150, //evEmit 為同步派發(事件於回應前即已發出), 此窗僅供否定觀察(負載只會漏抓不會誤判)
         })
         return { ...r, nErrs: errs.length }
     }

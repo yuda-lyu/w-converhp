@@ -86,13 +86,33 @@ describe('api-clientAbort', function() {
         st = {
             errs: [], //伺服端 error 事件
             reqs: [], //通過權限之請求(handler 事件): { api, t }
-            exec: { calls: 0, done: 0 },
+            exec: { calls: 0, done: 0, held: [] }, //held: 'hold' 開頭之 func 由應用端持有, 由測試釋放(不以計時器模擬慢)
             upload: { calls: 0, froms: [], mode: 'accept', onCall: null },
-            download: { calls: 0 },
+            download: { calls: 0, held: null }, //held: fileId 為 'hold' 時應用端交出之串流(送出第一塊後持有, 不自行結束)
             onHandler: null,
         }
     }
     resetSt()
+
+    //within, 看門狗: p 於 ms 內未 settle 即以明確訊息拒絕(被測物若錯誤地等待持有中之慢路徑, 整案會懸置至此而必定失敗); 此計時器僅防懸置, 不是同步點
+    let within = (p, ms, label) => {
+        let t = null
+        let wd = new Promise((resolve, reject) => {
+            t = setTimeout(() => reject(new Error(`[${label}] ${ms}ms 內未 settle(被測物疑似在等待持有中之慢路徑)`)), ms)
+        })
+        return Promise.race([p, wd]).finally(() => clearTimeout(t))
+    }
+
+    //releaseHeld, 釋放應用端持有之 execute 請求(使其 resolve), 回傳釋放數
+    let releaseHeld = () => {
+        let hs = st.exec.held
+        st.exec.held = []
+        for (let pm of hs) {
+            st.exec.done += 1
+            pm.resolve({ v: 'hold' })
+        }
+        return hs.length
+    }
 
     //genRec, 一次被測呼叫之觀察紀錄: error 事件、cbProgress、console 重試訊息、getToken 之每一次輸出各記一筆, 並記當下 signal 是否已中止(見檔頭之量測定義)
     let curRec = null
@@ -183,6 +203,11 @@ describe('api-clientAbort', function() {
                 pm.reject({ reason: 'cancelled', code: 7 })
                 return
             }
+            if (String(func).startsWith('hold')) {
+                //持有至測試釋放(releaseHeld): 慢路徑由測試控制, 被測物若等待它則整案懸置(見 within)
+                st.exec.held.push(pm)
+                return
+            }
             if (String(func).startsWith('slow')) {
                 setTimeout(() => {
                     st.exec.done += 1
@@ -211,6 +236,14 @@ describe('api-clientAbort', function() {
         })
         ws.on('download', (input, pm) => {
             st.download.calls += 1
+            if (input.fileId === 'hold') {
+                //持有串流: 送出第一塊後不再送也不結束, 由測試於結束前銷毀(被測物若等串流結束則整案懸置, 見 within)
+                let rs = new stream.Readable({ read() {} })
+                rs.push(Buffer.alloc(1000, 1))
+                st.download.held = rs
+                pm.resolve({ streamRead: rs, filename: 'hold.bin', fileSize: 60000, fileType: 'application/octet-stream' })
+                return
+            }
             if (input.fileId === 'slow') {
                 //慢串流: 每 50ms 1000B, 共 60 次(約 3 秒)
                 let n = 0
@@ -253,7 +286,7 @@ describe('api-clientAbort', function() {
             }
             return c
         })
-        await w.delay(1000) //待伺服器啟動
+        await Promise.all(wss.map((ws) => ws.ready)) //待三台伺服器就緒(ready)
     })
 
     after(async function() {
@@ -374,15 +407,17 @@ describe('api-clientAbort', function() {
             let rec = genRec()
             let ac = new AbortController()
             rec.signal = ac.signal
-            let wo = mkClient(rec, { getToken: () => w.delay(1500).then(() => 't') })
+            let gate = w.genPm() //getToken 懸置至測試釋放(不以計時器模擬慢): 被測物若等待它則整案懸置至看門狗而必定失敗
+            let wo = mkClient(rec, { getToken: () => gate })
             let p = settle(wo.execute('f', {}, null, { signal: ac.signal }))
-            setTimeout(() => rec.abort(ac), 100)
-            let r = await p
-            let lag = Date.now() - rec.tAbort
-            await w.delay(1700)
+            await waitFor(() => rec.tokens.length >= 1) //getToken 已被呼叫(懸置中)
+            rec.abort(ac)
+            let r = await within(p, 10000, '懸置中之 getToken 不得被等待') //須於 gate 仍未釋放時即 settle(立即拒絕之邏輯證據, 取代牆鐘 lag)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
-            assert.strict.deepEqual(lag < 500, true, `中止至拒絕 ${lag}ms`)
+            assert.strict.deepEqual(st.reqs.length, 0) //拒絕當下尚未送出任何請求
+            gate.resolve('t') //其後 getToken 之 promise 才 resolve 亦不送出
+            await w.delay(200) //否定觀察窗(負載只會漏抓不會誤判)
             assert.strict.deepEqual(rec.tokens.length, 1) //中止前之那一次
             assert.strict.deepEqual(rec.after('tokens').length, 0)
             assert.strict.deepEqual(st.reqs.length, 0)
@@ -419,7 +454,7 @@ describe('api-clientAbort', function() {
                 }
             }
             let r = await settle(wo.execute('f', { big: new Uint8Array(32 * 1024 * 1024) }, null, { signal: ac.signal }))
-            await w.delay(800)
+            await waitFor(() => st.errs.length >= 1) //等伺服端偵測到斷線並發出中斷事件(事件/條件, 不以固定毫秒)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
             assert.strict.deepEqual(rec.events.length, 0)
@@ -432,16 +467,17 @@ describe('api-clientAbort', function() {
             let ac = new AbortController()
             rec.signal = ac.signal
             let wo = mkClient(rec)
-            let p = settle(wo.execute('slow', {}, null, { signal: ac.signal }))
-            setTimeout(() => rec.abort(ac), 200)
-            let r = await p
-            let lag = Date.now() - rec.tAbort
-            await w.delay(800)
+            let p = settle(wo.execute('hold', {}, null, { signal: ac.signal }))
+            await waitFor(() => st.exec.calls >= 1) //伺服端已將請求交給應用端(應用端持有中, 處理中)
+            rec.abort(ac)
+            let r = await within(p, 10000, '應用端處理中不得被等待') //須於應用端仍未完成時即 settle(立即拒絕之邏輯證據, 取代牆鐘 lag)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
-            assert.strict.deepEqual(lag < 300, true, `中止至拒絕 ${lag}ms`)
+            assert.strict.deepEqual({ calls: st.exec.calls, done: st.exec.done, held: st.exec.held.length }, { calls: 1, done: 0, held: 1 }) //拒絕當下應用端尚未完成
+            releaseHeld() //應用端照常執行完畢(C11 結果未知)
             assert.strict.deepEqual(rec.events.length, 0)
-            assert.strict.deepEqual(st.exec, { calls: 1, done: 1 })
+            await w.delay(150) //否定觀察窗: 應用端完成後伺服端回應已無人接收, 其後不得有 error 事件(負載只會漏抓不會誤判)
+            assert.strict.deepEqual({ calls: st.exec.calls, done: st.exec.done }, { calls: 1, done: 1 })
             assert.strict.deepEqual(st.errs, [])
         })
 
@@ -467,17 +503,17 @@ describe('api-clientAbort', function() {
             let rec = genRec()
             let ac = new AbortController()
             rec.signal = ac.signal
-            let wo = mkClient(rec, { port: portClosed, opt: { retryMain: 3 } })
+            let tr = [] //client 之 onTrace 事件(重試退避: retry-wait 為即將退避等待, retry 為退避結束即將重試)
+            let wo = mkClient(rec, { port: portClosed, opt: { retryMain: 3, onTrace: (e) => tr.push(e) } })
             let p = settle(wo.execute('f', {}, null, { signal: ac.signal }))
-            await waitFor(() => rec.events.length >= 1)
-            await w.delay(150) //落在第 1 次退避(1 秒)之中
+            await waitFor(() => tr.some((e) => e.type === 'retry-wait')) //已進入第 1 次退避(事件同步, 不以固定毫秒落點)
             rec.abort(ac)
-            let r = await p
-            let lag = Date.now() - rec.tAbort
-            await w.delay(2000) //未中止時第 2 次嘗試約於第 1 次失敗後 1 秒發生
+            let r = await within(p, 10000, '退避中中止須拒絕')
+            assert.strict.deepEqual(tr.map((e) => e.type), ['retry-wait'], `拒絕當下須尚無 retry 事件(退避計時器未被中止則拒絕晚於退避結束, retry 事件先發): ${JSON.stringify(tr)}`) //立即拒絕之邏輯證據, 取代牆鐘 lag
+            await w.delay(2000) //否定觀察窗: 未中止時第 2 次嘗試約於第 1 次失敗後 1 秒發生(負載只會漏抓不會誤判)
+            assert.strict.deepEqual(tr.map((e) => e.type), ['retry-wait'], JSON.stringify(tr))
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
-            assert.strict.deepEqual(lag < 300, true, `中止至拒絕 ${lag}ms(退避計時器未被中止時約 850ms)`)
             assert.strict.deepEqual(rec.events.length, 1)
             assert.strict.deepEqual(rec.after('events').length, 0)
             assert.strict.deepEqual(rec.logs.map((x) => /^wait [0-9.]+\(second\) to retry\.\.\.$/.test(x.v)), [true]) //第 1 次退避之訊息, 於中止前印出
@@ -641,11 +677,11 @@ describe('api-clientAbort', function() {
             let p = settle(wo.upload('u1.bin', big, null, { signal: ac.signal }))
             rec.abort(ac)
             let r = await p
-            let lag = Date.now() - rec.tAbort
-            await w.delay(1500)
+            let atReject = { reqs: st.reqs.length, tokens: rec.tokens.length } //拒絕當下即須尚未呼叫 getToken、尚未送出任何請求(雜湊完成後本會立即送 check-total-hash), 取代牆鐘 lag
+            await w.delay(1500) //否定觀察窗: 其後亦不得有請求(負載只會漏抓不會誤判)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
-            assert.strict.deepEqual(lag < 500, true, `中止至拒絕 ${lag}ms`)
+            assert.strict.deepEqual(atReject, { reqs: 0, tokens: 0 })
             assert.strict.deepEqual(st.reqs.length, 0)
             assert.strict.deepEqual(rec.tokens.length, 0)
             assert.strict.deepEqual(rec.events.length, 0)
@@ -697,7 +733,7 @@ describe('api-clientAbort', function() {
                 }
             }
             let r = await settle(wo.upload('big.bin', buf, null, { signal: ac.signal }))
-            await w.delay(800)
+            await waitFor(() => st.errs.length >= 1 && fs.readdirSync(fdUpBig).filter((n) => n.startsWith(`${h}_`)).length === 0) //等伺服端發出中斷事件且不完整切片已刪(事件/條件, 不以固定毫秒)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
             assert.strict.deepEqual(rec.events.length, 0)
@@ -742,8 +778,8 @@ describe('api-clientAbort', function() {
             }
             let r = await settle(wo.upload('u5.bin', buf, null, { signal: ac.signal }))
             hookRes = null
-            await w.delay(1500)
             let fpMerged = path.join(fdUp, h)
+            await waitFor(() => fs.existsSync(`${fpMerged}.done`) && fs.statSync(fpMerged).size === buf.length) //等伺服端合併完成(.done 標記與合併檔大小)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
             assert.strict.deepEqual(rec.events.length, 0)
@@ -763,11 +799,11 @@ describe('api-clientAbort', function() {
             let h = await hashOf(buf)
             st.upload.mode = 'delay' //應用端 1 秒後才接受
             st.upload.onCall = () => {
-                setTimeout(() => rec.abort(ac), 200)
+                rec.abort(ac) //應用端被呼叫(merge-slices-get 在途、應用端處理中)之當下中止, 不以 200ms 計時器估落點
             }
             let r = await settle(wo.upload('u6.bin', buf, null, { signal: ac.signal }))
             st.upload.onCall = null
-            await w.delay(1500)
+            await waitFor(() => fs.readdirSync(fdUp).some((n) => n.startsWith(`${h}.q`) && n.endsWith('.ro'))) //等應用端(1 秒後接受)之結果落地為 .ro
             let ro = fs.readdirSync(fdUp).filter((n) => n.startsWith(`${h}.q`) && n.endsWith('.ro'))
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
@@ -847,15 +883,17 @@ describe('api-clientAbort', function() {
             rec.signal = ac.signal
             let wo = mkClient(rec)
             let fd = path.join(fdDl, 'd1')
-            let p = settle(wo.download('slow', null, { fdDownload: fd, signal: ac.signal }))
-            setTimeout(() => rec.abort(ac), 500)
-            let r = await p
-            let lag = Date.now() - rec.tAbort
+            let p = settle(wo.download('hold', null, { fdDownload: fd, signal: ac.signal }))
+            await waitFor(() => fs.existsSync(fd) && fs.readdirSync(fd).length >= 1) //已開始串流接收(不完整檔已建立; 應用端持有串流不結束)
+            rec.abort(ac)
+            let r = await within(p, 10000, '串流接收中不得等待串流結束') //須於串流仍未結束時即 settle(立即拒絕之邏輯證據, 取代牆鐘 lag)
             let filesAtReject = fs.existsSync(fd) ? fs.readdirSync(fd) : [] //拒絕當下(其續行之微任務內)即須無不完整檔, 不是事後才刪
-            await w.delay(500)
+            if (st.download.held) {
+                st.download.held.destroy()
+            }
+            await w.delay(300) //否定觀察窗: 其後不得再有不完整檔或伺服端事件(負載只會漏抓不會誤判)
             assert.strict.deepEqual(r.ok, false)
             assert.strict.equal(r.e, ac.signal.reason)
-            assert.strict.deepEqual(lag < 300, true, `中止至拒絕 ${lag}ms`)
             assert.strict.deepEqual(rec.events.length, 0)
             assert.strict.deepEqual(filesAtReject, [])
             assert.strict.deepEqual(fs.existsSync(fd) ? fs.readdirSync(fd) : [], [])

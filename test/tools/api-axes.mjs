@@ -329,7 +329,7 @@ let fetchDownload = async(port, route, fileId, opt = {}) => {
         let buf = Buffer.from(await r.arrayBuffer())
         let rt = r.headers.get('return-type')
 
-        //settleMs, eeEmit 為 setTimeout 派發, 需等待才數得到事件
+        //settleMs, evEmit 為同步派發(事件於回應前即已發出), 此窗僅供否定觀察(防多餘事件; 負載只會漏抓不會誤判)
         if (opt.settleMs) {
             await w.delay(opt.settleMs)
         }

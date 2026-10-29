@@ -27,7 +27,7 @@ describe('api-startupErrors', function() {
         let evs = []
         let wsv = new WConverhpServer({ port: portOf('api-startupErrors'), useInert: false, pathUploadTemp: fpFile })
         wsv.on('error', (e) => evs.push(String(e)))
-        await w.delay(900)
+        await wsv.ready //待伺服器就緒(ready): 其 resolve 時建構期事件已派發完畢, 可直接斷言恰一則, 不以固定毫秒等待
         await wsv.stop()
         assert.strict.deepEqual(evs.length, 1, JSON.stringify(evs))
         assert.strict.deepEqual(evs[0].includes('pathUploadTemp'), true, evs[0])
@@ -39,7 +39,7 @@ describe('api-startupErrors', function() {
         let wsv = new WConverhpServer({ port: portOf('api-startupErrors', 1), useInert: false, pathUploadTemp: up })
         wsv.on('error', (e) => evs.push(String(e)))
         wsv.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: 上傳管線受理新工作前須有 upload 接聽者; 本案驗的是其後之 internal 錯誤
-        await w.delay(700)
+        await wsv.ready //待伺服器就緒(ready), 其後才可移除暫存夾以模擬執行期消失
         fs.rmSync(up, { recursive: true, force: true })
         let call = async(body) => {
             evs.length = 0
@@ -65,15 +65,17 @@ describe('api-startupErrors', function() {
     it('對照組: 埠被占時仍須於建構期恰發一則 error 事件', async function() {
         let a = new WConverhpServer({ port: portOf('api-startupErrors', 2), useInert: false, pathUploadTemp: path.join(fd, 'a') })
         a.on('error', () => {})
-        await w.delay(600)
+        let bReadyA = await a.ready //待 a 綁埠完成(ready 為 true), b 才會撞到被占用之埠
         let evs = []
         let b = new WConverhpServer({ port: portOf('api-startupErrors', 2), useInert: false, pathUploadTemp: path.join(fd, 'b') })
         b.on('error', (e) => evs.push(String(e)))
-        await w.delay(900)
+        let bReadyB = await b.ready //待 b 啟動失敗(ready 為 false)且其建構期 error 事件已派發, 不以固定毫秒等待
         await a.stop()
         await b.stop()
         assert.strict.deepEqual(evs.length >= 1, true, JSON.stringify(evs))
         assert.strict.deepEqual(evs[0].includes('start server error'), true, evs[0])
+        assert.strict.deepEqual(bReadyA, true, 'a 為埠之第一個占用者, 須啟動成功')
+        assert.strict.deepEqual(bReadyB, false, 'b 埠被占用, ready 須為 false')
     })
 
     after(function() {

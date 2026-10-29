@@ -75,7 +75,7 @@ describe('api-executeError', function() {
         wsv.on('error', () => {})
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -162,7 +162,7 @@ describe('api-executeError', function() {
             evs.push(err)
         })
         let r = await catchOf(() => wo.execute('nofunc', {}, () => {}))
-        await w.delay(200) //eeEmit為setTimeout發送, 須待其送出
+        await w.delay(200) //evEmit為同步派發(事件皆於拒絕前發出), 此等待僅為否定觀察窗(防多餘第二則), 非同步點
         assert.strict.deepEqual(r.msg, 'invalid func')
         assert.strict.deepEqual(evs, ['invalid func'])
     })

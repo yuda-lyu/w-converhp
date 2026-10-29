@@ -2,7 +2,6 @@ import assert from 'assert'
 import fs from 'fs'
 import http from 'http'
 import path from 'path'
-import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 import wPorts from './tools/ports.mjs'
@@ -43,7 +42,7 @@ describe('api-clientAttemptEvents', function() {
         })
         await new Promise((resolve) => srv500.listen(port500, '127.0.0.1', resolve))
         await new Promise((resolve) => srvHang.listen(portHang, '127.0.0.1', resolve))
-        await w.delay(700)
+        await wsv.ready //待伺服器就緒(ready); 兩台 stub 已以 listen 回呼確認開始監聽
     })
 
     after(async function() {

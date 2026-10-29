@@ -61,7 +61,7 @@ describe('api-optionsFailClosed', function() {
             pm.resolve({ streamRead: Buffer.from('abc'), filename: 'a.txt', fileSize: 3, fileType: 'text/plain' })
         })
         try {
-            await w.delay(800)
+            await wsv.ready //待伺服器就緒(ready), 其 resolve 時建構期事件必已派發完畢
             assert.strict.deepEqual(evs.length, 1, `建構期事件須恰一則, 實得 ${JSON.stringify(evs)}`)
             assert.strict.deepEqual(evs[0].includes('invalid verifyConn'), true, evs[0])
             evs.length = 0
@@ -74,7 +74,7 @@ describe('api-optionsFailClosed', function() {
                 assert.strict.deepEqual(r.headers.get('return-type'), 'error', `${k}: Return-Type`)
                 assert.strict.deepEqual(u8arr2obj(new Uint8Array(buf)).error, 'permission denied', `${k}: 錯誤封包`)
             }
-            await w.delay(200)
+            await w.delay(200) //否定觀察窗(六路由後不得有 handler/應用端呼叫/多餘事件; 負載只會漏抓不會誤判), 非同步點
             assert.strict.deepEqual(handlers, [], `權限未通過不得發 handler 事件: ${JSON.stringify(handlers)}`)
             assert.strict.deepEqual(nApp, 0, '不得呼叫應用端')
             assert.strict.deepEqual(evs, [], `permission denied 不另發事件(建構期已告知一次): ${JSON.stringify(evs)}`)
@@ -91,7 +91,7 @@ describe('api-optionsFailClosed', function() {
         wsv.on('error', (e) => evs.push(String(e)))
         wsv.on('execute', (func, input, pm) => pm.resolve({ ok: 1 }))
         try {
-            await w.delay(800)
+            await wsv.ready //待伺服器就緒(ready)
             let { url, init } = allRoutes.main.requestOf(port, 'ok')
             let r = await fetch(url, init)
             let o = u8arr2obj(new Uint8Array(Buffer.from(await r.arrayBuffer())))
@@ -112,7 +112,7 @@ describe('api-optionsFailClosed', function() {
             let wsv = new WConverhpServer({ serverHapi: hs, pathUploadTemp: `${fd}/inject`, ...o })
             wsv.on('error', (e) => evs.push(String(e)))
             wsv.on('execute', (func, input, pm) => pm.resolve({ ok: 1 }))
-            await w.delay(50) //建構期事件以 evEmitDelay(1ms)脫勾派發
+            await wsv.ready //外部 serverHapi 模式之 ready 於建構期事件派發後 resolve(不等外部伺服器啟動, 不佔 port)
             let res = await hs.inject({ method: 'POST', url: '/api/main', headers: { 'authorization': 'Bearer t', 'content-type': 'application/octet-stream' }, payload: packet() })
             return { evs, returnType: res.headers['return-type'], body: u8arr2obj(new Uint8Array(res.rawPayload)) }
         }
@@ -173,7 +173,7 @@ describe('api-optionsFailClosed', function() {
             let wsv = new WConverhpServer({ port, pathUploadTemp: `${fd}/static${c.k}`, ...c.o })
             wsv.on('error', (e) => evs.push(String(e)))
             try {
-                await w.delay(800)
+                await wsv.ready //待伺服器就緒(ready), 其 resolve 時建構期事件必已派發完畢
                 let r = await fetch(`http://127.0.0.1:${port}/package.json`)
                 await r.arrayBuffer()
                 assert.strict.deepEqual(r.status, c.status, `${c.label}: GET /package.json`)
@@ -197,7 +197,7 @@ describe('api-optionsFailClosed', function() {
             let evs = []
             let wsv = new WConverhpServer({ serverHapi: hs, pathUploadTemp: `${fd}/inject-cors`, ...o })
             wsv.on('error', (e) => evs.push(String(e)))
-            await w.delay(50)
+            await wsv.ready //外部 serverHapi 模式之 ready 於建構期事件派發後 resolve
             return evs
         }
         let evs1 = await run({ corsOrigins: ['http://a.example'] })
@@ -222,7 +222,7 @@ describe('api-optionsFailClosed', function() {
         wsv.on('error', (e) => evs.push(String(e)))
         wsv.on('execute', (func, input, pm) => pm.resolve({ ok: 1 }))
         try {
-            await w.delay(800)
+            await wsv.ready //待伺服器就緒(ready), 其 resolve 時建構期事件必已派發完畢
             let acao = {}
             for (let origin of origins) {
                 let r1 = await fetch(base, { method: 'POST', headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/octet-stream', 'Origin': origin }, body: packet() })

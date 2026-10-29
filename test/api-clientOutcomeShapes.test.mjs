@@ -133,7 +133,7 @@ describe('api-clientOutcomeShapes', function() {
         })
         await new Promise((resolve) => srvSpa.listen(portSpa, resolve))
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready); srvSpa 已以 listen 回呼確認開始監聽
     })
 
     after(async function() {

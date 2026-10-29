@@ -1,6 +1,5 @@
 import assert from 'assert'
 import fs from 'fs'
-import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 import wPorts from './tools/ports.mjs'
@@ -54,7 +53,7 @@ describe('api-clientToken', function() {
 
             pm.resolve('ok')
         })
-        await w.delay(600)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {

@@ -133,7 +133,7 @@ describe('api-processSafety', function() {
             errs.push(err)
         })
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -180,7 +180,8 @@ describe('api-processSafety', function() {
         wsv2.on('error', (err) => {
             errs2.push(err)
         })
-        await w.delay(1500)
+        let bReady2 = await wsv2.ready //待第二台啟動失敗(ready 為 false, 埠被 wsv 占用)且其建構期 error 事件已派發, 不以固定毫秒等待
+        assert.strict.deepEqual(bReady2, false, '埠被占用, 第二台之 ready 須為 false')
         assert.strict.deepEqual(errs2.length, 1, JSON.stringify(errs2))
         assert.strict.deepEqual(errs2[0].indexOf('start server error') === 0 && errs2[0].indexOf('EADDRINUSE') > 0, true, errs2[0])
         let re = await mkClient().execute('ok', {}, () => {})
@@ -254,7 +255,7 @@ describe('api-processSafety', function() {
         })
         let r = await catchOf(() => wo.execute('nofunc', {}, () => {}))
         assert.strict.deepEqual(r, { state: 'reject', msg: 'invalid func' })
-        await w.delay(200) //eeEmit 為 setTimeout 發送, 待其送出並經包裝攔截
+        await w.delay(200) //evEmit 為同步派發(於呼叫端堆疊上直接 emit 並以 try 攔截), 此為 settle: 留短窗確認 client 端 error 監聽器拋錯已被攔截而行程仍存活
     })
 
 })

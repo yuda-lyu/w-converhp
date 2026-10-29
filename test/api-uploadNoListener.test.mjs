@@ -75,7 +75,7 @@ describe('api-uploadNoListener', function() {
         wsvB.on('upload', onUploadB)
         wsvC = new WConverhpServer({ port: portC, useInert: false, pathUploadTemp: fdC, sizeSlice })
         wsvC.on('error', (e) => errsC.push(String(e)))
-        await w.delay(800)
+        await Promise.all([wsvA.ready, wsvB.ready, wsvC.ready]) //待三台伺服器就緒(ready); A 雖無 upload 接聽者仍會監聽
     })
 
     after(async function() {

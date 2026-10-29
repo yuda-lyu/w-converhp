@@ -1,7 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
-import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import axes from './tools/api-axes.mjs'
 import wPorts from './tools/ports.mjs'
@@ -114,7 +113,7 @@ describe('api-sourceTraps', function() {
             }
         })
 
-        await w.delay(1200) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(function() {
@@ -128,7 +127,7 @@ describe('api-sourceTraps', function() {
     //call, 請求形狀取自路由軸(test/api-axes.mjs), 不在本檔另寫一份
     let call = async(route, fileId) => {
         errs = []
-        let r = await fetchDownload(port, route, fileId, { settleMs: 180 }) //eeEmit 為 setTimeout 派發
+        let r = await fetchDownload(port, route, fileId, { settleMs: 180 }) //evEmit 為同步派發, 此等待僅為防多餘第二則之觀察窗
         return { ...r, errs: [...errs] }
     }
 

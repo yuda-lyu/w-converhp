@@ -38,7 +38,7 @@ describe('api-uploadInputTypes', function() {
             let b = fs.readFileSync(input.path)
             pm.resolve({ size: b.length, hex: b.subarray(0, 8).toString('hex') + b.subarray(-8).toString('hex') })
         })
-        await w.delay(600)
+        await wsv.ready //待伺服器就緒(ready)
         wc = new WConverhpClient({ url: `http://127.0.0.1:${port}`, retryUpload: 0, sizeSlice: 256 * 1024 })
         wc.on('error', (e) => evs.push(e))
     })
@@ -97,14 +97,49 @@ describe('api-uploadInputTypes', function() {
     })
 
     it('不支援之輸入須於入口以明確訊息拒絕, 且恰發一則 error 事件, 不得送出任何請求', async function() {
-        for (let [label, inp] of [['null', null], ['undefined', undefined], ['數值', 123], ['plain object', { a: 1 }]]) {
-            evs.length = 0
-            let t0 = Date.now()
-            let r = await wc.upload('x.bin', inp, () => {}).then((v) => ({ ok: v }), (e) => ({ err: e }))
-            assert.strict.deepEqual(w.isestr(r.err), true, `${label}: 須 reject 字串訊息, 實得 ${JSON.stringify(r)}`)
-            assert.strict.deepEqual(r.err.includes('input'), true, `${label}: 訊息須指出是輸入之問題, 實得 ${r.err}`)
-            assert.strict.deepEqual(evs.length, 1, `${label}: 須恰一則 error 事件, 實得 ${evs.length}`)
-            assert.strict.deepEqual(Date.now() - t0 < 1000, true, `${label}: 須於入口拒絕而非進入重試鏈`)
+        //R-D(不以牆鐘斷言「於入口拒絕」): 改以持有(hold)之 getToken 為邏輯證據。client 唯一之請求呼叫點(axios)之前必先取 token(fetchToken),
+        //故若入口檢核失效而走入網路路徑, 將懸置於永不 settle 之 getToken 而本案必定失敗(與機器快慢無關);
+        //正確實作於取 token 之前即 reject, 拒絕當下 getToken 之呼叫數須為 0(即尚無任何請求送出)。入口檢核不涉及網路, 此邏輯證據與原「<1000ms」等價
+        let holds = []
+        let nToken = 0
+        let wd = new WConverhpClient({
+            url: `http://127.0.0.1:${port}`,
+            retryUpload: 0,
+            sizeSlice: 256 * 1024,
+            getToken: () => {
+                nToken += 1
+                let pm = w.genPm() //持有: 不 resolve, 案結束時於 finally 釋放
+                holds.push(pm)
+                return pm
+            },
+        })
+        let evsD = []
+        wd.on('error', (e) => evsD.push(e))
+        try {
+            for (let [label, inp] of [['null', null], ['undefined', undefined], ['數值', 123], ['plain object', { a: 1 }]]) {
+                evsD.length = 0
+                let tm = null
+                let pmWatch = new Promise((resolve) => {
+                    tm = setTimeout(() => resolve({ hang: true }), 30000) //看門狗: 僅防懸置, 非同步點(正確實作時永不觸發)
+                })
+                let r = null
+                try {
+                    r = await Promise.race([wd.upload('x.bin', inp, () => {}).then((v) => ({ ok: v }), (e) => ({ err: e })), pmWatch])
+                }
+                finally {
+                    clearTimeout(tm)
+                }
+                assert.strict.deepEqual(r.hang === true, false, `${label}: 入口檢核失效, 上傳走入網路路徑而懸置於 getToken`)
+                assert.strict.deepEqual(nToken, 0, `${label}: 拒絕當下 getToken 須 0 次(尚未送出任何請求), 實得 ${nToken}`)
+                assert.strict.deepEqual(w.isestr(r.err), true, `${label}: 須 reject 字串訊息, 實得 ${JSON.stringify(r)}`)
+                assert.strict.deepEqual(r.err.includes('input'), true, `${label}: 訊息須指出是輸入之問題, 實得 ${r.err}`)
+                assert.strict.deepEqual(evsD.length, 1, `${label}: 須恰一則 error 事件, 實得 ${evsD.length}`)
+            }
+        }
+        finally {
+            for (let pm of holds) {
+                pm.reject('release hold') //釋放持有(僅缺陷路徑才有), 使懸置之上傳結束而不殘留
+            }
         }
     })
 

@@ -150,7 +150,7 @@ describe('api-uploadMergeStates', function() {
         wsv.on('error', (e) => errs.push(e))
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -208,7 +208,7 @@ describe('api-uploadMergeStates', function() {
         }
         assert.strict.deepEqual(nUpload, 1)
         assert.strict.deepEqual(fs.existsSync(`${fpOf(h)}.done`), true)
-        await w.delay(50) //eeEmit 為 setTimeout 派發
+        await w.delay(50) //evEmit 為同步派發, 此等待僅為防多餘第三則之觀察窗
         assert.strict.deepEqual(errs.length, 2)
         assert.strict.deepEqual(errs[0].indexOf(`merged file already consumed for fileHash[${h}]`) === 0, true, errs[0])
     })

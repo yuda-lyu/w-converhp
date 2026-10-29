@@ -1,7 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
 import path from 'path'
-import w from 'wsemi'
 import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 import wPorts from './tools/ports.mjs'
@@ -30,7 +29,7 @@ describe('api-clientErrorEvents', function() {
         s.on('execute', (f, i, pm) => pm.reject('app says no'))
         s.on('download', (i, pm) => pm.reject('app says no'))
         servers.push(s)
-        await w.delay(600)
+        await s.ready //待伺服器就緒(ready)
         return s
     }
 

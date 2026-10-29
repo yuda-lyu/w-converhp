@@ -48,7 +48,7 @@ describe('api-abortDuringAdmit', function() {
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('execute', (func, input, pm) => pm.resolve({ ok: 1 }))
         wsv.on('upload', (input, pm) => pm.resolve(input))
-        await w.delay(800)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {
@@ -92,19 +92,26 @@ describe('api-abortDuringAdmit', function() {
         errs.length = 0
         tracked.length = 0
         await send({ p: '/api/slc', extraHeaders: hdSlc('admitabort01'), declared: 8192, body: Buffer.alloc(1024, 1), abortMs: 50 })
-        await w.delay(1500) //待 verifyConn 回來、handler 續行與收尾
+        //等中斷收尾的最後一個效應(事件 → 寫入串流 destroy → close → 刪除切片): 一則事件已發、串流已 close 且 fd 已釋放、不完整切片已刪, 以條件而非固定毫秒同步
+        //(逾上限仍未成立則續行, 由下列斷言以具體訊息失敗; 此上限僅防懸置, 不是同步點)
+        let fpChunk = path.resolve(pathUploadTemp, 'admitabort01_0')
+        await w.waitFun(() => {
+            return errs.length >= 1 && tracked.length >= 1 && tracked.every((t) => t.ws.closed === true && t.ws.fd === null) && fs.existsSync(fpChunk) === false
+        }, { timeInterval: 10, attemptNum: 3000 }).catch(() => {})
         assert.strict.deepEqual(errs, ['receive chunk[1/1] of packageId[admitabort01] error: closed before receive'], JSON.stringify(errs))
         for (let t of tracked) {
             assert.strict.deepEqual(t.ws.closed, true, `${path.basename(t.path)}: 寫入串流須關閉`)
             assert.strict.deepEqual(t.ws.fd, null, `${path.basename(t.path)}: fd 須釋放`)
         }
-        assert.strict.deepEqual(fs.existsSync(path.resolve(pathUploadTemp, 'admitabort01_0')), false, '不完整切片須刪除')
+        assert.strict.deepEqual(fs.existsSync(fpChunk), false, '不完整切片須刪除')
     })
 
     it('/main: admit 期間中斷 —— 須恰發一則中斷事件使該次請求終結(修正前 handler 永不終結且 0 則事件)', async function() {
         errs.length = 0
         await send({ p: '/api/main', declared: 8192, body: Buffer.alloc(1024, 1), abortMs: 50 })
-        await w.delay(1500)
+        //等 errs 出現該則中斷事件(admit 回來後 handler 補判 payload.destroyed 時同步發出), 以條件而非固定毫秒同步
+        //(逾上限仍未成立則續行, 由下列斷言以具體訊息失敗; 此上限僅防懸置, 不是同步點)
+        await w.waitFun(() => errs.length >= 1, { timeInterval: 10, attemptNum: 3000 }).catch(() => {})
         assert.strict.deepEqual(errs, ['receive payload error: closed before receive'], JSON.stringify(errs))
     })
 

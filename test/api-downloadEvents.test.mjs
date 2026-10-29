@@ -65,7 +65,7 @@ describe('api-downloadEvents', function() {
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -80,7 +80,7 @@ describe('api-downloadEvents', function() {
     //probe, 取某路由某案例之回應與 error 事件數; 請求形狀取自路由軸(test/api-axes.mjs)
     let probe = async(route, fileId) => {
         errs = []
-        let r = await fetchDownload(port, route, fileId, { settleMs: 200 }) //eeEmit 為 setTimeout 發送
+        let r = await fetchDownload(port, route, fileId, { settleMs: 200 }) //evEmit 為同步派發(事件於回應前即已發出), 此窗僅供否定觀察(負載只會漏抓不會誤判)
         return { ...r, nErrs: errs.length, errs: [...errs] }
     }
 

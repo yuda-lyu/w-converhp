@@ -63,7 +63,7 @@ describe('api-envelopeIntegrity', function() {
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('handler', () => {})
 
-        await w.delay(1000) //待伺服器啟動
+        await wsv.ready //待伺服器就緒(ready)
 
     })
 
@@ -102,7 +102,7 @@ describe('api-envelopeIntegrity', function() {
             assert.strict.deepEqual(r.returnType, 'error', tag) //修正前為 'success'
             assert.strict.deepEqual(w.haskey(r.obj, 'error'), true, tag) //封包須解得出 error 鍵
             assert.strict.deepEqual(r.obj.error, 'output can not be serialized', tag)
-            await w.delay(150) //eeEmit 為 setTimeout 發送
+            await w.delay(150) //evEmit 為同步派發(事件皆於回應前發出), 此等待僅為否定觀察窗(防多餘第二則), 非同步點
             assert.strict.deepEqual(errs.length, 1, `${tag} errs=${JSON.stringify(errs)}`)
             assert.strict.deepEqual(errs[0].includes('can not be serialized'), true, errs[0])
         }

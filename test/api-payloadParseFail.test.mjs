@@ -26,7 +26,7 @@ describe('api-payloadParseFail', function() {
         wsv.on('error', (e) => errs.push(String(e)))
         wsv.on('execute', (f, i, pm) => pm.resolve(1))
         wsv.on('download', (i, pm) => pm.reject('no'))
-        await w.delay(800)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {

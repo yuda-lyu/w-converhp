@@ -39,7 +39,7 @@ describe('api-hostileRequestJson', function() {
         wsv.on('upload', (i, pm) => pm.resolve(1))
         wsv.on('download', (i, pm) => pm.reject('no'))
         wsv.on('execute', (func, input, pm) => pm.resolve({ big: 1n })) //輸出無法序列化, 使 /main 走到含 func 之樣板
-        await w.delay(600)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {

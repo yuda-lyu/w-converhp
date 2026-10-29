@@ -70,7 +70,7 @@ describe('api-failureNotSuccess', function() {
             }
             pm.resolve(r)
         })
-        await w.delay(600)
+        await wsv.ready //待伺服器就緒(ready)
     })
 
     after(async function() {
