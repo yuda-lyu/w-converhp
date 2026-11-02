@@ -14,7 +14,7 @@ import checkTotalHashBundle from '../src/checkTotalHash.wk.umd.js'
  * unit: worker 之建置輸入(.mjs)須與實際被 import 執行之產物(.wk.umd.js)一致(規則帳本 R14 之機械化保護)
  *
  * why: 伺服器實際 import 的是 src/{checkTotalHash,checkSlicesHash,mergeSlices}.wk.umd.js, 對應之 .mjs 被零個模組 import。
- * 改了 .mjs 而未跑 node toolg/gDistRollup.mjs 時「行為零變更、全部測試全綠、eslint 全過、git diff 看得到改動」——
+ * 改了 .mjs 而未跑 node toolg/gDistRollupWorkerFuncs.mjs 時「行為零變更、全部測試全綠、eslint 全過、git diff 看得到改動」——
  * 四項訊號皆顯示已修正, 實際執行的是舊碼。帳本 R14 自第九輪即記「機械化保護(待建)」。
  *
  * 兩層:
@@ -160,7 +160,7 @@ describe('unit-workerBundles', function() {
             assert.strict.deepEqual(dec.length > 1000, true, `${n}.wk.umd.js 解不出內嵌原始碼(建置格式改變?), 本檢查失效`)
             assert.strict.deepEqual(lits.length >= 1, true, `${n}.mjs 取不到任何字面值, 本檢查空轉`)
             let miss = lits.filter((s) => !dec.includes(s))
-            assert.strict.deepEqual(miss, [], `${n}.mjs 有 ${miss.length} 個字面值不在產物內 —— 改了 .mjs 未跑 node toolg/gDistRollup.mjs: ${JSON.stringify(miss)}`)
+            assert.strict.deepEqual(miss, [], `${n}.mjs 有 ${miss.length} 個字面值不在產物內 —— 改了 .mjs 未跑 node toolg/gDistRollupWorkerFuncs.mjs: ${JSON.stringify(miss)}`)
         })
 
         it(`${n}: 二、同一組 fixture 以 .mjs 與 ${n}.wk.umd.js 執行, 回傳值與磁碟結果須相同`, async function() {
@@ -173,7 +173,7 @@ describe('unit-workerBundles', function() {
                     diffs.push(`[${label}]\n  .mjs       ${JSON.stringify(a)}\n  .wk.umd.js ${JSON.stringify(b)}`)
                 }
             }
-            assert.strict.deepEqual(diffs, [], `${n}: .mjs 與產物行為不同 —— 改了 .mjs 未跑 node toolg/gDistRollup.mjs:\n${diffs.join('\n')}`)
+            assert.strict.deepEqual(diffs, [], `${n}: .mjs 與產物行為不同 —— 改了 .mjs 未跑 node toolg/gDistRollupWorkerFuncs.mjs:\n${diffs.join('\n')}`)
         })
     }
 

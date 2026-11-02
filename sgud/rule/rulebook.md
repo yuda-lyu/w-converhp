@@ -899,11 +899,11 @@ src/managerMergeSlices.mjs:20 import mergeSlices    from './mergeSlices.wk.umd.j
 
 **受影響之待修站點**:第九輪之 P2(`checkTotalHash` 之 `isnum` + `===`)、P5(`throw` 逸出)、P6(`indexOf` vs `startsWith`)三者皆在 `checkTotalHash` 內,故各為「`.mjs` 一處 + 內嵌產物一處」。
 
-**重建方式**:`node toolg/gDistRollup.mjs`(該檔以 `w-package-tools` 之 `rollupWorker` 先產三個 `src/*.wk.umd.js`,再以 `rollupFile` 產 `dist/*.umd.js`;**順序不可對調**,其檔頭註解已寫明「因為 WConverhpServer 會 import checkTotalHash.wk.umd.js 故得先編譯」)。發布流程見 `script.txt`(**該檔為使用者所有,不得修改**)。`package.json` 之 scripts 內無此指令,故此重建步驟只存在於 `script.txt` 與本節。
+**重建方式**(依 dspec〈自有套件之發布與建置腳本〉規則 5 之 1,2026-11-02 起;原由 `gDistRollup.mjs` 一支兼做):依 `script.txt` 列序,先 `node toolg/gDistRollupWorkerFuncs.mjs`(以 `w-package-tools` 之 `rollupWorkerCore` 由三個 `src/*.mjs` 產 `src/*.wk.umd.js`),再 `node toolg/gDistRollup.mjs`(以 `rollupFile` 產 `dist/*.umd.js`);**順序不可對調**(`WConverhpServer` 會 import `checkTotalHash.wk.umd.js` 等,故得先編譯,`gDistRollupWorkerFuncs.mjs` 之註解已寫明)。發布流程見 `script.txt`(**該檔為使用者所有,不得修改**)。`package.json` 之 scripts 內無此指令,故此重建步驟只存在於 `script.txt` 與本節。
 
 **盲區之嚴重程度(實測)**:三個 `.mjs` 被**零個**模組 import —— 全專案唯一的 import 皆指向 `.wk.umd.js`,對應之 `.mjs` import 在 `WConverhpServer.mjs:40,42` 與 `managerMergeSlices.mjs:19` 皆為註解;`test/` 亦無任何檔案 import 之。
 
-亦即 `checkTotalHash.mjs`、`checkSlicesHash.mjs`、`mergeSlices.mjs` 是**純建置輸入**,不是執行碼。改了它們而不跑 `node toolg/gDistRollup.mjs`:
+亦即 `checkTotalHash.mjs`、`checkSlicesHash.mjs`、`mergeSlices.mjs` 是**純建置輸入**,不是執行碼。改了它們而不跑 `node toolg/gDistRollupWorkerFuncs.mjs`:
 
 - 行為零變更
 - 288 個測試全綠
@@ -912,7 +912,7 @@ src/managerMergeSlices.mjs:20 import mergeSlices    from './mergeSlices.wk.umd.j
 
 **四項訊號全部顯示「已修正」,而實際執行的仍是舊碼。** 這是本套件目前最沒有訊號的一種失敗。
 
-**修正本條所涉站點之驗收程序**(P2/P5/P6 適用):①改 `.mjs` ②跑 `node toolg/gDistRollup.mjs` ③確認 `git status` 顯示對應之 `.wk.umd.js` 與 `dist/*` 亦有變動 —— **若無變動即代表重建未生效** ④再跑測試。
+**修正本條所涉站點之驗收程序**(P2/P5/P6 適用):①改 `.mjs` ②依序跑 `node toolg/gDistRollupWorkerFuncs.mjs`、`node toolg/gDistRollup.mjs` ③確認 `git status` 顯示對應之 `.wk.umd.js` 與 `dist/*` 亦有變動 —— **若無變動即代表重建未生效** ④再跑測試。
 
 **盤點指令**
 ```bash
@@ -927,7 +927,7 @@ npx mocha --no-config test/unit-workerBundles.test.mjs                     # 權
 2. **差分行為**:同一組 fixture 各以 `.mjs` 與 `.wk.umd.js` 執行(各自一個全新暫存夾),比對回傳值(路徑正規化)與執行後之磁碟內容。fixture 須涵蓋各 worker 之每一條回傳分支。
 
 **分辨力(實測,第十輪修正時未重建之狀態)**:`mergeSlices.mjs` 依 F1 刪去寫 `.done` 之敘述、改回傳雜湊 —— **第一層綠(漏抓)、第二層紅**;`checkSlicesHash.mjs` 新增 `invalid fileSliceHashs` —— 兩層皆紅;`checkTotalHash.mjs` 未改 —— 兩層皆綠。兩份外部複審原以字面值演算法實測分辨力為 2/8,第二層即為此而加。
-另:B 卷實測以 `rollupWorker` 相同參數重建之產物與既有產物**逐位元組相同**(兩次建置亦相同),建置可重現;但以測試重建須複製 `toolg/gDistRollup.mjs` 之參數而形成第二份設定,故不採。
+另:B 卷實測以 `rollupWorker` 相同參數重建之產物與既有產物**逐位元組相同**(兩次建置亦相同),建置可重現(2026-11-02 改以 `rollupWorkerCore`:內嵌 worker 本體〔base64 段〕逐位元組相同,外層少一層 UMD 包裝,故 `.wk.umd.js` 與 `dist/w-converhp-server.umd.js` 位元組改變而行為不變);測試驗建置不複製 toolg 之參數,依 dspec 規則 4 以副本並指定 cwd 執行 toolg 腳本(`test/unit-toolgBuild.test.mjs`:產物存在、UMD 依賴清單〔external〕、可載入執行、失敗離開碼)。
 
 ---
 
@@ -1102,7 +1102,7 @@ grep -c "encodeRfc5987(\|str2b64(" src/WConverhpServer.mjs   # 須為 2(寫標�
 |---|---|---|
 | A | **多檔共用** | `grep -l "from './<name>.mjs'" src/*.mjs` ≥ 2 |
 | B | **重要且有獨立單元測試直接 import** | `grep -l "from '\.\./src/<name>.mjs'" test/*.mjs` ≥ 1 |
-| C | **是建置輸入** | `toolg/gDistRollup.mjs` 之 `fpSrc`(三個 worker,R14) |
+| C | **是建置輸入** | `toolg/gDistRollupWorkerFuncs.mjs` 之 `fpSrc`(三個 worker,R14) |
 
 > **⚠ 已撤銷之理由 D「是某條規則之單一擁有者」**:第十一輪一度以此保留六個檔(`callApp`、`buildDownloadSource`、`readDownloadFields`、`validDownloadField`、`destroyStreamRead`、`encodeOut`)。使用者指出後確認**該理由是循環論證** —— 帳本之盤點指令以檔名為錨,只是因為它當初就是獨立檔;併入後把錨點改成「函式區段」即可(`hasPipe` 正是如此處理,`unit-ruleSites` 之 `sect()` 為其通用作法)。**保護自己寫的 grep,不是保留一個檔案的理由。**
 > 另注意 A 之判準是「多**檔**共用」而非「多處呼叫」:`destroyStreamRead` 於 server 內被呼叫 5 次,但呼叫者只有一個檔,仍不合格。

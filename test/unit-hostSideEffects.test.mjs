@@ -14,9 +14,9 @@ import { pathToFileURL } from 'url'
  *   K2 不新增字串鍵之全域; 新增之 Symbol 鍵只容許 Node 內建 undici 之全域分派器符號(Node 於載入 http 或 axios 時自行建立, 非本套件註冊, 無監聽、不佔資源)
  *   內建原型(Object、Array、Function、String、Promise 等)之自有鍵不變
  *
- * why: worker 產物(src/*.wk.umd.js)與 dist 由 w-package-tools 之 rollupWorker 樣板產生, 1.1.16 之樣板於產物最外層
+ * why: worker 產物(src/*.wk.umd.js)與 dist 由 w-package-tools 之 rollupWorkerCore 等樣板產生, 1.1.16 之樣板於產物最外層
  * `process.on('uncaughtExceptionMonitor', (e) => console.log('outer:uncaughtExceptionMonitor', e))` —— 每支產物於**引用時**即在宿主註冊一個監聽,
- * 伺服器 import 三支即 +3, 且宿主自己之未捕捉例外被重印到 stdout。1.1.17 已移除, 以 node toolg/gDistRollup.mjs 重建即消除(run02)。
+ * 伺服器 import 三支即 +3, 且宿主自己之未捕捉例外被重印到 stdout。1.1.17 已移除, 以 node toolg/gDistRollupWorkerFuncs.mjs 與 node toolg/gDistRollup.mjs 重建即消除(run02)。
  * 產物重建與否, 改了樣板而未重建時 git diff 看不出來, 故以行為鎖住。
  *
  * 作法: 每個目標於一個全新子行程內量測(引用前、引用後、執行 worker 後三個快照), 子行程最後自己拋出一個帶唯一標記之未捕捉例外, 觀察其 stdout 與 stderr。

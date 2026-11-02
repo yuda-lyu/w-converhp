@@ -203,6 +203,8 @@ corsOrigins 之合法性原規劃自寫一份(非空陣列、元素為非空字�
 
 `dist/` 另以 `tmp/probe_r7_dist_hostile.mjs` 對打包產物實際打一次(惡意值注入 verifyConn 與監聽器),看行為而非看建置離開碼。
 
+(2026-11-02 依 dspec〈自有套件之發布與建置腳本〉撤,改回標準寫法:上述「兩件事」現拆為 `toolg/gDistRollupWorkerFuncs.mjs`〔先產 `src/*.wk.umd.js`,`rollupWorkerCore`〕與 `toolg/gDistRollup.mjs`〔產 `dist/*.umd.js`〕,`script.txt` 依序列出,順序仍不可對調,驗收方式不變。)
+
 **E10b 「什麼都沒發生」偵測不到,別想用 try/catch 抓**
 
 套件所有偵測手段都是「發生了某件事 → 攔截它」:`try/catch` 攔拋出、`.catch()` 攔 rejection、`funSettle` 攔監聽器拋錯、串流 `'error'` 攔串流出錯。而以下四種是**非事件**,一則錯誤都不會有:
