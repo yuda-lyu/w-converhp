@@ -39,7 +39,7 @@
 | [R23](#r23-匯出面須最小化未被模組外使用者不得匯出且每個匯出成員須說明其用途) | **匯出面須最小化**;未被模組外使用者不得匯出,且各成員須說明用途 | grep | 5 模組 19 成員 | 0 |
 | [R21](#r21-各-mjs-一律以單一-export-default-匯出要給多個成員就合併為一個物件) | 各 `.mjs` 一律以單一 `export default` 匯出(前提:先過 R23) | grep | 23 | 0 |
 | [R22](#r22-檔名須反映其全部匯出成員匯出多個成員者取集合概念不得取其中任一成員名) | 檔名須反映其全部匯出成員(前提:先過 R23 與 R21) | grep | 23 | 0 |
-| [R24](#r24-測試用-port-一律自集中配發表取得不得手寫不得隨機不得衍生) | **測試用 port 一律自集中配發表取得**;不得手寫、隨機或衍生 | `unit-ports` | 58 檔 89 port | 0 |
+| [R24](#r24-測試用-port-一律自集中配發表取得不得手寫不得隨機不得衍生) | **測試用 port 一律自集中配發表取得**;不得手寫、隨機或衍生;**不再有固定的監聽埠(作業系統配發)** | `unit-ports` | 60 檔 93 port(皆作業系統配發) | 0 |
 | [R25](#r25-test-根目錄只放測試檔非測試之共用-mjs-一律置於-testtools) | `test/` 根目錄只放測試檔;非測試之共用 mjs 置於 `test/tools/` | `ls` + `unit-ports` | 70 + 3 | 0 |
 | [R26](#r26-曝露與存取控制選項有給而無效時須收緊並告知未給者依預設) | **曝露與存取控制選項有給而無效時須收緊並告知**;未給者依預設 | grep + 行為表 | 4 選項 6 告知點 | 0 |
 | [R27](#r27-一次公開呼叫對外之全部輸出經其-ctx-之出口公開-promise-與中止競速) | **一次公開呼叫對外之全部輸出經其 ctx 之出口;公開 promise 與中止競速**(前端中止) | 位置鎖 + 行為表 | 出口 5 類 / 入口 3 方法 / error 站點 11 | 0 |
@@ -1264,9 +1264,9 @@ grep -B12 "^let r = {" src/managerMergeSlices.mjs src/routeSpec.mjs test/tools/a
 
 ### R24 測試用 port 一律自集中配發表取得;不得手寫、不得隨機、不得衍生
 
-**狀態:第十一輪新立(2026-09-12,使用者指出),缺口 0**
+**狀態:第十一輪新立(2026-09-12,使用者指出);2026-11-05 ch309 輪由「自 8300 起固定配發」改為「作業系統配發」,缺口 0**
 
-**規則**:`test/` 下每個測試檔所用之 port,一律經 `test/tools/ports.mjs` 之 `portOf(檔名, i)` 取得。**不得手寫字面值、不得以 `Math.random` 產生、不得以 `port + 1` 衍生**。同一檔需要多台伺服器者,於 `alloc` 宣告數量並以索引取用;配額用盡時 `portOf` 拋錯,不靜默共用。
+**規則**:`test/` 下每個測試檔所用之 port,一律經 `test/tools/ports.mjs` 之 `portOf(檔名, i)` 取得;連線失敗用之埠一律用 `reserved.closed`。**不得手寫字面值、不得以 `Math.random` 產生、不得以 `port + 1` 衍生,且不再有任何固定的監聽埠**:`alloc` 只登記每檔「需要幾個」(不登記號碼),號碼由作業系統配發(`listen(0)`)。同一檔需要多台伺服器者,於 `alloc` 宣告數量並以索引取用;配額用盡時 `portOf` 拋錯,不靜默共用。
 
 **why(使用者指出:「為何測試還要用 random 隨機產 port,這樣不會衝突嗎?沒有先訂好配發規則嗎」)**:mocha 以 `--parallel` 同時跑 61 個檔,port 撞號即 `EADDRINUSE`;而該錯誤看不出「誰跟誰撞」,下一次跑又可能因時序而過 —— 最難查的 flake。改為集中配發前之現況與**兩件實害**:
 
@@ -1277,15 +1277,24 @@ grep -B12 "^let r = {" src/managerMergeSlices.mjs src/routeSpec.mjs test/tools/a
 | 3 處以 `port + 1` / `port + 2` 衍生,未納入任何盤點 | **已存在真實撞號**:`api-clientErrorEvents` 之 8497、8498 與 `api-startupErrors` 寫死者相同,兩檔皆在 `--parallel` 範圍內,僅靠時序僥倖未炸 |
 | `api-executeWithU8a` 佔用套件預設值 8080 | `api-optionsRange` 之「port 非法時須取預設 8080」無法斷言,只能放寬為「建構不拋錯」 |
 
-**配發規則**:`8080`(套件預設值)、`8199` 與 `1`(連線失敗測試指向)、`70000`(值域檢核之非法輸入)為保留區,不得配發;其餘自 `8300` 起依 `alloc` 之順序連續配發,一檔一段。新增測試檔於 `alloc` **表末**加一行並填數量即可,不必找空號。
+**2026-11-05 ch309 輪之改動(規格 `dspec/e2e埠與多套件同跑.md` E8;主控裁示:改作業系統配發,不新增依賴)**
+
+*為何不再固定*:固定段(原 8300~8392,共 93 個)只保證「本套件內不互撞」,不保證不撞他人。①與 w-highcharts-vue 之 8301~8305 重疊,測試閘為此加 `portGroups` 8301 互斥,兩套件不能同跑;②他套件(或任何程式)占著其中任一埠時,測試要麼 `EADDRINUSE`,要麼**把請求打到別人的服務** —— Windows 允許占用者綁 `127.0.0.1`、`0.0.0.0`、`::`、`::1` 與我們並存綁定,不報錯。修前實測(自建占用者占滿 8300~8392 跑全套):占 `127.0.0.1` → 218 passing／307 failing,被測碼打到占用者 713 次;占 `0.0.0.0` → 234 passing／306 failing,打到 720 次,另有 89 次新連線被測試自己的伺服器(綁 `127.0.0.1`,較具體)搶走。
+
+*機制*:`portOf(檔名, i)` 維持**同步**(測試檔多在 describe 本體同步取用,而 `listen(0)` 是 async)。首次取用某檔時,以同步子行程執行 `test/tools/portsAlloc.mjs`:同時持有該檔所需數量之 `listen(0)` 監聽器(保證互異),各埠到跨行程**認領登錄**(`test/_tmp/ports-claims/<埠>/owner`,`mkdir` 原子建立,內記持有者 pid)認領,再一併釋放。認領的理由:配發 → 釋放 → 綁定之間有空窗,Windows 暫時埠配發在多行程併發時不是單一遞增(獨立審查實測:8 行程各配發 240 次,4 輪中有 2 輪跨行程重複;模擬 14 個 worker 約 2000 次綁定出現 1 次 `EADDRINUSE`);`--parallel` 之 worker 正是併發配發者。持有者行程結束後,認領於下次配發時回收。
+
+*保留值不是監聽埠*:`reserved.packageDefault`(8080)只作**期望值**(`api-optionsRange` 以攔截 `net.Server.prototype.listen` 判斷 hapi 被要求監聽的埠是否為 8080,並把實際監聽改到埠 0,故測試從未碰 8080);`reserved.closedLow`(1,特權埠)、`reserved.invalid`(70000,超出 TCP 值域)為不可綁定之輸入值;`reserved.closed`(連線失敗用)改為「向作業系統要一個後立即釋放且從不綁定」(原固定 8199,被他人占用時「連線失敗」測試會連到別人的服務)。
+
+*不能用作業系統配發之處*:產品的 `port` 選項拒收 0(`ispint` 為正整數,0 會退回預設 8080),故 `new WConverhpServer({ port: 0 })` 不是辦法 —— 測試端須先向作業系統要埠、再交給伺服器(此即 `portOf` 之作法,存在配發到綁定之空窗,以認領登錄補上本套件內之互斥)。「port 非法取預設 8080」一案必須觀察 8080 這個固定值,改以攔截 `listen` 之引數作為判準。
 
 **盤點指令**
 ```bash
-npx mocha --no-config test/unit-ports.test.mjs   # 五條全綠
+npx mocha test/unit-ports.test.mjs        # 12 案全綠
 ```
-五條分別鎖:①配發不重疊且自 base 連續 ②不涵蓋保留區 ③`portOf` 對未登記名稱與越界索引拋錯 ④每個會啟動伺服器之測試檔都已登記 ⑤**測試檔內不得再手寫 port 字面值**。第五條是關鍵 —— 前四條只證明「表是對的」,第五條才防止有人繞過表。
+站點全集之人工盤點(規格 §5 第 1 項):Grep 工具搜 `localhost:|127\.0\.0\.1:`(目錄 `test/`),命中須全為 `${...}` 衍生(`portOf`/`reserved.*`/實際監聽埠),唯一數字站點為 `unit-ports` 自身之說明。
+`unit-ports` 各案:①登記表(名稱不重複、個數為正整數、每個登記名稱都有測試檔)②`portOf` 對未登記名稱與越界索引拋錯 ③同一行程內不同檔/索引之埠互異、同檔同索引回同一個 ④**埠由作業系統配發**:前一個模組實例的埠仍被占用時,後一個模組實例取得之埠不與之重疊且可綁定(固定編號做不到;以行為證明,不斷言「落在某範圍」,故與作業系統無關)⑤`reserved.closed` 無人監聽、行程內穩定、另一實例於其被占用時取得不同者 ⑥`allocFree` 互異且可綁定、非法 count 拋錯 ⑦認領登錄(已被存活行程認領之埠不得再發;持有者已結束可回收;腳本模式之持有者為父行程)⑧每個會啟動伺服器之測試檔都已登記 ⑨**測試檔不得手寫 port 字面值**(名稱含 port 之賦值、`//任意主機:`、`localhost:`/`127.0.0.1:`/`0.0.0.0:`/`[::1]:` 後綴、`listen`/`connect` 第一引數;允許 1 與 70000,`listen(0` 亦允許但 `port: 0` 不允許;且不得在 `reserved.packageDefault` 上連線或監聽)⑩`ports.mjs` 自身無疑似固定埠之數字字面值。⑨⑩是關鍵 —— 前面只證明「機制是對的」,這兩條才防止有人繞過機制。
 
-**站點數:57 檔 / 87 個 port(8300-8386)+ 保留 4 個** —— run02 於表末新增 `api-clientAbort`(3)、`api-hostLifecycle`(1)、`e2e-abort`(1);第十二輪於表末新增 `api-uploadNoListener`(3)、`api-optionsFailClosed`(13)、`api-abortDuringAdmit`(1);同輪內調整數量之列皆為本輪新增者,既有配發未位移
+**站點數:60 個登記檔(`alloc`)/ 93 個 port(皆由作業系統配發,無固定號碼)+ 保留值 4 個(8080 期望值、1、70000 不可綁定、`closed` 動態)** —— 登記檔含 run02 於表末新增之 `api-clientAbort`(3)、`api-hostLifecycle`(1)、`e2e-abort`(1);第十二輪新增之 `api-uploadNoListener`(3)、`api-optionsFailClosed`(13)、`api-abortDuringAdmit`(1)。ch309 輪起表序不再有意義(不再自 8300 連續配發),新增測試檔於 `alloc` 任意處加一行即可
 
 > **第五條之判準須精確**:初版以 `\b8\d{3}\b|\b9\d{3}\b` 掃全檔,把 `timeout: 8000`、`pollUntilSettled(q, 8000, h)` 等**非 port 之數值**全部誤報(20 處)。誤報會使本條淪為雜訊而被繞過,故收窄為只認 port 之語法位置:`port 變數之賦值` / `物件之 port 鍵` / `localhost:` 與 `127.0.0.1:` 之後綴。
 
@@ -1621,7 +1630,7 @@ npx mocha --no-parallel test/api-serverReady.test.mjs test/api-clientTrace.test.
 
 | 項目 | 值 |
 |---|---|
-| 後端 | 每個 e2e 檔各起一台 `WConverhpServer`(`startServer`),port 取自 `test/tools/ports.mjs` 之 `alloc`(R24),`pathStaticFiles: '.'` 供頁面與 bundle |
+| 後端 | 每個 e2e 檔各起一台 `WConverhpServer`(`startServer`),port 由 `test/tools/ports.mjs` 之 `portOf` 向**作業系統配發**(R24;ch309 起,不再有固定埠、不依賴 `w-package-tools-e2e` 之 `reserveE2ePorts`),`pathStaticFiles: '.'` 供頁面與 bundle;頁面 URL 與測試內全部網址皆由實際埠衍生 |
 | 前端 | 無前端服務;`buildClientBundle` 於測試時自 `src/WConverhpClient.mjs` 以 rollup 打包至 `test/_tmp/e2e-<pid>/`,`writePage` 寫測試頁 |
 | e2e 執行 | 隨 `npm test` 一併執行;單檔:`npx mocha --no-parallel test/e2e-<flow>.test.mjs --timeout 180000` |
 | 共用實作 | `test/tools/e2e-setup.mjs`(未引用 w-package-tools-e2e:其模組皆為截圖、比對、篩選、生命週期等像素管線,本套件不適用) |
@@ -1635,7 +1644,8 @@ npx mocha --no-parallel test/api-serverReady.test.mjs test/api-clientTrace.test.
 | C3–C5、C10、C12、C15 | 不適用 | 無換設定重啟、無持久資料、無登入與語系、無文字輸入、無動畫容器、畫面無時間戳 |
 | C6–C9、C13 | 不適用 | 無 UI 故無標準圖、紅框、遮罩、pixel 比對與 regen;斷言一律為語意斷言(回傳值、事件數、下載事件、伺服端觀察) |
 | C11 偵測等待 | 頁內以 `await` 公開 API 之結局為主;需等外部條件者以頁內輪詢(如 e2e-abort 之「等第一則事件」) | — |
-| C14 端點 | `HOST = '127.0.0.1'` | e2e-download 之跨來源案例刻意以 `localhost` 製造不同 origin(該檔檔頭載明) |
+| C14 端點 | `HOST = '127.0.0.1'`;埠一律為實際埠(`portOf`) | e2e-download 之跨來源案例刻意以 `localhost` 製造不同 origin(該檔檔頭載明) |
+| 規格 `e2e埠與多套件同跑.md` E1～E8 | E1/E2/E3/E4/E5:**以作業系統配發取代「基準埠＋偵測占用＋換埠」**(主控 2026-11-05 裁示):沒有基準埠,故不存在「被占用」,也沒有衍生值要整組位移(本套件 e2e 為單一伺服器,頁面與 API 同源);本套件無依埠、依名稱、依命令列之下殺(伺服器在行程內,`stop()` 即釋放;全部下殺站點僅 `cp.kill()` ×3〔`api-clientAbort`、`api-hostLifecycle`、`unit-hostSideEffects`,對自己 spawn 之子行程的逾時兜底〕與 `loadTrial.mjs` 之 `stopBurners`〔手動負載工具,只殺自己起的壓力行程〕;`process.kill(pid, 0)` 僅為存在性探測)。E6:不印(埠由作業系統配發、失敗時由 `EADDRINUSE` 訊息載明埠)。E7:本套件 e2e 無標準圖、畫面不含埠(頁面為測試用空頁)。E8:全部測試之監聽埠(含 api 層)皆作業系統配發 | 唯一固定值:`api-optionsRange` 之「port 非法取預設 8080」需觀察 8080,改以攔截 `listen` 引數判斷、實際綁埠 0(見 R24) |
 
 ### 專案特有機制
 

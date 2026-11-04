@@ -1,5 +1,6 @@
 import assert from 'assert'
 import fs from 'fs'
+import net from 'net'
 import w from 'wsemi'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import WConverhpServer from '../src/WConverhpServer.mjs'
@@ -7,6 +8,10 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 import wPorts from './tools/ports.mjs'
 
 let { portOf, reserved } = wPorts
+
+//listenOrigOfFile, net.Server.prototype.listen 之原值: 「port 超出 TCP 值域取預設 8080」一案暫時攔截它(見該案);
+//另於 after 還原, 涵蓋該案因 ready 永不 resolve 而逾時、finally 未執行之路徑, 不讓攔截殘留到同一 worker 之後續檔
+let listenOrigOfFile = net.Server.prototype.listen
 
 
 /**
@@ -74,6 +79,7 @@ describe('api-optionsRange', function() {
     })
 
     after(function() {
+        net.Server.prototype.listen = listenOrigOfFile //還原 70000 案之暫時攔截(正常路徑已於該案 finally 還原, 此處為逾時路徑之保險)
         wsv.stop()
         try {
             fs.rmSync(pathUploadTemp, { recursive: true, force: true })
@@ -193,48 +199,74 @@ describe('api-optionsRange', function() {
         catch (err) {}
     })
 
-    it('伺服器 port 超出 TCP 值域時須取預設 8080(以建構不拋錯且不發 error 事件為判準)', async function() {
+    it('伺服器 port 超出 TCP 值域時須取預設 8080(以 listen 實際被要求之埠為判準; 實際監聽改到作業系統配發之埠, 不佔 8080)', async function() {
         this.timeout(20000)
-        //port 給 70000: 修正前述詞放行而 hapi 於 server.start 時失敗; 修正後取預設 8080,
-        //但 8080 可能已被其他行程占用, 故僅斷言「建構不拋錯」與「若有 error 事件則為埠占用而非值域錯誤」
+        //port 給 70000: 修正前述詞放行而 hapi 於 server.start 時失敗; 修正後取預設 8080。
+        //
+        //why 不在 8080 上實綁再 fetch(ch309, 規格 E8): 8080 是套件預設值,不是本檔可配發之埠 —— 他套件(w-web-sso、w-pubsub、w-serv-broadcast)的服務常在其上;
+        //Windows 允許占用者以 127.0.0.1 與我們並存綁定而不報錯,實綁後 fetch 127.0.0.1:8080 會連到對方(被測碼打到別人的服務),
+        //舊版只能以「有無 EADDRINUSE」分流,而該分流擋不住這種並存綁定。
+        //改為攔截 net.Server.prototype.listen: 記下 hapi 被要求監聽的埠(判準=「取到了預設值」),並把實際監聽改到作業系統配發之埠(0)。
+        //攔截只在本案的建構與 ready 期間有效,finally 還原; mocha 同一行程內案例循序執行,不會波及他案
+        let listenAsked = [] //hapi 要求 listen 的埠
+        let listenActual = [] //實際監聽的埠(作業系統配發)
+        let listenOrig = listenOrigOfFile
+        net.Server.prototype.listen = function(...a) {
+            if (typeof a[0] === 'number') {
+                listenAsked.push(a[0])
+                a[0] = 0
+                this.once('listening', () => {
+                    listenActual.push(this.address().port)
+                })
+            }
+            return listenOrig.apply(this, a)
+        }
         let errs3 = []
         let wsv3 = null
-        assert.doesNotThrow(() => {
-            wsv3 = new WConverhpServer({
-                port: 70000,
-                apiName: 'api',
-                useInert: false,
-                pathUploadTemp: './test/_tmp/uploadTemp-api-optionsRange3',
-                verifyConn: async() => true,
+        try {
+            assert.doesNotThrow(() => {
+                wsv3 = new WConverhpServer({
+                    port: reserved.invalid,
+                    apiName: 'api',
+                    useInert: false,
+                    pathUploadTemp: './test/_tmp/uploadTemp-api-optionsRange3',
+                    verifyConn: async() => true,
+                })
+                wsv3.on('error', (e) => errs3.push(String(e)))
+                wsv3.on('handler', () => {})
+                wsv3.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: check-total-hash 受理前須有 upload 接聽者, 本案以其回應之 sizeSlice 驗是否為本測試之伺服器
             })
-            wsv3.on('error', (e) => errs3.push(String(e)))
-            wsv3.on('handler', () => {})
-            wsv3.on('upload', (input, pm) => pm.resolve(input)) //第十二輪: check-total-hash 受理前須有 upload 接聽者, 本案以其回應之 sizeSlice 驗是否為本測試之伺服器
-        })
-        await wsv3.ready //待伺服器就緒(ready): start 完成(埠被占用則已發 error 事件, 為 false), 建構期事件必已派發完畢
-        for (let e of errs3) {
-            assert.strict.deepEqual(e.includes('EADDRINUSE') || e.includes('address already in use'), true, `error 事件須僅可能為埠占用, 實得: ${e}`)
+            await wsv3.ready //待伺服器就緒(ready): start 完成,建構期事件必已派發完畢
+        }
+        finally {
+            net.Server.prototype.listen = listenOrig
         }
 
-        //第十一輪: 預設埠 8080 已由 test/tools/ports.mjs 列為保留區而空出(原被 executeWithU8a 佔用, 故本條只能斷言「建構不拋錯」)。
-        //無埠占用之錯誤時, 伺服器就應該真的在預設埠上服務 —— 於此實打一次以斷言「**取到了預設值**」, 而非只是「沒拋錯」。
-        //開發者機器上 8080 仍可能被本套件以外之程式占用, 故以「有無 EADDRINUSE」分流而不強求(帳本 R24)
-        if (errs3.length === 0) {
-            let rDef = await fetch(`http://127.0.0.1:${reserved.packageDefault}/api/ulctr`, {
+        try {
+            //取到了預設值: hapi 被要求監聽的恰為 8080(而非值域外的 70000, 也不是別的值); 實際監聽在作業系統配發之埠, 不會埠占用
+            assert.strict.deepEqual(errs3, [], `不得有 error 事件: ${errs3.join('|')}`)
+            assert.strict.deepEqual(listenAsked, [reserved.packageDefault], 'port 非法時須取預設 8080')
+
+            //改道有效: 實際監聽之埠不是 8080(本案從未碰 8080), 且確為本測試所起之伺服器
+            assert.strict.deepEqual(listenActual.length, 1)
+            assert.strict.deepEqual(listenActual[0] !== reserved.packageDefault, true, '實際監聽不得在 8080')
+            let rDef = await fetch(`http://127.0.0.1:${listenActual[0]}/api/ulctr`, {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer t', 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: 'check-total-hash', fileHash: 'ffffffffffffffff', filename: 'a.bin', fileSize: 1 }),
                 signal: AbortSignal.timeout(3000),
             })
-            assert.strict.deepEqual(rDef.status, 200, 'port 非法時須取預設 8080 並於其上服務')
+            assert.strict.deepEqual(rDef.status, 200, '伺服器須可服務')
             let oDef = u8arr2obj(new Uint8Array(await rDef.arrayBuffer()))
-            assert.strict.deepEqual(oDef.success.sizeSlice, 1024 * 1024, '須為本測試所起之伺服器(而非他人佔用 8080)')
+            assert.strict.deepEqual(oDef.success.sizeSlice, 1024 * 1024, '須為本測試所起之伺服器')
         }
-        wsv3.stop()
-        try {
-            fs.rmSync('./test/_tmp/uploadTemp-api-optionsRange3', { recursive: true, force: true })
+        finally {
+            wsv3.stop() //任一斷言失敗也要停掉, 不洩漏監聽
+            try {
+                fs.rmSync('./test/_tmp/uploadTemp-api-optionsRange3', { recursive: true, force: true })
+            }
+            catch (err) {}
         }
-        catch (err) {}
     })
 
 })

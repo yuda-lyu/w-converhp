@@ -6,7 +6,7 @@ import WConverhpServer from '../src/WConverhpServer.mjs'
 import WConverhpClient from '../src/WConverhpClient.mjs'
 import wPorts from './tools/ports.mjs'
 
-let { portOf } = wPorts
+let { portOf, reserved } = wPorts
 
 
 /**
@@ -64,7 +64,7 @@ describe('api-clientAttemptEvents', function() {
     }
 
     it('execute 連不上(ECONNREFUSED)且 retryMain=2: 恰 3 則(每次嘗試 1 則)且皆為字串(修正前 0 則)', async function() {
-        let { r, evs } = await run({ url: 'http://127.0.0.1:1', retryMain: 2 }, (wc) => wc.execute('f', {}))
+        let { r, evs } = await run({ url: `http://127.0.0.1:${reserved.closedLow}`, retryMain: 2 }, (wc) => wc.execute('f', {}))
         assert.strict.deepEqual(evs.length, 3, JSON.stringify(evs))
         assert.strict.deepEqual(evs.every((e) => typeof e === 'string' && e.includes('ECONNREFUSED')), true, JSON.stringify(evs))
         assert.strict.deepEqual(typeof r.err === 'string' && r.err.includes('ECONNREFUSED'), true, JSON.stringify(r))

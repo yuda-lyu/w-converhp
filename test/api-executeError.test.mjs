@@ -6,7 +6,7 @@ import WConverhpClient from '../src/WConverhpClient.mjs'
 import axes from './tools/api-axes.mjs'
 import wPorts from './tools/ports.mjs'
 
-let { portOf } = wPorts
+let { portOf, reserved } = wPorts
 
 let { rejectShapes } = axes
 
@@ -168,7 +168,7 @@ describe('api-executeError', function() {
     })
 
     it('連線失敗時, 呼叫端須收到非空的錯誤訊息', async function() {
-        let wo = mkClient({ url: 'http://localhost:8199', timeout: 3000 })
+        let wo = mkClient({ url: `http://localhost:${reserved.closed}`, timeout: 3000 }) //closed: 作業系統配發後即釋放且從不綁定之埠(固定值一旦被他人占用, 本案會連到別人的服務)
         wo.on('error', () => {})
         let r = await catchOf(() => wo.execute('add', { p: { a: 1, b: 2 } }, () => {}))
         assert.strict.deepEqual(r.state, 'reject')

@@ -60,7 +60,7 @@ describe('unit-axisCoverage', function() {
 
     it('軸之請求形狀須對得上路由路徑, 且回傳可直接交給 fetch', function() {
         for (let k of allKeys) {
-            let { url, init } = downloadRoutes[k].requestOf(reserved.closed, 'id-1')
+            let { url, init } = downloadRoutes[k].requestOf(reserved.closedLow, 'id-1')
             assert.strict.deepEqual(url.includes(`/api/${k}`), true, `成員[${k}]之 url 不含其路由路徑: ${url}`)
             assert.strict.deepEqual(['GET', 'POST'].includes(init.method), true, `成員[${k}]之 method 異常: ${init.method}`)
             assert.strict.deepEqual(typeof init.headers, 'object', `成員[${k}]未給 headers`)
