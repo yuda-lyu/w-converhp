@@ -46,6 +46,7 @@
 | [R28](#r28-測試建構伺服器一律給-pathuploadtemp落-test_tmp案名測完即刪不得取預設值而於-repo-根建立-uploadtemp) | **測試建構伺服器一律給 pathUploadTemp**(落 test/_tmp/<案名>/,測完即刪) | 位置鎖(unit-ruleSites) | 74 站點 | 0 |
 | [R29](#r29-一次嘗試之結局不得以外來值之形狀判定不需重試以自建包裝之參照識別成功須以肯定式證明) | **一次嘗試之結局不得以外來值之形狀判定**;不需重試以自建包裝之參照識別;成功須以肯定式證明 | 位置鎖 + 行為表 | 判定站點 6 | 0 |
 | [R30](#r30-計時器相關測試以被測物之事件或可觀察條件為同步點不以等待毫秒伺服器就緒等-ready自有計時器以-optontrace) | **計時器相關測試以被測物之事件或可觀察條件為同步點,不以等待毫秒**;伺服器就緒等 `ready`、自有計時器以 `opt.onTrace`、效能時限改邏輯順序 | grep + 行為表(`api-serverReady`、`api-clientTrace`)+ 負載試驗 | 鉤子 45 檔 + 輔助 3 + 直接 C 20 案 + (d) 6 案 | 0 |
+| [R31](#r31-chromium-系瀏覽器之啟動一律經-w-playwright本套件不直接依賴-playwrightplaywright-core) | **Chromium 系瀏覽器之啟動一律經 w-playwright**;本套件不直接依賴 `playwright`／`playwright-core`(測試專用,devDependencies) | `rg`(R-PW-ONLY)+ `unit-pwWiring` | 啟動點 1 處(e2e 共用層)/ 4 個 e2e 檔皆經它 | 0 |
 
 > **第十二輪之總結(2026-10-13)**:起因為 w-serv-hapi 之 agent 提出之外部建議四項(上傳管線不判接聽者即落檔、verifyConn 非函數即全放行、serverHapi 模式之 stop、corsOrigins 文件)。四項事實全屬實,但三項修法各撞既有設計(建構期失敗不拋出之通道、R12 之單一擁有者、merge-slices-get S3 之冪等、hapi 無移除路由 API)。方案經三份獨立複審(Claude Opus 5.5 ×2、Codex GPT-6.1-Sol ×1,各自於 HEAD 之 worktree 實跑)擴充為七個變更單元:**R12 延伸至上傳管線**(閘門 4 站點 + admit 期間中斷之補判 2 站點,後者為複審發現之既有缺陷:handler 永不終結、/slc 漏 fd)、合併佇列在途消費之跨實例隔離(複審發現)、**新立 R26**(verifyConn、corsOrigins、useInert、pathStaticFiles)、文件。外部建議之 #3 只補文件,改行為列下輪提案。逐條核對見當輪之 `tmp/r12-複審彙整.md`,定案方案見 `tmp/r12-全盤.md` §9。
 > 帳本自身之錯誤 2 件:R25 之執行指令 `--timeout 60000` 過期(package.json 為 180000)、`unit-ruleSites` 之「帳本須涵蓋全部規則」清單只列到 R18(R19–R25 缺頁不會紅);皆已更正。另 `tmp/measure_sites.mjs` 仍讀第十一輪併檔前之 `buildDownloadSource.mjs` 而無法執行,本輪以 `tmp/r12/sites.mjs`(同 `readCode` 剝註解規則、保留行號)產生逐站點清單。
@@ -1595,6 +1596,33 @@ npx mocha --no-parallel test/api-serverReady.test.mjs test/api-clientTrace.test.
 - **延遲啟動對照實驗**(`server.start()` 前插 1500ms,只讓被測伺服器單獨變慢)8 個鉤子代表檔:**新版 8／8 仍綠(等 `ready`)、舊版 8／8 紅**(clientToken 1 紅、failureNotSuccess 5 紅、uploadResultShape 1 紅、envelopeIntegrity 4 紅、optionsRange 5 紅、startupErrors 2 紅、sliceAbort 1 紅、abortDuringAdmit 1 紅)——舊鉤子之固定等待(600～1200ms)在啟動慢於它時整檔失敗,此即本規則要消除之假設。
 - 負載試驗(8 壓力行程／lag 400:1000／lag 1500:3000 各 5 次,24 檔 136 案):C 類案失敗改造前 1(abortDuringAdmit「/main」於 lag 下 1/5)→改造後 0;鉤子失敗前後皆 0(同一事件迴圈內計時器與 I/O 同被延遲而互抵,見 state.md)。
 
+### R31 Chromium 系瀏覽器之啟動一律經 w-playwright;本套件不直接依賴 `playwright`／`playwright-core`
+
+**狀態:2026-11-13 新立並套用(pm-cvh 輪;排程第 442 項遷移輪,設計 §5.1、§8.4;對應 w-playwright 帳本 R-PW-ONLY、R-PW-WIRING),缺口 0**〔狀態細節見 `sgud/state/state.md`〕
+
+**規則**:
+
+1. 本套件產品碼(`src/`、`dist/`)不啟動瀏覽器;只有測試啟動,且啟動點只有一處:`test/tools/e2e-setup.mjs` 之 `launchBrowser`,一律 `wpw.launchChromium(...)`(`import wpw from 'w-playwright'`)。4 個 e2e 檔(`e2e-abort`、`e2e-download`、`e2e-execute`、`e2e-upload`)皆自共用層取得瀏覽器,不得自行啟動、不得直接呼叫 BrowserType 之 `launch` 系函數。
+2. `package.json` 不宣告 `playwright`／`playwright-core`;`w-playwright` 列 `devDependencies`(測試專用,不列 `dependencies`)。Playwright 之版本由 w-playwright 擁有(`playwright-core` 精確 1.64.1,內附預設清單與之相符,否則啟動被 `E_PW_VERSION` 拒絕);本套件不另裝、不另釘。
+3. e2e 一律無頭且不指定 `channel`/`executablePath`(Playwright 受管之 headless shell:不觸發 Chromium 之 LogonUser)。改用真 Chrome／Edge／完整 Chromium 即每次啟動 +1 錯誤密碼次數(10 分鐘內 10 次鎖帳號):屆時須改為每檔最多啟動一次(`before` 起、`after` 關),並於 w-playwright 之登入守門(`W_PLAYWRIGHT_LOGON_GUARD=1`)與錯誤次數前後比對下執行。
+4. 受管瀏覽器之取得:`await wpw.ensureChromium()`,不寫 `npx playwright install`(依賴樹中他版被提升時會下載到不同版本);離線以 `PLAYWRIGHT_BROWSERS_PATH`(須在載入前設定)。`autoInstall` 刻意不開:本套件測試現行為「缺受管瀏覽器即報錯」,遷移不改此行為(不隱含網路下載)。`PWDEBUG`(inspector 值)與 `SELENIUM_REMOTE_URL` 不支援(`E_ENV`)。
+5. 對外 API(`WConverhpServer`、`WConverhpClient`)與 `dist/` 無任何改動;`toolg/gDistRollup.mjs` 之 external／globals 無須同步(`src` 不匯入 playwright 或 w-playwright,產物不含瀏覽器啟動碼)。
+
+**why**:Windows 上 Chromium 153 起,每啟動一個新根行程即以錯誤密碼替目前使用者呼叫一次 `LogonUser`;Playwright 自帶一串 `--disable-features`,呼叫端另給的守門串因 Chromium 只取最後一串而失效。w-playwright 於每次啟動合併為恰一串並含守門功能。本套件 e2e 若繞過 w-playwright 直接用 playwright,守門無聲失效,而 e2e 全綠不會有任何訊號 —— 故以盤點與接線測試補上訊號。
+
+**盤點指令**(套件根為 cwd;命中數須為 0,允許清單:無)
+```bash
+rg -n --glob '*.{mjs,js}' --glob '!**/node_modules/**' --glob '!**/dist/**' "(from\s+|import\(\s*|require\(\s*)['\"\`]playwright(-core)?['\"\`/]" .   # 須 0 命中(rg 離開碼 1)
+rg -n --glob '**/package.json' --glob '!**/node_modules/**' "\"playwright(-core)?\"\s*:" .                                                        # 須 0 命中
+rg -n "wpw\.(launchChromium|launchChromiumPersistent)\(" src test toolg                                                                         # 啟動點全集:須恰 1 處 test/tools/e2e-setup.mjs
+# 防空集合: 同一正則對 w-playwright 的 src/_pw.mjs 必命中(其 import 'playwright-core')
+rg -n --glob '*.{mjs,js}' "(from\s+|import\(\s*|require\(\s*)['\"\`]playwright(-core)?['\"\`/]" <w-playwright 根>/src/_pw.mjs
+```
+
+**站點**:啟動點 1(`test/tools/e2e-setup.mjs` 之 `launchBrowser`);經它啟動之 e2e 檔 4;`beforeEach` 啟動 e2e 共約 43 次(每 case 一次)。**判準**:已套 1/1;未套 0;刻意不套 0。
+
+**機械化保護**:`test/unit-pwWiring.test.mjs`(6 案,不啟動瀏覽器):①盤點正則之正例與反例(防空集合)②`src`／`test`／`toolg`／根層 `.mjs`／`.js` 無直接匯入(範圍含本檔自身與 e2e 共用層,檔數 >100)③`package.json` 無 `playwright`／`playwright-core`、`w-playwright` 在 `devDependencies` 而不在 `dependencies` ④`getPlaywrightInfo().tableMatch === true` ⑤啟動點全集恰一處且無直接 `.launch(`、4 個 e2e 檔皆 `await launchBrowser()` ⑥以 `wpw.setBrowserTypeForTest` 替身斷言 `launchBrowser` 確經 w-playwright(替身恰被呼叫 1 次)、`args` 恰一串 `--disable-features` 居末且含 `AutofillAiWalletPrivatePasses`、`headless === true`、無 `channel`／`executablePath`。真啟動路徑由 4 個 e2e 檔以 `launchBrowser()` 走真 headless shell。**分辨力**(2026-11-13):修前紅 4／6(用空的 `PLAYWRIGHT_BROWSERS_PATH` 使舊寫法無法啟動任何瀏覽器);變異 8／8 擊殺(`headless:false`、加 `channel:'chrome'`、不經 w-playwright、`e2e-setup` 加直接匯入 `playwright-core`、`package.json` 加宣告 `playwright`、新增直接 `.launch(` 站點、新增第二處 `wpw.launchChromium`、`e2e-upload` 不經共用層),皆以雜湊回驗還原。
+
 ---
 
 ## 已知限制(2026-10-14 起;本套件刻意不修或不在本 repo 修者)
@@ -1633,13 +1661,14 @@ npx mocha --no-parallel test/api-serverReady.test.mjs test/api-clientTrace.test.
 | 後端 | 每個 e2e 檔各起一台 `WConverhpServer`(`startServer`),port 由 `test/tools/ports.mjs` 之 `portOf` 向**作業系統配發**(R24;ch309 起,不再有固定埠、不依賴 `w-package-tools-e2e` 之 `reserveE2ePorts`),`pathStaticFiles: '.'` 供頁面與 bundle;頁面 URL 與測試內全部網址皆由實際埠衍生 |
 | 前端 | 無前端服務;`buildClientBundle` 於測試時自 `src/WConverhpClient.mjs` 以 rollup 打包至 `test/_tmp/e2e-<pid>/`,`writePage` 寫測試頁 |
 | e2e 執行 | 隨 `npm test` 一併執行;單檔:`npx mocha --no-parallel test/e2e-<flow>.test.mjs --timeout 180000` |
-| 共用實作 | `test/tools/e2e-setup.mjs`(未引用 w-package-tools-e2e:其模組皆為截圖、比對、篩選、生命週期等像素管線,本套件不適用) |
+| 共用實作 | `test/tools/e2e-setup.mjs`(未引用 w-package-tools-e2e:其模組皆為截圖、比對、篩選、生命週期等像素管線,本套件不適用;瀏覽器之啟動依賴 `w-playwright`,R31) |
+| 瀏覽器 | 每 case 一個 fresh browser(`beforeEach` 啟、`afterEach` 關;4 個 e2e 檔共約 43 次),皆為無頭 headless shell(R31):該啟動不觸發 LogonUser,故不採「每檔至多啟動一次」(該限制屬會啟動真 Chrome／Edge／完整 Chromium 之測試檔);日後若改用上列真瀏覽器,須改為每檔 `before` 起、`after` 關,並走 w-playwright 之登入守門與錯誤次數前後比對 |
 
 ### 契約映射
 
 | 契約 | 本專案實名 / 模式 | 偏離與依據 |
 |---|---|---|
-| C1 launch wrapper | `launchBrowser()`(`chromium.launch({ headless: true })`) | 不帶確定性渲染旗標:旗標之適用前提為像素比對,本套件無 |
+| C1 launch wrapper | `launchBrowser()`(`wpw.launchChromium({ headless: true })`,`import wpw from 'w-playwright'`;2026-11-13 pm-cvh 輪起,見 R31) | 不帶確定性渲染旗標:旗標之適用前提為像素比對,本套件無;不指定 `channel`/`executablePath`(Playwright 受管之 headless shell,不觸發 Chromium 之 LogonUser);`autoInstall` 不開(維持現行:缺受管瀏覽器即報錯,取得用 `await wpw.ensureChromium()`) |
 | C2 server lifecycle | `startServer(opt)`(呼叫端一律給 `pathUploadTemp: test/_tmp/<案名>/`,各檔 `after` 中 `await wsv.stop()` 後刪除,帳本 R28);cleanup 只刪本行程之 `test/_tmp/e2e-<pid>/`,以 `globalThis.after` 註冊 | 每檔各起停自己的伺服器,不需 reuse 偵測 |
 | C3–C5、C10、C12、C15 | 不適用 | 無換設定重啟、無持久資料、無登入與語系、無文字輸入、無動畫容器、畫面無時間戳 |
 | C6–C9、C13 | 不適用 | 無 UI 故無標準圖、紅框、遮罩、pixel 比對與 regen;斷言一律為語意斷言(回傳值、事件數、下載事件、伺服端觀察) |

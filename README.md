@@ -350,3 +350,19 @@ function uploadLargeFile(){
 }
 
 ```
+
+## Testing
+`npm test` runs the unit, api and e2e tests. The e2e tests drive a headless Chromium through [w-playwright](https://www.npmjs.com/package/w-playwright) (a dev dependency; this package depends on neither `playwright` nor `playwright-core` directly), and the browser is always started by `wpw.launchChromium`:
+
+```alias
+import wpw from 'w-playwright'
+
+// Download Playwright's headless shell once (do not use `npx playwright install`:
+// a different Playwright version in the dependency tree would download a different browser build)
+await wpw.ensureChromium()
+```
+
+* Offline: copy Playwright's browser folder (for example `chromium_headless_shell-1248`) from a machine that ran `ensureChromium()` and point the environment variable `PLAYWRIGHT_BROWSERS_PATH` at it. Set it before w-playwright is loaded.
+* The e2e tests use Playwright's managed headless shell, so Google Chrome is not required. Anyone who changes them to start a real Chrome (`channel: 'chrome'`) must install Google Chrome first.
+* Guard parameter: w-playwright always adds the Chromium feature `AutofillAiWalletPrivatePasses` to the one and only `--disable-features` switch of each launch. On Windows, Chromium 153 and later calls `LogonUser` with a wrong password for the current user at every new browser root process (under a typical local policy, 10 wrong passwords within 10 minutes lock the account); disabling this feature prevents it. There is no option to turn the guard off.
+* The environment variables `PWDEBUG` (inspector values) and `SELENIUM_REMOTE_URL` are not supported by w-playwright (they would bypass the guard).

@@ -14,7 +14,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { chromium } from 'playwright'
+import wpw from 'w-playwright'
 import rollupFile from 'w-package-tools/src/rollupFile.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import WConverhpServer from '../../src/WConverhpServer.mjs'
@@ -45,11 +45,17 @@ let nameBundle = 'w-converhp-client-e2e'
 
 
 /**
- * 唯一 chromium.launch 出口 (契約 C1)
+ * 唯一啟動瀏覽器出口 (契約 C1): 一律經 w-playwright, 不直接用 playwright / playwright-core (帳本 R31)
  * 本專案無 pixel 比對, 故不需確定性渲染旗標組(技能 §8.4 之適用前提是像素比對)
+ *
+ * why 經 w-playwright: Windows 上 Chromium 153 起每啟動一個新根行程即替目前使用者呼叫一次 LogonUser (錯誤密碼次數 +1, 10 分鐘內 10 次鎖帳號);
+ *   w-playwright 於每次啟動把 Playwright 預設與守門功能合併為恰一串 --disable-features。
+ * 無頭且不指定通道/執行檔 => Playwright 受管之 headless shell (本即不觸發); 不得改為 channel:'chrome' 等真瀏覽器 (每 case 啟動一次, 全套約 43 次)。
+ * 受管瀏覽器未安裝時 E_BROWSER_MISSING, 取得: `await wpw.ensureChromium()` (不用 `npx playwright install`); 離線以 PLAYWRIGHT_BROWSERS_PATH (須在載入前設定)。
+ * 接線與盤點由 test/unit-pwWiring.test.mjs 鎖定。
  */
 async function launchBrowser() {
-    return await chromium.launch({ headless: true })
+    return await wpw.launchChromium({ headless: true })
 }
 
 
@@ -185,7 +191,7 @@ if (typeof globalThis.after === 'function') {
 //r, 本檔對 e2e 測試提供之能力(各成員之用途)
 //  HOST             伺服器與頁面所用之主機位址(一律 127.0.0.1)
 //  projRoot         專案根目錄之絕對路徑, 供測試組出 test/pics 等資產路徑
-//  launchBrowser    取一個帶確定性渲染旗標之 chromium(每 case 各開一個)
+//  launchBrowser    取一個經 w-playwright 啟動之無頭 chromium(headless shell, 含守門參數; 每 case 各開一個)
 //  buildClientBundle 打包瀏覽器端 client 供頁面載入(首次呼叫才真的打包)
 //  writePage        寫出一個載入 client 之測試頁, 回傳其網址路徑
 //  startServer      起一個 WConverhpServer 並等其就緒

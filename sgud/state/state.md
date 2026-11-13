@@ -2,7 +2,7 @@
 
 本檔記**當前已開發功能之最新狀態**(各功能做到哪裡、對應之規則帳本條目與測試檔、已知缺口與待辦、最近一次驗證或發布之版本);**只記現況、不寫過程**(過程寫入 `sgud/exp/experience.md`)。接續工作先讀本檔。
 
-最近更新:2026-11-05(ch309 輪:測試埠改作業系統配發)。套件版本 2.1.14(`package.json`,本輪未改;未發布)。相依 wsemi `^1.9.37`、w-package-tools `^1.1.21`(`package.json` 本輪未改,未新增依賴)。
+最近更新:2026-11-13(pm-cvh 輪:測試改經 w-playwright 啟動瀏覽器)。套件版本 2.1.28(`package.json`,本輪未改;未發布)。相依 wsemi `^1.9.59`、w-package-tools `^1.1.28`;**devDependencies 本輪:移除 `playwright`、新增 `w-playwright ^1.0.1`**(`dependencies` 不變;產品碼與 `dist/` 無改動)。
 
 ## 功能現況
 
@@ -15,8 +15,16 @@
 | 測試以事件/可觀察條件同步(非等待毫秒) | 完成(本輪範圍:鉤子 45 檔 + 輔助 3 + 直接 C 20 案 + (d) 6 案);A 類否定窗與 B 輪詢上限刻意不動 | R30 | 見 R30 站點表 |
 | **發布與建置腳本**(`toolg/`,依 dspec〈自有套件之發布與建置腳本〉) | 完成(2026-11-02 改回標準寫法):`addVersion`/`modifyReadme`/`cleanFolder` 一行呼叫 w-package-tools;`gDistRollupWorkerFuncs.mjs`(`rollupWorkerCore` 產 `src/{checkTotalHash,checkSlicesHash,mergeSlices}.wk.umd.js`)→ `gDistRollup.mjs`(`rollupFile` 產 `dist/w-converhp-{server,client}.umd.js`),列序見 `script.txt`(使用者所有)。套件無自創建置規則 | R14 | `unit-toolgBuild`(副本+指定 cwd 執行)、`unit-workerBundles` |
 | **測試埠配發**(`test/tools/ports.mjs`、`test/tools/portsAlloc.mjs`) | 完成(2026-11-05 ch309,規格 `dspec/e2e埠與多套件同跑.md` E8):**不再有任何固定的監聽埠**,`alloc` 只登記每檔個數,`portOf` 首次取用時以同步子行程向作業系統要埠(`listen(0)`)並到跨行程認領登錄認領;`reserved.closed` 改為「向作業系統要一個後釋放、從不綁定」;「port 非法取預設 8080」一案改以攔截 `listen` 引數判斷、實際綁埠 0。產品碼未動 | R24 | `unit-ports`(12 案)、`api-optionsRange`、`api-executeError` |
+| **測試啟動瀏覽器一律經 w-playwright**(`test/tools/e2e-setup.mjs` 之 `launchBrowser` → `wpw.launchChromium({ headless: true })`) | 完成(2026-11-13 pm-cvh,排程第 442 項遷移輪):啟動點全集 1 處,4 個 e2e 檔(共 43 案,每案一個 fresh browser)皆經它;無頭、不指定通道,即 Playwright 受管之 headless shell(不觸發 Chromium 之 LogonUser);`playwright` 自 `package.json` 移除。受管瀏覽器取得 `await wpw.ensureChromium()`(README〈Testing〉);`autoInstall` 刻意不開。產品碼未動 | R31 | `unit-pwWiring`(6 案,不啟動瀏覽器)、`e2e-abort`、`e2e-download`、`e2e-execute`、`e2e-upload` |
 
-## 最近一次驗證(2026-11-05,ch309 輪:測試埠改作業系統配發)
+## 最近一次驗證(2026-11-13,pm-cvh 輪:測試改經 w-playwright 啟動瀏覽器)
+
+- **全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name pm-cvh-full2 -- npm test`,凍結碼,log 在 `tmp/quiet-run/`):**551 passing / 0 failing / 0 pending**(前次 545,差額為新增 `unit-pwWiring` 6 案);4 個 e2e 檔 43 案全過(`e2e-execute` 6、`e2e-download` 19、`e2e-upload` 4、`e2e-abort` 14)。
+- **修前紅**:`unit-pwWiring` 於修前碼(舊寫法直接用 `playwright`)跑 4／6 紅,以空的 `PLAYWRIGHT_BROWSERS_PATH` 使舊寫法無法啟動任何瀏覽器;修後 6／6 綠。**變異**:8／8 擊殺,皆以雜湊回驗還原(見 R31)。
+- **錯誤次數**(Windows 帳號之 `BadPasswordAttempts`):跑全套與接線測試前後皆 0(本套件 e2e 只起 headless shell,設計上不增)。
+- `R-PW-ONLY` 盤點:`src`／`test`／`toolg`／根層 0 命中,`package.json` 0 宣告;啟動點全集 1 處。標準圖:本套件無 pixel baseline,0 張。`toolg/` 未改(`src` 不匯入 playwright／w-playwright,`gDistRollup.mjs` 之 external／globals 無須同步)。
+
+## 前次驗證(2026-11-05,ch309 輪:測試埠改作業系統配發)
 
 證據在 `C:\opensrcOper\dnow\20261105000800\agent-out\ch309-evidence\`。
 
@@ -46,6 +54,7 @@
 ## 已知缺口與待辦
 
 - 無功能缺口。
+- 全新機器(含 `.github/workflows/ci-test.yml` 之 `npm install` → `npm test`)沒有受管瀏覽器時,4 個 e2e 檔於 `launchBrowser` 以 `E_BROWSER_MISSING` 失敗;工作流程內無安裝步驟(遷移前後相同,遷移前為 Playwright 之 `Executable doesn't exist`)。要自動取得時,於 `launchBrowser` 給 `autoInstall: true`(會在測試中下載瀏覽器,屬行為變更,待使用者裁示;帳本 R31 規則 4)。
 - 待主控(本套件外,不在本輪範圍):測試閘 `tools/test-resource.json` 之 `portGroups["8301"] = ["w-converhp", "w-highcharts-vue"]` 已無依據(本套件測試不再監聽 8300 段,任何固定埠皆無),可移除;本套件亦不需加入 `portGroups["8080"]`(`api-optionsRange` 不再綁 8080)。
 - 測試埠配發之限制:`portOf` 取號到伺服器綁定之間有空窗,以跨行程認領登錄(`test/_tmp/ports-claims`)擋掉**本套件測試彼此**取得同號;與他套件之同號由作業系統保證不發出仍被綁定之埠,但釋放後之空窗內被他套件的 `listen(0)` 取走在理論上存在(獨立審查曾實測 8 行程併發配發有跨行程重複,本輪重跑 0/1920 未重現);被撞上時為明確 `EADDRINUSE`,不會靜默連到別人的服務。
 - `api-envelopeShape` 曾有 1 次無法重現之 2 案紅(見上「不穩定紀錄」),成因未查明;再現時先查 `test/_tmp/uploadTemp-api-envelopeShape` 有無前一輪被中斷所留之殘留。
