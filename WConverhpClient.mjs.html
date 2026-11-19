@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#encodeStrict">encodeStrict</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#probeReadable">probeReadable</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -67,12 +67,12 @@ import dig from 'wsemi/src/dig.mjs'
 import strright from 'wsemi/src/strright.mjs'
 import b642str from 'wsemi/src/b642str.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
-import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
 import retryDelay from './retryDelay.mjs'
+import encodeStrict from './encodeStrict.mjs'
 import wAbortScope from './abortScope.mjs'
 
 
@@ -993,9 +993,10 @@ function WConverhpClient(opt) {
         let bb = null
         try {
 
-            //obj2u8arr, 以嚴格模式取狀態: 呼叫端給之input若含BigInt或循環參照, 寬鬆模式回空封包而伺服器會收到空物件並照常觸發execute事件,
-            //呼叫端只會拿到不知所云之結果; 於此提早以明確訊息拒絕, 不送出
-            let re = obj2u8arr(data, { returnWithStateAndMsg: true })
+            //encodeStrict(obj2u8arr 之嚴格模式 + 探針, 帳本 R3、R32): 呼叫端給之input若含BigInt或循環參照, 寬鬆模式回空封包而伺服器會收到空物件並照常觸發execute事件,
+            //呼叫端只會拿到不知所云之結果; 於此提早以明確訊息拒絕, 不送出。input 內含不可讀之值(已撤銷之 Proxy、拋錯之 Symbol.toStringTag 等)者同處置:
+            //wsemi 1.9.69 起序列化器不再因判斷函數拋錯而失敗, 不探則該值被靜默序列化為其可見之鍵(甚至 {}), 伺服器收到失真之 input
+            let re = encodeStrict(data)
             if (get(re, 'state') !== 'success') {
                 let msg = `input can not be serialized: ${get(re, 'msg', 'unknown error')}`
                 ctx.emit('error', msg)
@@ -1672,7 +1673,7 @@ export default WConverhpClient
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Nov 19 2026 08:05:02 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Nov 19 2026 15:47:09 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
