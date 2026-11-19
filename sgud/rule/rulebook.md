@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | [R1](#r1-應用端可控值之屬性讀取一律在-try-內) | 應用端可控值之屬性讀取一律在 try 內 | grep | 7 類 | 0 |
 | [R2](#r2-寫入回應標頭之值一律經值域檢核) | 寫入回應標頭之值一律經值域檢核 | grep | 14 | 0 |
-| [R3](#r3-codec-呼叫一律以嚴格模式取狀態) | codec 呼叫一律以嚴格模式取狀態 | grep | 9 | 0(原 1 待 wsemi,2026-10-29 升 wsemi 1.9.29 後已解) |
+| [R3](#r3-codec-呼叫一律以嚴格模式取狀態) | codec 呼叫一律以嚴格模式取狀態 | grep | **7**(server/client/managerMergeSlices 6 + `encodeStrict` 內 1;序列化三站點 2026-11-19 收斂為 `encodeStrict`,見 R32) | 0(原 1 待 wsemi,2026-10-29 升 wsemi 1.9.29 後已解) |
 | [R4](#r4-數值選項一律經述詞--sink-上限) | 數值選項一律經述詞 + sink 上限 | grep | **21** | 0 |
 | [R4b](#r4b-檢核與正規化須成對isp0intispint--cint) | 檢核與正規化須成對(`isp0int`/`ispint` → `cint`) | grep | 10 | 0 |
 | [R4c](#r4c-重試次數與退避延遲須各自有上限) | 重試次數與退避延遲須各自有上限 | 常數 + 單元測試 | 2 | 0 |
@@ -47,6 +47,7 @@
 | [R29](#r29-一次嘗試之結局不得以外來值之形狀判定不需重試以自建包裝之參照識別成功須以肯定式證明) | **一次嘗試之結局不得以外來值之形狀判定**;不需重試以自建包裝之參照識別;成功須以肯定式證明 | 位置鎖 + 行為表 | 判定站點 6 | 0 |
 | [R30](#r30-計時器相關測試以被測物之事件或可觀察條件為同步點不以等待毫秒伺服器就緒等-ready自有計時器以-optontrace) | **計時器相關測試以被測物之事件或可觀察條件為同步點,不以等待毫秒**;伺服器就緒等 `ready`、自有計時器以 `opt.onTrace`、效能時限改邏輯順序 | grep + 行為表(`api-serverReady`、`api-clientTrace`)+ 負載試驗 | 鉤子 45 檔 + 輔助 3 + 直接 C 20 案 + (d) 6 案 | 0 |
 | [R31](#r31-chromium-系瀏覽器之啟動一律經-w-playwright本套件不直接依賴-playwrightplaywright-core) | **Chromium 系瀏覽器之啟動一律經 w-playwright**;本套件不直接依賴 `playwright`／`playwright-core`(測試專用,devDependencies) | `rg`(R-PW-ONLY)+ `unit-pwWiring` | 啟動點 1 處(e2e 共用層)/ 4 個 e2e 檔皆經它 | 0 |
+| [R32](#r32-不可讀之值須由探針明確判定不得倚賴-wsemi-判斷函數是否拋錯) | **不可讀之值須由探針明確判定**;不得倚賴 wsemi 判斷函數是否拋錯(wsemi 1.9.69 起判斷函數回布林、只收原始值) | `unit-probeReadable` + 行為表(`api-hostileValueProbe`)+ grep | 探針呼叫 4 處(`encodeStrict` 1〔序列化三站點共用〕+ 下載欄位 1 + 串流辨識 2)、受保護站點 5(A1–A5)/ 判斷函數呼叫 98 行逐一歸類 | 0 |
 
 > **第十二輪之總結(2026-10-13)**:起因為 w-serv-hapi 之 agent 提出之外部建議四項(上傳管線不判接聽者即落檔、verifyConn 非函數即全放行、serverHapi 模式之 stop、corsOrigins 文件)。四項事實全屬實,但三項修法各撞既有設計(建構期失敗不拋出之通道、R12 之單一擁有者、merge-slices-get S3 之冪等、hapi 無移除路由 API)。方案經三份獨立複審(Claude Opus 5.5 ×2、Codex GPT-6.1-Sol ×1,各自於 HEAD 之 worktree 實跑)擴充為七個變更單元:**R12 延伸至上傳管線**(閘門 4 站點 + admit 期間中斷之補判 2 站點,後者為複審發現之既有缺陷:handler 永不終結、/slc 漏 fd)、合併佇列在途消費之跨實例隔離(複審發現)、**新立 R26**(verifyConn、corsOrigins、useInert、pathStaticFiles)、文件。外部建議之 #3 只補文件,改行為列下輪提案。逐條核對見當輪之 `tmp/r12-複審彙整.md`,定案方案見 `tmp/r12-全盤.md` §9。
 > 帳本自身之錯誤 2 件:R25 之執行指令 `--timeout 60000` 過期(package.json 為 180000)、`unit-ruleSites` 之「帳本須涵蓋全部規則」清單只列到 R18(R19–R25 缺頁不會紅);皆已更正。另 `tmp/measure_sites.mjs` 仍讀第十一輪併檔前之 `buildDownloadSource.mjs` 而無法執行,本輪以 `tmp/r12/sites.mjs`(同 `readCode` 剝註解規則、保留行號)產生逐站點清單。
@@ -159,8 +160,9 @@ grep -n "\.header('\|\.type(" src/WConverhpServer.mjs   # 須為 14; 第十一�
 
 **盤點指令**
 ```bash
-grep -hn "obj2u8arr(\|u8arr2obj(" src/*.mjs | grep -v "import \|^[0-9]*:\s*//\|^[0-9]*:\s*\*"   # 須為 9
+grep -hn "obj2u8arr(\|u8arr2obj(" src/*.mjs | grep -v "import \|^[0-9]*:\s*//\|^[0-9]*:\s*\*"   # 須為 7(2026-11-19 起; 原 9: 序列化之三個嚴格站點收斂為 encodeStrict, 見下方更新與 R32)
 ```
+> **2026-11-19 更新(R32,wsemi 1.9.69)**:下表站點 2(client `sendPkg`)、4(server `encodeOut`)、9 之 encode 半(`managerMergeSlices` 之 `consume`)三處原各自呼叫 `obj2u8arr` 之嚴格模式,現一律改呼叫 `src/encodeStrict.mjs`(探針 + `obj2u8arr` 嚴格模式)—— 單一擁有者,其內恰 1 個嚴格 `obj2u8arr`。故 `src/*.mjs` 之命中由 9 變 7(server/client/mmg 合 6:嚴格 `u8arr2obj` 4 + 寬鬆 `obj2u8arr` 2〔站點 3、6,刻意不套,不變〕;`encodeStrict` 內 1),`unit-ruleSites` 之 R3 同步改期望值並加斷言:三處各恰一次 `encodeStrict(`、`encodeStrict` 內探針先於序列化。原因:wsemi 1.9.69 起判斷函數對不可讀值不再拋錯,序列化器不再因此回 error(見 R32)。
 > **第十輪更正**:原指令為 `grep -n ... | grep -v "import \|^\s*//"` —— `grep -n` 之輸出行首已是 `src/檔名:行號:`,`^\s*//` 恆不命中,註解行(`canonProtocolValue.mjs:8`、`managerMergeSlices.mjs:28`、server 之被註解掉之測試碼)全數混入而裸跑得 12。改為 `-h`(不帶檔名)後過濾即生效。下方站點表之行號亦已過期,以表達式為準。
 > 同屬雙模 codec 而未列入本條者:`str2b64`(`/dw` 之檔名)、`b642str`(client 之檔名)。前者之寬鬆模式吞掉孤立代理對之 URIError 而回空字串(第十輪 A7),已由 `validDownloadField` 於編碼前正規化;後者之輸入為伺服器自產之 base64,列刻意不套。
 **站點數:9(已套 7 / 刻意不套 2 / 未套 0)** —— 2026-09-10 修 #26 後重掃,**本條缺口歸零**
@@ -1625,6 +1627,78 @@ rg -n --glob '*.{mjs,js}' "(from\s+|import\(\s*|require\(\s*)['\"\`]playwright(-
 
 ---
 
+### R32 不可讀之值須由探針明確判定,不得倚賴 wsemi 判斷函數是否拋錯
+
+**狀態:2026-11-19 新立並套用(cvh492i 輪;wsemi 1.9.69 第 8 批——判斷函數對已撤銷之 Proxy、讀 `Symbol.toStringTag` 即拋錯等物件不再拋錯而回 `false`〔dspec C2「判斷函數回布林」〕,且只收原始值〔W-20,包裝物件為 `false`〕),缺口 0**〔狀態細節見 `sgud/state/state.md`〕
+
+**規則**:
+
+1. **「不可讀」之定義(單一來源 `src/probeReadable.mjs`)**:讀其型別標籤(`Object.prototype.toString.call`,即 wsemi 判斷函數之共同底層所讀者)即拋錯者——已撤銷之 Proxy、拋錯之 `Symbol.toStringTag` getter、`get` 陷阱拋錯之 Proxy;**深探**另含鍵集合(`ownKeys`、`getOwnPropertyDescriptor`)讀取即拋錯者。**只壞 `has` 陷阱之 Proxy 為可讀**(wsemi 之判斷函數與 JSON 序列化皆不依賴 `in`;舊版 wsemi 對其序列化亦照常)。回傳空字串為可讀,非空字串為原因(恆非空,取不到訊息者為 `unreadable value`)。
+2. **凡應用端或呼叫端交出之值,其後之處置需要「不可讀者走原失敗通道」者,一律先經探針;不得倚賴 wsemi 判斷函數(`isobj`、`isfun`、`isestr`、`isstr`、`isbol`、`isp0int`…)拋不拋錯。** wsemi 1.9.69 起判斷函數一律回布林;本套件原有數個防線借其拋錯而成立,判定不再拋錯後,不可讀之值被當成「一般之無效值」(如選用欄位視為未給)或「無特徵之物件」(如 JSON 具體化),防線無聲失效。
+3. **序列化之唯一入口 `src/encodeStrict.mjs`**(探針〔深探〕+ `obj2u8arr` 嚴格模式):伺服端 `encodeOut`、`managerMergeSlices` 之 `consume`、前端 `sendPkg` 三處一律經它(與 R3 同一擁有者)。不可讀者回 `{ state:'error', msg:'unreadable value: <原因>' }`,走各站點原有之序列化失敗通道(`output can not be serialized` + 一則 error 事件、`input can not be serialized: …` + 一則 client error 事件、不落地失真之 `.ro`)。
+4. **下載欄位與串流之辨識用淺探**(只觸碰值本身之型別標籤):`validDownloadField`(filename、fileSize、fileType;不可讀者與判定拋錯同處置,**含選用之 `/dwgf` filename**——事件帶原因)、`hasPipe`(讀到之 `pipe` 值不可讀者回 `null`〔判定失敗〕而非 `false`〔確定不像串流〕)、`buildDownloadSource` 之具體化階段(不可讀之 streamRead 拋錯由 `attempt` 收斂為 `invalid streamRead`)。
+5. **探針無副作用,且只走「序列化器會走到」之子圖**:不呼叫 accessor、`toJSON`、方法(R7 之 #34b:`toJSON` 只執行一次,探針不得多呼叫一次;深探以屬性描述子讀資料屬性,不以 `x[k]` 讀);**不展開**:二進位內容(ArrayBuffer 與其視圖,否則 `ownKeys` 配置與位元組數同量之字串)、函數值(JSON 丟鍵)、**有 `toJSON` 者**(以屬性描述子沿原型鏈查,取最先找到者,不可呼叫之資料屬性視為無〔同 JSON 之取法〕;序列化器改序列化其回傳值,如 `Date`;不展開否則為假陽性,獨立複審實測)、`Error` 與 `DOMException`(wsemi 轉為字串);循環與共享參照不重複走訪、不視為不可讀(循環由序列化器自行回報)。**已知偏差**:陣列以 `x[i]` 讀元素,索引上若有 accessor 會被多呼叫一次(極端罕見;不另以描述子讀以免大陣列之配置成本)。**成本**:約等於一次序列化之走訪(實測 100 萬筆物件之陣列探針約 +0.4 秒、與序列化同級),大輸出者之代價見下。
+6. **包裝物件(W-20)視同非該型別之值**,不另處理:`new String`、`new Number`、`new Boolean` 於 `isstr`/`isestr`/`isp0int`/`ispint`/`isbol` 為 `false`——下載欄位之包裝物件為 invalid(選用之 filename 視為未給)、`streamRead` 之 String 包裝物件不取其原始值(走物件之 JSON 具體化)、前端 `fdDownload`/`apiName` 等選項視為無效值取預設/拒絕。舊字面盤點見下方。
+7. **建構子與入口之選項檢核**(`isestr`/`isp0int`/`ispint`/`isbol`/`isfun`/`isarr`/`isobj` 判選項值)不補探針:選項為不可讀值時,舊版因判斷函數拋錯而使建構子/入口拋出原生 `TypeError`(違反 R11「建構期失敗不拋出」),1.9.69 起走既有之「無效值」通道(取預設、或 R26 之收緊並告知),此為判斷函數回布林(dspec C2)之既定語意且合於 R11,見破壞性變更紀錄。
+
+**why**:wsemi 之判斷函數原對不可讀之值拋錯,本套件之序列化嚴格模式(wsemi 之 `obj2stru8arr` 之 replacer 內含判斷函數)、下載欄位判定(選用欄位以「判定是否拋錯」區分「未給」與「判定失敗」,見 `readOutput` 之 `f.optional === true && !isestr(vv.cause)`)、串流辨識(`hasPipe` 之三態)皆倚賴它。1.9.69 把判斷函數改為不拋錯(正確之契約),這些防線即由「拋錯」換成「靜默放行」。**防線不得建立在另一個套件之函數是否拋錯上**——明確寫成探針,則 wsemi 無論再如何調整判斷函數之內部,本套件之行為不變。
+
+**如何找到站點(本輪之作法,可重跑)**:以**差分探測**取代「讀碼猜哪裡依賴拋錯」——`tmp` 內之探測腳本以同一組「不可讀形狀(已撤銷之 Proxy、已撤銷之函數 Proxy、拋錯之 `Symbol.toStringTag`、`get`/`has`/`ownKeys` 陷阱拋錯之 Proxy、String/Number/Boolean 包裝物件)× 注入點(verifyConn 回傳、execute/upload/download 之 resolve/reject 與各欄位、前端 execute/upload/download 之全部參數、前後端全部建構選項、getToken 回傳)」共 585 格,分別對「改動前之 src + wsemi 1.9.68」、「改動前之 src + wsemi 1.9.69」、「改動後之 src + wsemi 1.9.69」取結果比對,凡 1.9.68 與 1.9.69 不同之格即候選站點(修前 169 格差異),再依「防線是否因此失效」歸類(見 `sgud/exp/experience.md` E54)。
+
+**盤點指令**(套件根為 cwd)
+```bash
+# ① 探針之呼叫點全集(須為 4 處呼叫 + 1 處定義 = 5 行): encodeStrict 內 1(深探)、validDownloadField 1、hasPipe 1、具體化階段 1(後三者淺探)
+rg -n "probeReadable\(" src
+# ② 序列化之嚴格模式 obj2u8arr 只在 encodeStrict 內(R3): 須恰 1 行
+rg -n "obj2u8arr\([^)]*returnWithStateAndMsg" src
+# ③ 三個序列化站點各恰一次經 encodeStrict: 須 server 1、client 1、managerMergeSlices 1
+rg -c "encodeStrict\(" src/WConverhpServer.mjs src/WConverhpClient.mjs src/managerMergeSlices.mjs
+# ④ 判斷函數呼叫之全集(程式碼行,不含註解行): 須為 98, 逐行歸類見下表(新增一行即須歸類)
+rg -n "^\s*[^/\s*].*\b(isobj|iseobj|isarr|isstr|isestr|isfun|ispm|isbol|isp0int|ispint|isWindow|haskey)\(" src --glob "*.mjs"
+```
+
+**站點表**
+
+*A 類:判定值為應用端/呼叫端所交,其後之防線倚賴判斷函數之拋錯,**已補探針***(共 5 處,修前為差分探測所見之失效)
+
+| # | 站點 | 守護之輸入 | 修前(wsemi 1.9.69,改動前) | 修後 | 對應測試 |
+|---|---|---|---|---|---|
+| A1 | `WConverhpServer.mjs:510` `encodeOut` → `encodeStrict` | 應用端 `pm.resolve`/`pm.reject` 之值(execute 輸出與拒絕值、upload 合併消費結果、`/dwgfn` 之封包) | 拋錯之 `Symbol.toStringTag` 之物件(頂層或巢狀)被序列化為其可見之鍵,回 `success`/原值,0 則事件 | `output can not be serialized` + 恰一則事件 | `api-hostileErrorValues` 之 execute 拒絕案(原 2 紅之一)、`api-hostileValueProbe` A1(8 形狀 × resolve/reject × 頂層/巢狀) |
+| A2 | `managerMergeSlices.mjs:157` `consume` → `encodeStrict({ ro })` | 應用端 upload 事件之結果 `ro` | 失真之 `ro` 被落地為已儲存結果、首次回應為失真值、重送回同值(冪等性鎖住錯值) | 不落地、外層 `encodeOut` 報 `output can not be serialized`、輪詢重新消費(S2) | `api-hostileErrorValues` 之 upload 合併消費案(原 2 紅之二)、`api-hostileValueProbe` A2 |
+| A3 | `WConverhpClient.mjs:952` `sendPkg` → `encodeStrict(data)` | 呼叫端 `execute(func, input)` 之 `func`、`input`(頂層與巢狀) | 靜默序列化為其可見之鍵,伺服器收到失真之 input 並觸發 execute 事件 | 入口拒絕 `input can not be serialized: unreadable value: …` + 一則 client error 事件、不送出 | `api-hostileValueProbe` A3(4 形狀 × 3 位置) |
+| A4 | `WConverhpServer.mjs:403` `validDownloadField` | 應用端 download 事件所回之 `filename`/`fileSize`/`fileType` | 選用之 `/dwgf` filename 被當成「未給」→ HTTP 200 成功、靜默略過;必要欄位之事件失去原因(`invalid X` 後無 `: cause`) | 三路由一律 `invalid <欄位>` 錯誤封包 + 恰一則事件且帶原因(含選用之 filename) | `api-hostileValueProbe` A4(3 路由 × 其全部欄位 × 4 形狀) |
+| A5 | `WConverhpServer.mjs:131` `hasPipe`、`:260` 具體化階段 | 應用端 download 事件所回之 `streamRead` 本身,及其 `pipe` 值 | `Symbol.toStringTag` 拋錯之 streamRead 與 `{ pipe: <不可讀> }` 被當成無特徵之物件走 JSON 具體化(`fileSize mismatch`,長度恰符時為成功) | `invalid streamRead` + 恰一則事件(`identify`/`materialize streamRead failed: <原因>` 或 `streamRead must be a readable stream…`) | `api-hostileValueProbe` A5(`dw`、`dwgf` × 4 形狀 × 2 位置) |
+
+A 類之下游判斷函數呼叫(皆位於上列探針之後,或消費其結果,共 8 行):`WConverhpServer.mjs:134`(`isfun(p)`)、`:271`、`:279`(`isstr`/`isbol`)、`:367`(`isp0int`)、`:415`、`:419`(`isestr`)、`:1355`、`:1361`(`isestr(vv.cause)`:選用欄位區分「未給」與「判定失敗」,現由探針之 cause 支撐)。
+
+**歸類總計:判斷函數呼叫 98 行 = A 類下游 8 + B 類 28(server 14〔B1 12 + B3 1 + B4 1〕、client 14)+ C 類 62(server 37、client 14、其餘 5 檔 11)**。
+
+*B 類:判定值為應用端/呼叫端所交,但**無防線倚賴拋錯**——判定為 `false` 即走既有之「無效值」通道,不補探針*(見規則 7;修前拋錯為意外,修後為設計通道)
+
+| # | 站點 | 判定值之來源 | 處置 |
+|---|---|---|---|
+| B1 | `WConverhpServer.mjs:878`、`891`、`904`、`914`、`930`、`936`、`944`、`953`、`971`、`1003`、`1006`、`1019`(建構子選項檢核 `ispint`/`isbol`/`isestr`/`isfun`/`isarr`/`isp0int`,共 12 行) | 使用端之建構選項 | 無效值通道(取預設,或 R26 之收緊並告知);`verifyConn` 非函數 → 拒絕全部 API + 事件(`:971` 之 try 於 1.9.69 起冗餘,依死碼處置不刪);`api-hostileValueProbe` 之「建構選項為不可讀值」(8 選項 × 5 形狀) |
+| B2 | `WConverhpClient.mjs:297`、`303`、`318`、`326`、`347`、`354`、`361`、`368`、`375`(建構子選項 9 行)、`:433`(`cbProgress` 之 `isfun`)、`:606`(`headers` 之 `isobj`)、`:626`(`retry`)、`:1485`(`fdDownload`)、`:1505`(`downloadByManager`),共 14 行 | 呼叫端之選項與參數 | 同上(取預設或入口拒絕 + 一則事件);修前 `cbProgress`、`opt.headers` 為不可讀值時以原生 `TypeError` 拒絕(0 則事件),修後取預設;`api-hostileValueProbe` 之「建構選項」「W-20」 |
+| B3 | `WConverhpServer.mjs:1161` `ispm(m)`(verifyConn 之回傳值) | 應用端 | 修前修後同(差分探測 `S1` 18 格〔9 形狀 × 2 路由〕逐格相同:`ispm` 於 1.9.68 已內含 try) |
+| B4 | `WConverhpServer.mjs:453` `destroyStreamRead`(`isfun(v.pipe) && isfun(v.destroy)` 包在 try 內) | 應用端之 streamRead | 修前修後同(不可讀者不銷毀,無串流可銷毀) |
+
+*C 類:判定值非應用端/呼叫端所交(請求本體/標頭/查詢字串經 JSON 解析之值、axios 回應、本套件自產值),不可能為不可讀值,不適用*
+
+| 檔 | 行 | 判定值 |
+|---|---|---|
+| `WConverhpClient.mjs`(14 行) | `:93`、`:211`、`:212`、`:384`(`isWindow`,環境)、`:711`、`:757`、`:773`、`:831`、`:836`、`:839`、`:1103`、`:1390`、`:1397`、`:1405` | axios 回應(`d.resume`、`statusText`、標頭字串、進度 `total`)、解碼後之伺服器封包 |
+| `WConverhpServer.mjs`(37 行) | `:81`、`:299`、`:301`、`:558`、`:563`、`:592`、`:670`、`:923`、`:1113`、`:1135`、`:1145`、`:1212`、`:1264`、`:1266`、`:1271`、`:1272`、`:1278`、`:1326`、`:1555`、`:1559`、`:1625`、`:1660`、`:1695`、`:1742`、`:1789`、`:1840`、`:1845`、`:2072`、`:2094`、`:2151`、`:2155`、`:2175`、`:2212`、`:2262`、`:2282`、`:2412`、`:2430` | 套件自產字串/封包、hapi 之 `req`、請求 JSON、wsemi 之回報物件 |
+| `managerMergeSlices.mjs` | `:61`、`:121`、`:168`、`:274`、`:358` | 隊列識別、磁碟 `.ro` 解碼值、server 注入之 `funLog`/`funConsume` |
+| `checkSlicesHash.mjs`、`checkTotalHash.mjs`、`isSafeId.mjs`、`sanitizeFilename.mjs` | `:53`/`:68`、`:34`/`:124`、`:14`、`:21` | 請求端 JSON 值、實存檔名段 |
+
+**舊字面盤點(W-20,2026-11-19)**:以舊行為之字面對 `src/`、`test/` 各 Grep 一次:`Object('`、`new String(`、`new Number(`、`new Boolean(`、`包裝物件`——改動前 `src/` 0 命中、`test/` 0 命中(改動後 `test/` 新增 `api-hostileValueProbe.test.mjs` 之 W-20 案使用 `new String(`、`new Number(`)。故無既有程式倚賴「包裝物件被判為字串/數值/布林」,受影響者僅上表 B 類與 A 類中對包裝物件之處置(視同非該型別之值)。
+
+**判準**:A 類 5/5 已套;B 類 4 站點無防線倚賴,不補探針(理由如上);C 類不適用;刻意不套 0。**已知差異(不補)**:①accessor 或 `toJSON` 回傳之「讀標籤即拋錯」物件(見已知限制 L4)。②僅 `has` 陷阱拋錯之 Proxy 於 `streamRead`(及其 `pipe`)——1.9.68 經 lodash `isString`/`isFunction` 之 `in` 運算子判定失敗(`invalid streamRead`),現定義為可讀,與一般物件同走 JSON 具體化(通常為 `fileSize mismatch`);理由:該形狀其餘行為全正常、JSON 序列化亦不讀 `has`,探針納入 `in` 則於序列化站點使「舊版照常成功」之 `has` 陷阱 Proxy 轉為失敗(與「上列以外之行為不變」相違)。
+
+**機械化保護**:`test/unit-probeReadable.test.mjs`(探針之定義 S1–S6 與 L4:原始值、一般值、不可讀形狀、原因非空、ownKeys/getOwnPropertyDescriptor 陷阱、深探走訪與淺探不走訪、1000 層與 10 萬層、無副作用〔accessor、`toJSON`、方法、原型上之 getter〕、不展開二進位〔2 千萬位元組即時完成且不對二進位呼叫 `ownKeys`〕、函數值不展開、**序列化器不會走到者不展開〔有 `toJSON` 者、`Date`、`Error`、`DOMException`、陷阱代理〕**、循環與共享、`has` 陷阱為可讀、**可讀之值經 `encodeStrict` 與經 `obj2u8arr` 嚴格模式逐位元組相同〔13 種〕**、`encodeStrict` 之 `toJSON` 只一次、L4 已知限制之鎖定)、`test/api-hostileValueProbe.test.mjs`(行為表:A1–A5 之全部注入點 × 形狀,另 W-20、前端呼叫參數〔`cbProgress`、`opt.headers`、`opt.fdDownload`、`upload` 之 `input`、`getToken` 回傳〕與前後端建構選項〔含 `corsOrigins` 停用 CORS 與 `useInert` 告知之斷言〕)、`test/unit-ruleSites.test.mjs`(R3 之站點收斂、`encodeStrict` 內探針先於序列化、三處各恰一次呼叫、`hasPipe` 先探針再 `isfun`、帳本須含 R32)。**分辨力**(2026-11-19):修前(改動前 src + wsemi 1.9.69)`api-hostileErrorValues` 2 紅、`api-hostileValueProbe` 58 紅(A1 4、A2 2、A3 12、A4 28、A5 12);以 wsemi 1.9.68 跑現碼,探針相關案(A1–A5、`unit-probeReadable`)全綠、W-20 11 案與選項/呼叫參數 67 案轉紅(鎖的是 1.9.69 起之語意);變異 16／16 擊殺(探針之定義 8 項、三站點各自不探針 3 項、三個序列化站點各自繞過 `encodeStrict` 3 項、`hasPipe` 回 `false`、不深探、不先探),詳見 `sgud/state/state.md`。獨立複審(sonnet 子代理,唯讀)指出之假陽性(有 `toJSON` 者、`Date`、`Error` 之子圖被展開)已修並補差分測試。
+
+---
+
 ## 已知限制(2026-10-14 起;本套件刻意不修或不在本 repo 修者)
 
 | # | 限制 | 理由與處置 |
@@ -1632,6 +1706,8 @@ rg -n --glob '*.{mjs,js}' "(from\s+|import\(\s*|require\(\s*)['\"\`]playwright(-
 | L1 | **Node.js 下使用 axios 之預設實例,宿主掛於其上之攔截器亦作用於本套件之請求**(例:回應錯誤攔截器改以 `err.response.data` 拒絕時,413 之不重試失效、該本體被當成伺服器回傳值交出;請求攔截器拋出者為每次嘗試之失敗)。狀態碼判定已不受宿主 `axios.defaults.validateStatus` 影響(R29 第 5 點)。瀏覽器之 dist 自帶 axios,不受影響;以打包工具引用 src 之瀏覽器應用同 Node.js | 主控裁示 3:私有實例須改寫 8 條以全域攔截器打時窗之中止測試,且宿主刻意之全域設定(httpsAgent、adapter)不再套用;注入實例為公開 API 增項 —— 皆屬設計取捨,現無觀察到之宿主攔截器問題。JSDoc 明載 |
 | L2 | **「原樣交出」以 codec 往返為界**:頂層 undefined → null(伺服端正規化);Error → `'Name: message'`;**非 plain 之類別實例帶字串 name/message → `'[object Object]'`**(wsemi `obj2stru8arr` 之 replacer 以 lodash `isError` 判為 Error 後 `toString()`,資訊全失);`toJSON` 先於上述判定 | wsemi codec 之行為,不在本 repo 修;repo 根 `建議wsemi修正-codec.md` 交 wsemi 主責判斷 |
 | L3 | **惡意值原樣交出**:getToken 以已撤銷之 Proxy 等惡意值拒絕時,該值原樣交給 error 監聽器與呼叫端,其讀取可能拋錯 | 主控裁示 2:「非 Error 者原樣交出」(`classifyFailure`)不因值難讀而改變;JSDoc 明載 |
+| L4 | **accessor 或 `toJSON`「回傳」之「讀 `Symbol.toStringTag` 即拋錯」之物件不被探針涵蓋**(2026-11-19,R32):例 `{ get g() { return <拋錯之 Symbol.toStringTag 物件> } }`、`{ toJSON() { return { n: <同上> } } }`。wsemi 1.9.68 之序列化器內之判斷函數會逐值讀標籤而回 error + 一則事件;1.9.69 起判斷函數不拋錯,現被序列化為其可見之鍵(宣稱成功)。**已撤銷之 Proxy 與 `get` 陷阱拋錯者不受影響**(`JSON.stringify` 自身即拋,實測新舊版皆 error) | 探針不得呼叫 accessor 與 `toJSON`(R7 之 #34b:`toJSON` 只執行一次;其呼叫次數由序列化器掌握),故看不到其回傳值。要補須由序列化器內建可讀性探針(wsemi 側,見 `sgud/feedback/feedback.md` 2026-11-19 之提案①)。獨立複審實測 |
+| L5 | **頂層 `pm.resolve(<讀 then 即拋錯之值>)` 與 `pm.reject(<函數型別之值>)` 之事件數**(2026-11-19 觀察,非 R32 引入,舊新版 wsemi 逐格相同):`pm.resolve(<已撤銷之 Proxy>)`、`pm.resolve(<get 陷阱拋錯之 Proxy>)` 由 Promise 之 resolve 程序自身以原生 `TypeError` 拒絕 → 錯誤封包(內容為該錯誤之文字)、伺服器 0 則事件;`pm.reject(<函數型別之值,含已撤銷之函數 Proxy>)` 經 `canonProtocolValue` 正規化為 `null` → 錯誤封包 `{ error: null }`、0 則事件 | 不在本輪範圍(派工明定上列以外之行為不變);R5 之「應用端拒絕本身 0 則」之既有口徑所涵。已於 `api-hostileValueProbe` A1 以「既有語意」明列,不使其被誤認為缺口 |
 
 ## 破壞性變更紀錄
 
@@ -1645,6 +1721,9 @@ rg -n --glob '*.{mjs,js}' "(from\s+|import\(\s*|require\(\s*)['\"\`]playwright(-
 | 2026-10-14 | getToken 以惡意值拒絕 | 行程結束(未處理之 rejection)或呼叫永不 settle | 每次一則、照常重試、以原值拒絕 | — |
 | 2026-10-14 | getToken 回 thenable 解出 undefined/null | 送 `Bearer undefined` | 送空 token(同原生 promise) | — |
 | 2026-10-14 | 伺服端:應用端以惡意值拒絕 | 裸 HTTP 500、伺服器 0 則 | 錯誤封包 `output can not be serialized` + 一則事件 | — |
+| 2026-11-19 | 建構選項(前端 `apiName`/`getToken`/`tokenType`/`sizeSlice`/`timeout`/`retry*`/`onTrace`/`url`、伺服端 `apiName`/`useInert`/`pathStaticFiles`/`pathUploadTemp`/`tokenType`/`sizeSlice`/`sizeMsg`/`corsOrigins`/`delayForSlice`)或呼叫參數(`cbProgress`、`opt.headers`、`opt.fdDownload`)為已撤銷之 Proxy、拋錯之 `Symbol.toStringTag` 等不可讀值 | 建構子或入口拋出原生 `TypeError`(判斷函數拋錯逸出;前端之 `cbProgress`/`opt.headers` 為不拋出之拒絕,值為該 `TypeError`、0 則事件) | 依「無效值」之既有契約處置:取預設,或 R26 之收緊並告知(`useInert`、`corsOrigins` 發一則事件),`fdDownload` 入口拒絕 + 一則事件;建構子不拋(R11) | 依賴「不可讀選項使建構子拋出」者(wsemi 1.9.69 之判斷函數回布林所致,非本套件主動變更) |
+| 2026-11-19 | 包裝物件(`new String`/`new Number`/`new Boolean`)作為下載欄位(`filename`/`fileType`/`fileSize`)、`streamRead`、建構選項、`fdDownload` | 被視為字串/數值/布林(舊判斷函數收包裝物件):`/dw` 檔名等被接受;`streamRead` 之 String 包裝物件以其原始值為本體 | 視同非該型別之值(W-20):必要欄位 `invalid <欄位>`、選用之 `/dwgf` filename 視為未給、選項取預設、`fdDownload` 拒絕;`streamRead` 之 String 包裝物件走物件之 JSON 具體化(本體為 `"abc"` 含引號) | 以包裝物件交出上列值者(本套件 `src/`、`test/` 改動前 0 處) |
+| 2026-11-19 | 應用端交出之值含 `Symbol.toStringTag` 讀取即拋錯者(頂層或巢狀):execute 輸出與拒絕值、upload 合併消費結果、前端 `execute` 之 `input` | wsemi 1.9.69 之判斷函數不再拋錯,若無探針則被靜默序列化為其可見之鍵(宣稱成功) | 與 wsemi 1.9.68 行為相同:`output can not be serialized` / `input can not be serialized: unreadable value: …` + 一則事件(R32 之探針補回) | 無(本欄記錄「未變」,供對照) |
 
 ---
 

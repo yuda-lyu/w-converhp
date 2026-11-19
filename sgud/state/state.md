@@ -2,7 +2,7 @@
 
 本檔記**當前已開發功能之最新狀態**(各功能做到哪裡、對應之規則帳本條目與測試檔、已知缺口與待辦、最近一次驗證或發布之版本);**只記現況、不寫過程**(過程寫入 `sgud/exp/experience.md`)。接續工作先讀本檔。
 
-最近更新:2026-11-13(pm-cvh 輪:測試改經 w-playwright 啟動瀏覽器)。套件版本 2.1.28(`package.json`,本輪未改;未發布)。相依 wsemi `^1.9.59`、w-package-tools `^1.1.28`;**devDependencies 本輪:移除 `playwright`、新增 `w-playwright ^1.0.1`**(`dependencies` 不變;產品碼與 `dist/` 無改動)。
+最近更新:2026-11-19(cvh492i 輪:wsemi 1.9.69 之判斷函數回布林、只收原始值〔W-20〕,補「不可讀值之探針」,帳本 R32)。套件版本 2.1.38(`package.json`,本輪未改;未發布)。相依 **wsemi `^1.9.69`**(原 `^1.9.68`;`package-lock.json` 隨之更新)、w-package-tools `^1.1.28`;devDependencies `w-playwright ^1.0.1`(不變)。**產品碼有改動**(`src/` 新增 `probeReadable.mjs`、`encodeStrict.mjs`,改 `WConverhpServer`/`WConverhpClient`/`managerMergeSlices` 三檔);`dist/` 未重建(發布時自動產製)。
 
 ## 功能現況
 
@@ -16,8 +16,21 @@
 | **發布與建置腳本**(`toolg/`,依 dspec〈自有套件之發布與建置腳本〉) | 完成(2026-11-02 改回標準寫法):`addVersion`/`modifyReadme`/`cleanFolder` 一行呼叫 w-package-tools;`gDistRollupWorkerFuncs.mjs`(`rollupWorkerCore` 產 `src/{checkTotalHash,checkSlicesHash,mergeSlices}.wk.umd.js`)→ `gDistRollup.mjs`(`rollupFile` 產 `dist/w-converhp-{server,client}.umd.js`),列序見 `script.txt`(使用者所有)。套件無自創建置規則 | R14 | `unit-toolgBuild`(副本+指定 cwd 執行)、`unit-workerBundles` |
 | **測試埠配發**(`test/tools/ports.mjs`、`test/tools/portsAlloc.mjs`) | 完成(2026-11-05 ch309,規格 `dspec/e2e埠與多套件同跑.md` E8):**不再有任何固定的監聽埠**,`alloc` 只登記每檔個數,`portOf` 首次取用時以同步子行程向作業系統要埠(`listen(0)`)並到跨行程認領登錄認領;`reserved.closed` 改為「向作業系統要一個後釋放、從不綁定」;「port 非法取預設 8080」一案改以攔截 `listen` 引數判斷、實際綁埠 0。產品碼未動 | R24 | `unit-ports`(12 案)、`api-optionsRange`、`api-executeError` |
 | **測試啟動瀏覽器一律經 w-playwright**(`test/tools/e2e-setup.mjs` 之 `launchBrowser` → `wpw.launchChromium({ headless: true })`) | 完成(2026-11-13 pm-cvh,排程第 442 項遷移輪):啟動點全集 1 處,4 個 e2e 檔(共 43 案,每案一個 fresh browser)皆經它;無頭、不指定通道,即 Playwright 受管之 headless shell(不觸發 Chromium 之 LogonUser);`playwright` 自 `package.json` 移除。受管瀏覽器取得 `await wpw.ensureChromium()`(README〈Testing〉);`autoInstall` 刻意不開。產品碼未動 | R31 | `unit-pwWiring`(6 案,不啟動瀏覽器)、`e2e-abort`、`e2e-download`、`e2e-execute`、`e2e-upload` |
+| **不可讀值之探針**(`src/probeReadable.mjs` 探針、`src/encodeStrict.mjs` 序列化唯一入口) | 完成(2026-11-19 cvh492i 輪,帳本 R32;**對外 API 無改動**,可讀之值行為不變,不可讀之值走原失敗通道):序列化三站點(伺服端 `encodeOut`、`managerMergeSlices` 之 `consume`、前端 `sendPkg`)經 `encodeStrict`〔深探〕;下載欄位(`validDownloadField`)、串流辨識(`hasPipe`、具體化階段)經淺探 | R32、R3(站點收斂) | `unit-probeReadable`(22 案)、`api-hostileValueProbe`(行為表,201 案)、`api-hostileErrorValues`(原 2 紅案) |
+| **差分探測工具**(`test/tools/probeDiff.mjs`) | 完成(2026-11-19):同一組「不可讀形狀 × 注入點」585 格,對「舊版 wsemi + 改動前 src」「新版 + 改動前 src」「新版 + 改動後 src」取結果比對;用法見檔頭與 `sgud/exp/experience.md` E54 | R32(如何找到站點) | 無(工具,非測試) |
 
-## 最近一次驗證(2026-11-13,pm-cvh 輪:測試改經 w-playwright 啟動瀏覽器)
+## 最近一次驗證(2026-11-19,cvh492i 輪:wsemi 1.9.69 之判斷函數回布林,不可讀值之探針)
+
+- **升版後基準(改動前,wsemi 1.9.69)**:全套 549 passing / **2 failing**(`api-hostileErrorValues` 之 execute 拒絕案與 upload 合併消費案,皆為拋錯之 `Symbol.toStringTag`:`output can not be serialized` 變為 `{}`)。
+- **差分探測 585 格**:舊版(1.9.68)對新版(1.9.69),改動前 src 有 **169 格差異**;依「防線是否因此失效」歸類——須修 5 處(序列化三站點、下載欄位、串流辨識;共 49 格)、設計通道 107 格(選項與呼叫參數為不可讀值,舊版建構子/入口意外拋出,現取預設或入口拒絕〔R11、R26、dspec K3〕)、W-20 9 格、只壞 `has` 陷阱 4 格。修後剩餘差異 **120 格 = 107(設計通道)+ 9(W-20)+ 4(has 陷阱)**,其餘 49 格逐格與舊版相同(事件文字之取因前綴不計)。
+- **修前紅**(改動前 src + wsemi 1.9.69 跑新測試):`api-hostileValueProbe` 58 紅(A1 4、A2 2、A3 12、A4 28、A5 12)、`api-hostileErrorValues` 2 紅。**修後綠**:全套(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name cvh492i-full-final2 -- npm test`,凍結碼)**774 passing / 0 failing / 0 pending**(基準 551 + 新增 223:`unit-probeReadable` 22、`api-hostileValueProbe` 201)。
+- **以 wsemi 1.9.68 跑現碼**(新測試):探針相關之 A1–A5 與 `unit-probeReadable` 全綠(探針於舊版下行為不變);W-20 11 案與「建構選項/呼叫參數為不可讀值」67 案紅——即這兩類測試鎖的是 1.9.69 起之語意。
+- **變異**:16／16 擊殺(探針不先探、探針不深探、三個站點各自不探針、三個序列化站點各自繞過 `encodeStrict`、`hasPipe` 回 `false`、探針展開二進位、探針呼叫 accessor、探針加讀 `has`、探針不排除有 `toJSON` 者／Error／類別原型上之 `toJSON`、原因可為空字串),每項以 sha256 回驗已還原。
+- **獨立複審**(sonnet 子代理,唯讀,只給契約與新舊碼):找到 3 項假陽性(有 `toJSON` 者、`Date`、`Error` 之子圖被探針展開而序列化器不會走到)——已修(探針不展開此三類)並補差分測試;1 項已知限制(accessor/`toJSON` 回傳之拋錯 `Symbol.toStringTag` 物件,L4);陣列索引 accessor 被多讀一次(已知偏差,見 R32 規則 5);站點盤點未找到遺漏。
+- `private-guard`:CLEAN。包裝物件舊字面盤點(`Object('`、`new String(`、`new Number(`、`new Boolean(`、`包裝物件`):`src/`、`test/` 改動前皆 0 命中。
+- **未驗**:e2e(4 檔 43 案)含於全套且全綠;`dist/` 未重建故未跑 dist 冒煙(產品碼之新模組只依賴 wsemi,瀏覽器端打包由 `toolg/gDistRollup.mjs` 自 `src` 取,發布時產製)。
+
+## 前次驗證(2026-11-13,pm-cvh 輪:測試改經 w-playwright 啟動瀏覽器)
 
 - **全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name pm-cvh-full2 -- npm test`,凍結碼,log 在 `tmp/quiet-run/`):**551 passing / 0 failing / 0 pending**(前次 545,差額為新增 `unit-pwWiring` 6 案);4 個 e2e 檔 43 案全過(`e2e-execute` 6、`e2e-download` 19、`e2e-upload` 4、`e2e-abort` 14)。
 - **修前紅**:`unit-pwWiring` 於修前碼(舊寫法直接用 `playwright`)跑 4／6 紅,以空的 `PLAYWRIGHT_BROWSERS_PATH` 使舊寫法無法啟動任何瀏覽器;修後 6／6 綠。**變異**:8／8 擊殺,皆以雜湊回驗還原(見 R31)。

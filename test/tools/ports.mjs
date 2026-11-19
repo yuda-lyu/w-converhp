@@ -99,6 +99,7 @@ let alloc = [
     ['api-failureNotSuccess', 1, ''],
     ['api-hostileErrorValues', 1, ''],
     ['api-hostileRequestJson', 1, ''],
+    ['api-hostileValueProbe', 2, '主伺服器 + 依序起停之選項伺服器(同埠 await stop 後重用)'],
     ['api-mainMaxBytes', 2, '主伺服器 + 預設值伺服器'],
     ['api-noListener', 3, '每次 mkServer 起一台, 共三台'],
     ['api-noRetry', 1, ''],

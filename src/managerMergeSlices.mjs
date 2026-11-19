@@ -13,9 +13,9 @@ import haskey from 'wsemi/src/haskey.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsDeleteFile from 'wsemi/src/fsDeleteFile.mjs'
 import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
-import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import isSafeId from './isSafeId.mjs'
+import encodeStrict from './encodeStrict.mjs'
 // import mergeSlices from './mergeSlices.mjs'
 import mergeSlices from './mergeSlices.wk.umd.js'
 
@@ -153,7 +153,8 @@ let consume = (ps, funConsume, funLog) => {
                 //故序列化失敗時不落地; 之後重送會依S2再呼叫一次應用端(與儲存失敗同一處置), 至少結果一致.
                 //此處刻意不記錄: 同一個「應用端結果無法序列化」之失敗, 外層組回應時亦會偵測到並發一則error事件,
                 //兩層各報一次即同一失敗兩則事件(與/slc曾修過之情形同型), 故由外層唯一持有此失敗之回報
-                let re = obj2u8arr({ ro }, { returnWithStateAndMsg: true })
+                //encodeStrict: 嚴格模式取狀態且先探針確認 ro 可讀(帳本 R3、R32); 含不可讀值(如拋錯之 Symbol.toStringTag)者 wsemi 1.9.69 起不再使序列化回 error, 不探則落地失真之封包
+                let re = encodeStrict({ ro })
                 if (get(re, 'state') !== 'success') {
                     return ro
                 }

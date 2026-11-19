@@ -20,12 +20,12 @@ import dig from 'wsemi/src/dig.mjs'
 import strright from 'wsemi/src/strright.mjs'
 import b642str from 'wsemi/src/b642str.mjs'
 import blob2u8arr from 'wsemi/src/blob2u8arr.mjs'
-import obj2u8arr from 'wsemi/src/obj2u8arr.mjs'
 import u8arr2obj from 'wsemi/src/u8arr2obj.mjs'
 import getFileXxHash from 'wsemi/src/getFileXxHash.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
 import retryDelay from './retryDelay.mjs'
+import encodeStrict from './encodeStrict.mjs'
 import wAbortScope from './abortScope.mjs'
 
 
@@ -946,9 +946,10 @@ function WConverhpClient(opt) {
         let bb = null
         try {
 
-            //obj2u8arr, 以嚴格模式取狀態: 呼叫端給之input若含BigInt或循環參照, 寬鬆模式回空封包而伺服器會收到空物件並照常觸發execute事件,
-            //呼叫端只會拿到不知所云之結果; 於此提早以明確訊息拒絕, 不送出
-            let re = obj2u8arr(data, { returnWithStateAndMsg: true })
+            //encodeStrict(obj2u8arr 之嚴格模式 + 探針, 帳本 R3、R32): 呼叫端給之input若含BigInt或循環參照, 寬鬆模式回空封包而伺服器會收到空物件並照常觸發execute事件,
+            //呼叫端只會拿到不知所云之結果; 於此提早以明確訊息拒絕, 不送出。input 內含不可讀之值(已撤銷之 Proxy、拋錯之 Symbol.toStringTag 等)者同處置:
+            //wsemi 1.9.69 起序列化器不再因判斷函數拋錯而失敗, 不探則該值被靜默序列化為其可見之鍵(甚至 {}), 伺服器收到失真之 input
+            let re = encodeStrict(data)
             if (get(re, 'state') !== 'success') {
                 let msg = `input can not be serialized: ${get(re, 'msg', 'unknown error')}`
                 ctx.emit('error', msg)

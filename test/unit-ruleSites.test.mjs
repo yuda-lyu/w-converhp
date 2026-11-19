@@ -108,7 +108,9 @@ describe('unit-ruleSites', function() {
 
         let h = sect('hasPipe')
         assert.strict.deepEqual(h !== '', true, 'server 內找不到 hasPipe')
-        assert.strict.deepEqual(h.indexOf('try') < h.indexOf('isfun(v.pipe)'), true, 'hasPipe 之 try 須包住屬性讀取')
+        //2026-11-19(帳本 R32): hasPipe 之屬性讀取改為 `let p = v.pipe`(讀出後先經探針再 isfun(p)), 錨點由 isfun(v.pipe) 隨之改為 v.pipe; 斷言之意不變: 屬性讀取須在 try 內
+        assert.strict.deepEqual(h.indexOf('v.pipe') > 0 && h.indexOf('try') < h.indexOf('v.pipe'), true, 'hasPipe 之 try 須包住屬性讀取')
+        assert.strict.deepEqual(h.indexOf('probeReadable(p') > h.indexOf('v.pipe') && h.indexOf('isfun(p)') > h.indexOf('probeReadable(p'), true, 'hasPipe 須先探針再 isfun(R32)')
     })
 
     it('R2 寫入回應標頭之站點須為 14(路由 8 + 併入之 responseU8aStream / WithError 共 6)', function() {
@@ -123,7 +125,7 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(/isValidHeaderValue\('Return-Msg', returnMsg\)[\s\S]{0,80}Return-Msg/.test(s), true, '檢核須與 header 送出成對')
     })
 
-    it('R3 codec 呼叫: 總 9 站點, 嚴格 7, 寬鬆 2 —— 且兩個寬鬆者皆為刻意不套(本條缺口為 0)', function() {
+    it('R3 codec 呼叫: 總 6 站點(+ encodeStrict 內 1), 嚴格 4(+ encodeStrict 內 1), 寬鬆 2 —— 且兩個寬鬆者皆為刻意不套(本條缺口為 0); 原三個序列化嚴格站點(encodeOut、consume、sendPkg)收斂為 encodeStrict 單一擁有者(R32)', function() {
         let re = /(obj2u8arr|u8arr2obj)\([^)]*\)/g
         let all = []
         for (let k of ['server', 'client', 'mmg']) { //第十一輪: encodeOut 與 responsePacket 已併入 server
@@ -131,8 +133,19 @@ describe('unit-ruleSites', function() {
                 all.push({ k, strict: h.includes('returnWithStateAndMsg') })
             }
         }
-        assert.strict.deepEqual(all.length, 9, `R3 總站點數 ${hint}`)
-        assert.strict.deepEqual(all.filter((v) => v.strict).length, 7, `R3 嚴格站點數 ${hint}`)
+        //2026-11-19(帳本 R32): obj2u8arr 之嚴格站點(encodeOut、managerMergeSlices 之 consume、client 之 sendPkg)原為 3 處各自呼叫, 現收斂為 src/encodeStrict.mjs 單一擁有者
+        //(其內 1 個嚴格 obj2u8arr + 先經探針); 三處改呼叫 encodeStrict。故此處原 9/7 變 6/4(u8arr2obj 嚴格 4 + 寬鬆 obj2u8arr 2), 嚴格序列化之站點總量不變(3 + 0 = 3 → 擁有者 1 + 呼叫端 3)
+        assert.strict.deepEqual(all.length, 6, `R3 總站點數 ${hint}`)
+        assert.strict.deepEqual(all.filter((v) => v.strict).length, 4, `R3 嚴格站點數 ${hint}`)
+
+        //encodeStrict 單一擁有者: 其內恰一個嚴格 obj2u8arr, 且先於其呼叫探針; 三個呼叫端各恰一處呼叫、不得再自行呼叫 obj2u8arr 之嚴格模式
+        let enc = readCode('src/encodeStrict.mjs')
+        assert.strict.deepEqual(countAll(enc, /obj2u8arr\([^)]*returnWithStateAndMsg[^)]*\)/g), 1, `R3 encodeStrict 內嚴格序列化須恰 1 ${hint}`)
+        assert.strict.deepEqual(enc.indexOf('probeReadable(data)') > 0 && enc.indexOf('probeReadable(data)') < enc.indexOf('obj2u8arr(data'), true, 'R32 encodeStrict 須先探針再序列化')
+        assert.strict.deepEqual(countAll(src.server, /encodeStrict\(/g), 1, 'R32 server 須恰一處呼叫 encodeStrict(encodeOut)')
+        assert.strict.deepEqual(countAll(sect('encodeOut'), /encodeStrict\(o\)/g), 1, 'R32 encodeOut 須經 encodeStrict')
+        assert.strict.deepEqual(countAll(src.client, /encodeStrict\(/g), 1, 'R32 client 須恰一處呼叫 encodeStrict(sendPkg)')
+        assert.strict.deepEqual(countAll(src.mmg, /encodeStrict\(/g), 1, 'R32 managerMergeSlices 須恰一處呼叫 encodeStrict(consume)')
 
         //寬鬆之 2 個皆為刻意不套: /slc 之編碼(內容為套件自產字串)、responseU8aStreamWithError(最終退路, 其自身失敗無處可退; 第十一輪起併入 responseU8aStream 同檔)
         //#26 之 /main 請求解碼已於本輪改為嚴格
@@ -627,8 +640,8 @@ describe('unit-ruleSites', function() {
         let doc = fs.readFileSync('sgud/rule/rulebook.md', 'utf8')
         assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'sgud/rule/rulebook.md 缺少標題')
         //第十二輪: 補 R19–R26(原清單只到 R18, R19–R25 缺頁不會紅 —— 與上述第十輪之教訓同型, B 卷 ③-6)
-        //2026-10-13: 補 R27(前端中止之單一擁有者); 2026-10-29: 補 R30(計時器相關測試之同步點)
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ', '### R30 ']) {
+        //2026-10-13: 補 R27(前端中止之單一擁有者); 2026-10-29: 補 R30(計時器相關測試之同步點); 2026-11-19: 補 R31(原清單漏列)與 R32(不可讀值之探針)
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ', '### R30 ', '### R31 ', '### R32 ']) {
             assert.strict.deepEqual(doc.includes(r), true, `sgud/rule/rulebook.md 缺少 ${r.trim()}`)
         }
         assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'sgud/rule/rulebook.md 之盤點指令數不足')

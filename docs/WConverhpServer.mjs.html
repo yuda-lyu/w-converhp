@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#encodeStrict">encodeStrict</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#probeReadable">probeReadable</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -79,6 +79,8 @@ import isSafeId from './isSafeId.mjs'
 import sanitizeFilename from './sanitizeFilename.mjs'
 import routeSpec from './routeSpec.mjs'
 import encodeRfc5987 from './encodeRfc5987.mjs'
+import probeReadable from './probeReadable.mjs'
+import encodeStrict from './encodeStrict.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
@@ -164,12 +166,19 @@ function isValidHeaderValue(name, value) {
  *
  * why try 須包住屬性讀取本身: 應用端物件之 pipe 可為會拋錯之 getter 或 Proxy trap(帳本 R1)
  *
+ * why 讀到之 pipe 值須先經探針(帳本 R32): pipe 本身可為已撤銷之 Proxy 或拋錯之 Symbol.toStringTag 之物件。
+ * wsemi 之 isfun 自 1.9.69 起對此類值回 false 而不拋錯, 若不先探, 其會被判成「確定不像串流」(false)而走具體化路徑, 與「判定失敗」(null)混為一談
+ *
  * @param {*} v 輸入任意值
  * @returns {Boolean|null} 回傳三態判定
  */
 function hasPipe(v) {
     try {
-        return isfun(v.pipe)
+        let p = v.pipe
+        if (probeReadable(p, { deep: false }) !== '') {
+            return null
+        }
+        return isfun(p)
     }
     catch (err) {
         return null
@@ -293,6 +302,13 @@ function buildDownloadSource(streamRead, fileSize, funError, opt = {}) {
     //階段4 具體化: Buffer.isBuffer與instanceof皆可觸發Proxy trap, typed array之.length對Proxy receiver亦會拋
     //(實測 Method get TypedArray.prototype.length called on incompatible receiver), 故整段納入attempt
     let rm = attempt('materialize streamRead', () => {
+
+        //探針(帳本 R32): 其後之 isstr / isbol 對不可讀之值回 false 而不拋錯(wsemi 1.9.69 起), 不先探則該值會被當成「無特徵之物件」走 JSON 具體化; 不可讀者拋錯由 attempt 收斂為 invalid streamRead
+        let cause = probeReadable(streamRead, { deep: false })
+        if (cause !== '') {
+            throw new Error(cause)
+        }
+
         if (Buffer.isBuffer(streamRead)) {
             return { buf: streamRead }
         }
@@ -412,8 +428,9 @@ let toWellFormed = (s) => {
  * 判定並正規化應用端 download 事件回傳之單一欄位(filename、fileSize、fileType)
  *
  * why 判定本身須在 attempt 內: 欄位之**擷取**已由 readDownloadFields 收進 attempt, 而擷取到的值之**型別判定**原本在其外 ——
- * wsemi 之 isestr / isValidFileSize 皆經 Object.prototype.toString.call, 會觸發值之 Symbol.toStringTag getter;
+ * 當時 wsemi 之 isestr / isValidFileSize 皆經 Object.prototype.toString.call, 會觸發值之 Symbol.toStringTag getter;
  * 該 getter 拋錯時三條下載路由皆回裸 HTTP 500 且 0 則事件, /dw 之應用端串流且未被銷毀(實測第十輪 A5, 7 格)。與帳本 R1 之 #32 同型。
+ * wsemi 1.9.69 起判斷函數對不可讀之值回 false 而不拋錯, 故「不可讀」改由探針(probeReadable, 帳本 R32)於 attempt 內明確拋出, 此處之 cause 語意(判定時拋錯者)不變。
  *
  * why 須正規化為字串基本型: 通過 isestr 之物件(帶 Symbol.toStringTag='String')其 toString 可拋錯, 原本 /dwgfn 有 attempt + cstr 而 /dw、/dwgf 無 ——
  * 同一個 filename 於 /dwgfn 回錯誤 + 1 則事件, 於另兩路由靜默送出空檔名(實測第十輪 A6)。收斂於此, 三路由同一判定。
@@ -427,6 +444,14 @@ let toWellFormed = (s) => {
  */
 function validDownloadField(name, v) {
     let a = attempt(`check field[${name}]`, () => {
+
+        //探針(帳本 R32): isestr / isp0int 對不可讀之值回 false 而不拋錯(wsemi 1.9.69 起), 其後之 cause 判定(選用欄位區分「未給」與「判定失敗」)須由探針明確給出;
+        //不先探則選用之 filename 為不可讀值時被當成「未給」而靜默略過, 與必要欄位之處置不一致
+        let cause = probeReadable(v, { deep: false })
+        if (cause !== '') {
+            throw new Error(cause)
+        }
+
         if (name === 'fileSize') {
             if (!isValidFileSize(v)) {
                 return { ok: false }
@@ -528,7 +553,8 @@ function encodeOut(out, funError) {
         o[k] = canonProtocolValue(out[k])
     }
 
-    let r = obj2u8arr(o, { returnWithStateAndMsg: true })
+    //encodeStrict, 嚴格模式取狀態且先探針確認可讀(帳本 R3、R32)
+    let r = encodeStrict(o)
     if (get(r, 'state') !== 'success') {
         funError(get(r, 'msg', 'unknown error'))
         return null
@@ -2483,7 +2509,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Nov 19 2026 08:05:02 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Nov 19 2026 15:47:09 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
