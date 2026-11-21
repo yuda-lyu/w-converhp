@@ -1,16 +1,16 @@
 {
   "name": "w-converhp",
-  "version": "2.1.40",
+  "version": "2.1.41",
   "main": "dist/w-converhp-server.umd.js",
   "dependencies": {
     "@hapi/hapi": "^21.4.13",
     "@hapi/inert": "^7.1.3",
-    "axios": "^1.21.0",
-    "wsemi": "^1.9.70"
+    "axios": "^1.21.1",
+    "wsemi": "^1.9.71"
   },
   "devDependencies": {
-    "w-package-tools": "^1.1.28",
-    "w-playwright": "^1.0.1"
+    "w-package-tools": "^1.1.29",
+    "w-playwright": "^1.0.3"
   },
   "scripts": {
     "test": "mocha --parallel \"test/*.test.mjs\" --timeout 180000",
