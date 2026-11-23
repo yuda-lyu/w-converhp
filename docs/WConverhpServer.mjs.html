@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#encodeStrict">encodeStrict</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#probeReadable">probeReadable</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="WConverhpClient.html">WConverhpClient</a><ul class='methods'><li data-type='method'><a href="WConverhpClient.html#download">download</a></li><li data-type='method'><a href="WConverhpClient.html#execute">execute</a></li><li data-type='method'><a href="WConverhpClient.html#upload">upload</a></li></ul></li><li><a href="WConverhpServer.html">WConverhpServer</a></li></ul><h3>Global</h3><ul><li><a href="global.html#attempt">attempt</a></li><li><a href="global.html#buildDownloadSource">buildDownloadSource</a></li><li><a href="global.html#callApp">callApp</a></li><li><a href="global.html#canonProtocolValue">canonProtocolValue</a></li><li><a href="global.html#destroyStreamRead">destroyStreamRead</a></li><li><a href="global.html#encodeOut">encodeOut</a></li><li><a href="global.html#encodeRfc5987">encodeRfc5987</a></li><li><a href="global.html#encodeStrict">encodeStrict</a></li><li><a href="global.html#genAbortScope">genAbortScope</a></li><li><a href="global.html#hasPipe">hasPipe</a></li><li><a href="global.html#isAbortSignal">isAbortSignal</a></li><li><a href="global.html#isPathInside">isPathInside</a></li><li><a href="global.html#isSafeId">isSafeId</a></li><li><a href="global.html#isValidFileSize">isValidFileSize</a></li><li><a href="global.html#isValidHeaderValue">isValidHeaderValue</a></li><li><a href="global.html#noListenerOf">noListenerOf</a></li><li><a href="global.html#normalizeUploadInput">normalizeUploadInput</a></li><li><a href="global.html#pickDiagOpt">pickDiagOpt</a></li><li><a href="global.html#probeReadable">probeReadable</a></li><li><a href="global.html#readDownloadFields">readDownloadFields</a></li><li><a href="global.html#responseU8aStream">responseU8aStream</a></li><li><a href="global.html#responseU8aStreamWithError">responseU8aStreamWithError</a></li><li><a href="global.html#retryDelay">retryDelay</a></li><li><a href="global.html#sanitizeFilename">sanitizeFilename</a></li><li><a href="global.html#st200">st200</a></li><li><a href="global.html#validDownloadField">validDownloadField</a></li></ul>
     
 </nav>
 
@@ -57,6 +57,8 @@ import evem from 'wsemi/src/evem.mjs'
 import evEmitBase from 'wsemi/src/evEmit.mjs'
 import evEmitDelayBase from 'wsemi/src/evEmitDelay.mjs'
 import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
+import getDiag from 'wsemi/src/getDiag.mjs'
+import getDiagShape from 'wsemi/src/getDiagShape.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isstr from 'wsemi/src/isstr.mjs'
@@ -81,11 +83,16 @@ import routeSpec from './routeSpec.mjs'
 import encodeRfc5987 from './encodeRfc5987.mjs'
 import probeReadable from './probeReadable.mjs'
 import encodeStrict from './encodeStrict.mjs'
+import pickDiagOpt from './diagOpt.mjs'
 import mmg from './managerMergeSlices.mjs'
 // import checkTotalHash from './checkTotalHash.mjs'
 import checkTotalHash from './checkTotalHash.wk.umd.js'
 // import checkSlicesHash from './checkSlicesHash.mjs'
 import checkSlicesHash from './checkSlicesHash.wk.umd.js'
+
+
+//diagDefault, 無實例脈絡之模組層函式(responseU8aStreamWithError)之診斷出口: 未帶 opt.diag 時用之(console、預設只輸出固定詞彙與安全摘要; 帳本 R33)
+let diagDefault = getDiag({}, { safeKeys: ['msgShape'] })
 
 
 //=== 本檔專用之內部函式 =========================================================================
@@ -631,14 +638,15 @@ function responseU8aStream(res, u8a, opt = {}) {
  * 給false者限「可證明不需重試」之錯誤: 結果僅由client自行建構之請求內容(mode、fileHash、chunkTotal、chunkIndex、packageId、fileId)決定, 重送同一請求必得同一結果;
  * 凡涉及權限(permission denied)、應用端reject、應用端回傳形狀不合、磁碟、網路者皆為狀態不穩, 不得標示, 依重試原則由前端照常重試。
  * 標示同時置於封包(供execute/upload/dwgfn之本體解析)與標頭Return-Retryable(供download之串流路徑, 該路徑只讀標頭不解析本體)
+ * @param {Function} [opt.diag=null] 輸入診斷輸出函數(實例以wsemi之getDiag建立者), 供不可達之退路診斷輸出, 未給用模組層之預設(帳本R33), 預設null
  * @returns {Object} 回傳hapi之response物件
  */
 function responseU8aStreamWithError(res, msg, opt = {}) {
 
-    //check
+    //check, 不可達之退路(全部呼叫點皆為字面或模板字串); 診斷只輸出固定詞彙與值之形狀, 值僅隨 logDetail/funLog 之細節交出(帳本 R33); 出口由 opt.diag(實例之 diag)給, 未給用 diagDefault
     if (!isestr(msg)) {
-        console.log('msg', msg)
-        console.log(`msg is not an effective string, set msg=''`)
+        let dg = isfun(get(opt, 'diag')) ? opt.diag : diagDefault
+        dg(`msg is not an effective string, set msg=''`, { msgShape: getDiagShape(msg) }, () => msg)
         msg = ''
     }
 
@@ -758,6 +766,8 @@ function callApp(ev, evEmit, name, args, pm, funError) {
  * @param {Function} [opt.verifyConn=()=>{return true}] 輸入呼叫API時檢測函數，可為sync或async函數，回傳(或resolve)嚴格等於true才放行，回傳其他值、拋錯或reject一律視為不通過而回應permission denied，預設()=>{return true}。未給(undefined或null)時全部放行；有給但非函數(如false、字串、物件)時本套件之API一律拒絕(permission denied)並發一則error事件，不會退回全部放行。作用於本套件之API，不作用於靜態檔案(見useInert)
  * @param {Array} [opt.corsOrigins=['*']] 輸入允許跨域網域陣列，若給予['*']代表允許全部('*'須單獨出現)，預設['*']。給予單一字串時視為只含該網域之陣列；給予false或[](含只有空字串者)代表停用跨域：不回應CORS標頭，瀏覽器無法跨來源讀取回應(伺服器端之存取控制仍由verifyConn決定)；陣列中之空字串會被忽略。給予其他值、或hapi不接受之陣列(如含非字串元素、'*'與其他網域並存)時同樣停用跨域並發一則error事件，不會退回允許全部，建構時亦不拋出。給予serverHapi時不作用(跨域由外部伺服器決定)，若仍有給予則發一則error事件告知。回應一律以Access-Control-Expose-Headers曝露Return-Type、Return-Msg、Return-Retryable、Content-Disposition四個標頭，使前端(browser)與API不同源時download仍可讀取成敗與檔名
  * @param {Integer} [opt.delayForSlice=100] 輸入切片上傳檔案API用延遲響應時間，單位ms，預設100
+ * @param {Boolean} [opt.logDetail=false] 輸入診斷輸出是否於console改輸出遮罩後之細節，須為true才生效，預設false。本套件於console之診斷輸出(應用端監聽器或verifyConn拋錯、本體接收中斷、切片寫入失敗、合併失敗、啟動/路由註冊/停止失敗、無效選項等)預設一律只輸出固定詞彙與安全摘要(錯誤類別與代碼、第幾片/共幾片、型別與鍵名形狀)，不輸出錯誤訊息原文、堆疊、請求內容(如queueId、packageId)與伺服器路徑；細節仍以error事件通知應用端(不受本選項影響)。true時改輸出經wsemi遮罩(憑證鍵名之值與token=值等憑證樣式)後之細節，其餘內容原樣，故不宜長期開啟
+ * @param {Function} [opt.funLog=null] 輸入診斷輸出函數，格式為(label, safe, detail)=>{}，預設null。給函數時本套件之診斷輸出(同logDetail所列，含啟動訊息'Server running at: ...')只交給它而不寫console(傳入()=>{}即關閉console輸出；logDetail不作用)；label為固定詞彙之字串，safe為安全摘要純物件(可能為undefined)，detail為遮罩後之細節(該則診斷無細節時不傳)。其拋錯與回傳值(含rejection)皆忽略，不影響請求與結果
  * @param {Object} [opt.serverHapi=null] 輸入外部提供之Hapi伺服器物件，預設null。給予時本套件只於其上註冊通訊路由(不啟動伺服器、不註冊@hapi/inert)，故port、useInert、pathStaticFiles、corsOrigins不作用，跨域與靜態檔案由外部提供者自行設定；外部提供者須自行於其routes.cors設定additionalExposedHeaders含Return-Type、Return-Msg、Return-Retryable、Content-Disposition，否則前端(browser)與API不同源時download會失效。路由註冊失敗(如與既有路由衝突)時以error事件通知，已註冊之部分路由不會回復。此模式下伺服器之生命週期由外部提供者擁有，請勿呼叫回傳物件之stop：其會停止整台外部伺服器(含其上之其他路由)，並觸發外部伺服器之onPreStop、onPostStop擴充與stop事件(即使外部伺服器尚未啟動)；外部伺服器啟動期間呼叫則被hapi拒絕而以error事件通知
  * @returns {Object} 回傳事件物件，可監聽事件execute、upload、download、handler、error。upload事件之input為{from,filename,filenameSafe,path}：from為'merge-slices-get'(切片合併完成)或'check-total-hash'(整檔已存在之去重)，path為合併檔之伺服器絕對路徑；**filename為用戶端所給之原值、未經淨化、不可信**(可含路徑分隔符、`..`、各平台非法字元、保留裝置名，亦可為非字串)，供顯示或保留目錄結構(如瀏覽器webkitdirectory之相對路徑)；**filenameSafe**為其淨化值(只取最末路徑段、去除非法字元與保留裝置名，無可用檔名時為空字串)，應用端以filename組落地路徑前須自行驗證，或直接改用filenameSafe。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使整個行程崩潰；非同步結果一律以事件所帶之pm回覆(pm即本套件提供之回覆通道，監聽器不需要第二條)，寫法為`wo.on('upload', (input, pm) => { doWork().then(pm.resolve, pm.reject) })`。監聽器之同步拋錯則由套件攔截：以error事件通知，該請求以錯誤回應，不會使伺服器行程崩潰。execute與upload事件之回傳值須能序列化(不可含BigInt或循環參照，此類值會使整包無法編碼)，不能者回錯誤封包並發error事件；download事件須resolve物件{streamRead,filename,fileSize,fileType}：streamRead為非objectMode之可讀串流(Buffer、Uint8Array、字串、數值、布林、可JSON化物件亦可，後數者由套件以JSON.stringify具體化後交出，故route之json政策replacer/space/suffix不套用於下載本體，需自訂序列化者請自行序列化後以字串或Buffer交出)，fileSize須為安全非負整數且等於實際位元組數(伺服器據以寫Content-Length，串流實送不符時以錯誤中止回應並發error事件使前端失敗，不會把不完整檔案當成功；Buffer等可事前具體化者不符則直接回錯誤封包)，fileType須為合法標頭值；欄位缺漏或值非法一律回錯誤封包並發error事件，不會懸置或回500。fileSize為0之空檔以HTTP 200與Content-Length:0回應(不採hapi預設之204，否則瀏覽器下載管理器會將下載標記為取消)。下載回應帶Content-Encoding:identity而不壓縮，使Content-Length得以保留供前端計算下載進度。瀏覽器下載管理器路徑(downloadByManager=true)對同一fileId會觸發兩次download事件(第一次僅取檔名並銷毀串流)，每次皆須交出新串流。回傳之物件另帶ready屬性：Promise，供等待伺服器就緒而不必以固定毫秒等待。自建伺服器時，於已開始監聽(hapi之start完成)且建構期事件(以error事件通知之埠被占用、暫存資料夾無法建立、選項無效等)皆已派發之後resolve為true；啟動失敗時(失敗已以error事件通知)resolve為false。給予serverHapi時，於路由註冊完成且建構期事件皆已派發之後resolve(路由註冊失敗者為false)，伺服器之啟動仍由外部提供者擁有，不在其等待範圍。ready恆resolve、不reject，亦不影響stop；建構期事件於建構後以1ms計時器派發，故應用端須於建構後同步註冊error監聽器才收得到，而等ready之後再斷言建構期事件之數量不會有競態。回傳之物件另帶stop方法：其回傳promise供等待伺服器真正停止(`await wo.stop()`)，該promise恆resolve，停止失敗以error事件通知而不外拋(外部serverHapi模式見該參數之說明)。**應用端未註冊某事件之監聽器時，該事件之請求會立即以錯誤封包回應並發一則error事件**(不會等待一個不存在的回覆)；upload之上傳管線亦同：未註冊upload監聽器時，切片上傳與check-total-hash、check-slices-hash、merge-slices-push於寫入任何暫存檔之前即以錯誤封包回應，前端upload於第一個請求(check-total-hash)即收到錯誤並依retryUpload重試後失敗，不會先傳完整檔(上傳途中才移除監聽器者，已傳之切片留於暫存資料夾，可續傳)；merge-slices-get對已承接之工作(已儲存結果之重送、同一隊列在途之消費)不受影響。而註冊了監聽器卻未呼叫pm者屬呼叫端自身之疏漏，套件不代為偵測。錯誤回應一律為HTTP 200並以Return-Type:error標頭與錯誤封包表達，唯瀏覽器下載管理器所用之GET下載路由(dwgf)以非2xx狀態碼表達(權限403、參數400、應用端無法提供檔案404、應用端交出之內容不合契約500)，使瀏覽器顯示下載失敗而不把錯誤內容存成檔案。回前端之錯誤訊息不含伺服器路徑與底層細節，細節一律以error事件通知
  * @example
@@ -1068,6 +1078,13 @@ function WConverhpServer(opt = {}) {
     }
     delayForSlice = cint(delayForSlice)
 
+    //diag, 本套件於伺服端(Node)之診斷輸出(console)之唯一出口(帳本 R33; 規格〈診斷輸出與遮罩〉D1: wsemi 之共用實作, 不另寫等價實作)
+    //預設只輸出固定詞彙(label)與安全摘要(safe: errType/errCode 為 getDiagBriefErr 之錯誤類別與白名單代碼, chunkNo/chunkTotal 為第幾片/共幾片, msgShape 為 getDiagShape 之形狀),
+    //不含錯誤訊息原文、堆疊、請求內容(queueId、packageId、檔名)與伺服器路徑; 細節只在 opt.logDetail 為 true 時以遮罩後輸出, 或在 opt.funLog 為函數時交給它(此時不寫 console)。
+    //細節另以 error 事件通知應用端(本來即如此, 帳本 R10、R17), 不受此出口影響。永不拋錯(D4)
+    let optDiag = pickDiagOpt(opt)
+    let diag = getDiag(optDiag, { safeKeys: ['chunkNo', 'chunkTotal', 'msgShape'] })
+
     //server
     let server = null
     if (bServerHapi) {
@@ -1128,7 +1145,7 @@ function WConverhpServer(opt = {}) {
             if (!bCorsGiven || corsOrigins === null) {
                 throw err
             }
-            console.log('invalid corsOrigins', err) //hapi 之原因(含其驗證註記)只供除錯; 事件訊息維持穩定字面
+            diag('invalid corsOrigins', diag.brief(err), () => err) //hapi 之原因(含其驗證註記)只供除錯(僅隨 logDetail/funLog 之細節交出); 事件訊息維持穩定字面
             errsOpt.push(msgInvalidCors)
             corsOrigins = null
             server = Hapi.server(optServer(corsOrigins))
@@ -1143,8 +1160,10 @@ function WConverhpServer(opt = {}) {
     //why 派發交由wsemi: 其evEmit即為「於呼叫端堆疊上直接ev.emit並以try攔截」之單一擁有者, 且把本套件所需之紀律
     //(settle排在通報之前、通報自身亦包try並留痕、脫勾後仍於新堆疊內攔截、ms夾至計時器上限)全部寫成明文契約;
     //自行手寫等於把同一條規則寫第二遍, 而規則寫兩遍正是本帳本各條重複出現之形狀
+    //optDiag 併入: wsemi 之 evEmit 通報監聽器拋錯時亦讀 logDetail/funLog(同一組設定, 帳本 R33)
     let optEv = {
         tag: 'w-converhp',
+        ...optDiag,
     }
 
     //evEmit, 於呼叫端之堆疊上派發
@@ -1182,7 +1201,7 @@ function WConverhpServer(opt = {}) {
         if (nm === 'error' &amp;&amp; iseobj(a[0]) &amp;&amp; a[0].fun === 'listener') {
             let nmL = get(a[0], 'name', '')
             let errL = get(a[0], 'msg')
-            console.log(`listener of event[${nmL}] error`, errL)
+            diag(`listener of event[${nmL}] error`, diag.brief(errL), () => errL) //監聽器拋出值為應用端之任意值: 只輸出類別與代碼, 值隨細節交出
             return ev.emit('error', `listener of event[${nmL}] error: ${getErrorMessage(errL)}`)
         }
         return ev.emit(nm, ...a)
@@ -1217,7 +1236,7 @@ function WConverhpServer(opt = {}) {
             m = false
 
             //取因一律經getErrorMessage(見帳本R10)
-            console.log(`verifyConn error for apiType[${get(inp, 'apiType', '')}]`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            diag(`verifyConn error for apiType[${get(inp, 'apiType', '')}]`, diag.brief(err), () => err) //完整 err 供除錯(使用err.message會過於簡化)仍可得: opt.logDetail 或 opt.funLog; 預設只輸出類別與代碼
             evEmit('error', `verifyConn error for apiType[${get(inp, 'apiType', '')}]: ${getErrorMessage(err)}`)
         }
         return m === true
@@ -1333,7 +1352,7 @@ function WConverhpServer(opt = {}) {
     //原本 /dwgf 之 8 處 replyError(code, ...) 各自手寫狀態碼, 其餘五路由 9 處 retryable:false 各自手寫 —— 實為「同一 kind」之兩個面向(B 卷 §③-3.4.2③)
     let replyOf = (res, spec) => {
         let send = (kind, msg, opt) => {
-            return responseU8aStreamWithError(res, msg, opt).code(spec.statusOf[kind])
+            return responseU8aStreamWithError(res, msg, { ...opt, diag }).code(spec.statusOf[kind])
         }
         return {
             permission: () => send('permission', 'permission denied'),
@@ -1557,7 +1576,7 @@ function WConverhpServer(opt = {}) {
 
                 //error
                 req.payload.on('error', (err) => {
-                    console.log(`apiMain req.payload err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+                    diag(`apiMain req.payload err`, diag.brief(err), () => err) //同 checkConn: 預設只輸出類別與代碼
                     evEmit('error', `receive payload error: ${getErrorMessage(err)}`)
                     pm.reject(`receive payload error: ${getErrorMessage(err)}`)
                 })
@@ -1714,9 +1733,27 @@ function WConverhpServer(opt = {}) {
             //why: 原本例外原樣進入 procCore 之 catch 而成為錯誤封包之內容 —— 暫存資料夾不在時前端收到 `Error: fd[&lt;伺服器絕對路徑>] is not a folder` 且伺服器 0 則事件
             //(實測第十輪 A11/N5); 同套件之 /slc 寫入失敗、S5、check-total-hash 之 path 皆已明載不外送伺服器路徑, 唯此處不守
             //應用端之拒絕值不經本函數(merge-slices-get 之 funConsume 依設計原樣傳回前端)
+            //drainWorkerDiag, worker(checkTotalHash)不自行寫 console(其輸出不經本實例之 diag, 使用端無從關閉, 且原樣含伺服器路徑與底層錯誤): 診斷以 out.diag 回傳
+            //(結構化複製不帶 Error 之自有屬性 code, 故記錄為 { label, err: { message, code }, detail }), 於此經本實例之 diag 輸出並自 out 移除(診斷不回前端; 帳本 R33)
+            //重建之 Error 只供 diag.brief(錯誤類別與白名單代碼)與細節使用
+            let drainWorkerDiag = (out) => {
+                if (iseobj(out) &amp;&amp; haskey(out, 'diag')) {
+                    let recs = out.diag
+                    delete out.diag
+                    if (isarr(recs)) {
+                        for (let rec of recs) {
+                            let er = get(rec, 'err')
+                            let e = iseobj(er) ? Object.assign(new Error(cstr(get(er, 'message', ''))), isestr(get(er, 'code')) ? { code: er.code } : {}) : null
+                            diag(get(rec, 'label', ''), e === null ? undefined : diag.brief(e), () => (e === null ? get(rec, 'detail') : { ...get(rec, 'detail'), err: e }))
+                        }
+                    }
+                }
+                return out
+            }
+
             let internal = async(stage, fn) => {
                 try {
-                    return await fn()
+                    return drainWorkerDiag(await fn())
                 }
                 catch (err) {
                     evEmit('error', `upload-controller mode[${mode}] ${stage} error: ${getErrorMessage(err)}`)
@@ -1794,7 +1831,7 @@ function WConverhpServer(opt = {}) {
                 else if (mode === 'merge-slices-push') {
 
                     //mmg.push, chunkTotal已於上方檢核為正整數; 合併檔在而.done不在(前次中止)時會先驗證完整性, 故為async
-                    let queueId = await internal('push merge task', () => mmg.push(fileHash, chunkTotal, pathUploadTemp))
+                    let queueId = await internal('push merge task', () => mmg.push(fileHash, chunkTotal, pathUploadTemp, { diag }))
 
                     //out
                     out = {
@@ -1822,6 +1859,7 @@ function WConverhpServer(opt = {}) {
                         funLog: (msg) => {
                             evEmit('error', msg)
                         },
+                        diag, //無效 queueId 等之 console 診斷出口(帳本 R33)
                     })
 
                     //out, r.path為伺服器絕對路徑, 不回傳前端; state為'success'時msg為應用端之結果(首次消費或儲存之結果), 'error'時為不含伺服器路徑與底層細節之訊息
@@ -1957,7 +1995,7 @@ function WConverhpServer(opt = {}) {
                     bWriteErr = true
                     req.payload.unpipe(streamWrite)
                     req.payload.resume() //持續讀完剩餘本體, 使錯誤回應能回到前端
-                    console.log(`apiUploadSlice streamWrite chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err)
+                    diag(`apiUploadSlice streamWrite err`, { ...diag.brief(err), chunkNo: chunkIndex + 1, chunkTotal }, () => ({ packageId, err })) //packageId 為請求端給之識別, 不入預設輸出(規格 D2), 隨細節交出
                     evEmit('error', `write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error: ${getErrorMessage(err)}`)
                     pm.reject(`write chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] error`)
                 })
@@ -2018,7 +2056,7 @@ function WConverhpServer(opt = {}) {
 
                 //error
                 req.payload.on('error', (err) => {
-                    console.log(`apiUploadSlice req.payload chunk[${chunkIndex + 1}/${chunkTotal}] of packageId[${packageId}] err`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+                    diag(`apiUploadSlice req.payload err`, { ...diag.brief(err), chunkNo: chunkIndex + 1, chunkTotal }, () => ({ packageId, err })) //同上
                     onAbort(getErrorMessage(err))
                 })
 
@@ -2413,7 +2451,7 @@ function WConverhpServer(opt = {}) {
         //start
         await server.start()
 
-        console.log(`Server running at: ${server.info.uri}`)
+        diag(`Server running at: ${server.info.uri}`) //啟動訊息: 固定詞彙加監聽位址(部署資訊, 非資料值), 字樣不變, 經同一出口(funLog 給函數時不寫 console)
 
     }
 
@@ -2436,7 +2474,7 @@ function WConverhpServer(opt = {}) {
         }
         catch (err) {
             bRoutesOk = false
-            console.log(`register routes error`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            diag(`register routes error`, diag.brief(err), () => err) //同 checkConn: 預設只輸出類別與代碼
             evEmitDelay('error', `register routes error: ${getErrorMessage(err)}`) //建構期, 應用端尚未註冊監聽器
         }
 
@@ -2446,7 +2484,7 @@ function WConverhpServer(opt = {}) {
             .then(() => true)
             .catch((err) => {
                 //埠被占用(EADDRINUSE)等啟動失敗須攔截: 未await之promise被reject即為unhandledRejection, 整個行程會崩潰且應用端無從得知; 改以error事件通知, 由應用端決定處置
-                console.log(`start server error`, err)
+                diag(`start server error`, diag.brief(err), () => err)
                 evEmitDelay('error', `start server error: ${getErrorMessage(err)}`) //建構期, 應用端尚未註冊監聽器
                 return false
             })
@@ -2481,7 +2519,7 @@ function WConverhpServer(opt = {}) {
             await server.stop()
         }
         catch (err) {
-            console.log(`stop server error`, err) //使用err.message會過於簡化, 另外要開啟顯示err供debug
+            diag(`stop server error`, diag.brief(err), () => err) //同 checkConn: 預設只輸出類別與代碼
             evEmit('error', `stop server error: ${getErrorMessage(err)}`)
         }
     }
@@ -2509,7 +2547,7 @@ export default WConverhpServer
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Nov 23 2026 21:47:37 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Nov 24 2026 05:07:03 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

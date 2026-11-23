@@ -16,7 +16,6 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import wpw from 'w-playwright'
 import rollupFile from 'w-package-tools/src/rollupFile.mjs'
-import delay from 'wsemi/src/delay.mjs'
 import WConverhpServer from '../../src/WConverhpServer.mjs'
 
 
@@ -159,10 +158,43 @@ async function startServer(opt = {}) {
         ...opt,
     })
 
-    //待伺服器啟動
-    await delay(1200)
+    //待伺服器就緒: 以其 ready(已開始監聽且建構期事件已派發; 啟動失敗為 false)為同步點, 不以固定毫秒等待(帳本 R30)
+    let bReady = await wsv.ready
+    if (bReady !== true) {
+        throw new Error('startServer: 伺服器未能啟動(埠被占用或選項無效, 見其 error 事件)')
+    }
 
     return wsv
+}
+
+
+/**
+ * 收集頁面之 console 訊息 (契約: 專案特化)
+ *
+ * 每則記 { type, text, args }: text 為 Playwright 之 msg.text()(隨版本而異之文字化表示, 不用於斷言引數內容),
+ * args 為各引數之 jsonValue()(原始值為其值, 物件為其結構化內容; 序列化失敗者為 null)——斷言一律依 args 判定「物件引數有哪些鍵與值」,
+ * 不依 text 對物件之展開寫法(該寫法隨 Playwright／Chromium 版本改變)。
+ * settle(): 回傳全部已到達之訊息; 先以一次頁內往返作同步點(CDP 事件依序到達, 此往返之前已發出之 console 事件皆已收到, 不以固定毫秒等待), 再等各 jsonValue 完成。
+ * 須在頁面載入前呼叫(page.on 於 goto 之前掛)。
+ */
+function collectConsole(page) {
+    let msgs = []
+    let pend = []
+    page.on('console', (m) => {
+        let rec = { type: m.type(), text: m.text(), args: null }
+        msgs.push(rec)
+        pend.push(Promise.all(m.args().map((a) => a.jsonValue())).then((vs) => {
+            rec.args = vs
+        }, () => {
+            rec.args = null
+        }))
+    })
+    let settle = async() => {
+        await page.evaluate(() => 0)
+        await Promise.all(pend)
+        return msgs
+    }
+    return { settle }
 }
 
 
@@ -194,7 +226,8 @@ if (typeof globalThis.after === 'function') {
 //  launchBrowser    取一個經 w-playwright 啟動之無頭 chromium(headless shell, 含守門參數; 每 case 各開一個)
 //  buildClientBundle 打包瀏覽器端 client 供頁面載入(首次呼叫才真的打包)
 //  writePage        寫出一個載入 client 之測試頁, 回傳其網址路徑
-//  startServer      起一個 WConverhpServer 並等其就緒
+//  startServer      起一個 WConverhpServer 並等其就緒(wsv.ready, 不以固定毫秒等待)
+//  collectConsole   收集頁面之 console 訊息(含各引數之 jsonValue), 回 { settle }
 //why cleanup 不在此列: 它是本檔於 globalThis.after 內自行註冊之收尾(見上方), 三個 e2e 檔皆未取用 ——
 //  匯出一個沒有外部使用者之成員, 只是讓讀者以為「我需要自己呼叫它」(帳本 R23)
 let r = {
@@ -204,6 +237,7 @@ let r = {
     buildClientBundle,
     writePage,
     startServer,
+    collectConsole,
 }
 
 

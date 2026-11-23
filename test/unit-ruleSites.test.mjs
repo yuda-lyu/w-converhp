@@ -484,10 +484,11 @@ describe('unit-ruleSites', function() {
         let iE = c.indexOf(`evEmit('error'`)
         assert.strict.deepEqual(iE > iOpen && iE < iAfterOpen, true, 'R27 唯一之直接 evEmit(\'error\' 須位於 openCall 內')
 
-        //console 訊息: console.log 只得於 ctx.log 之實作內一處
-        assert.strict.deepEqual(countAll(c, /console\.log\(/g), 1, 'R27 client 之 console.log 只得於 ctx.log 內一處')
-        let iL = c.indexOf('console.log(')
-        assert.strict.deepEqual(iL > iCtx && iL < iOpen, true, 'R27 唯一之 console.log 須位於 genCallCtx 內')
+        //console 訊息: 2026-11-24(帳本 R33)起 client 不直接呼叫 console, ctx.log 之實作內經診斷出口 diag(wsemi 之 getDiag)一處(中止後不輸出之守門仍在 ctx.log, 出口只此一處)
+        assert.strict.deepEqual(countAll(c, /console\.\w+\(/g), 0, 'R27/R33 client 不得直接呼叫 console(診斷輸出一律經 ctx.log → diag)')
+        assert.strict.deepEqual(countAll(c, /(^|[^.\w])diag\(label, safe, getDetail\)/g), 1, 'R27/R33 診斷出口 diag 只得於 ctx.log 之實作內一處')
+        let iL = c.indexOf('diag(label, safe, getDetail)')
+        assert.strict.deepEqual(iL > iCtx && iL < iOpen, true, 'R27 唯一之診斷出口須位於 genCallCtx 內')
 
         //getToken: fetchToken 之呼叫皆經 ctx.callApp(已中止即不呼叫)
         assert.strict.deepEqual(countAll(c, /fetchToken\(\)/g), 2, 'R27 fetchToken 之呼叫點須為 2(callApiCore、downloadBrowser 管理器路徑)')
@@ -633,6 +634,69 @@ describe('unit-ruleSites', function() {
         assert.strict.deepEqual(cp !== '' && !/isfun\(/.test(cp) && /typeof v/.test(cp), true, 'R29 canonProtocolValue 須以 typeof 判定, 不得用 isfun')
     })
 
+    it('R33 診斷輸出(console)經單一出口 diag(wsemi 之 getDiag): 不直接呼叫 console、預設只輸出固定詞彙與安全摘要(不傳原始值)、worker 不寫 console', function() {
+        //why: 規格〈診斷輸出與遮罩〉D1(單一實作)、D2(預設不輸出資料值)。原本共 23 行 console 呼叫(client 之 ctx.log 1〔4 個呼叫點〕、server 12、managerMergeSlices 5、checkTotalHash 之 worker 5)直接 console.log(label, 原始值):
+        //回應物件、錯誤物件(含訊息原文、堆疊、伺服器路徑)、請求值(queueId、packageId、檔名)原樣入日誌, 且使用端無法關閉。
+        //本條鎖住: ①src 內(扣除註解)全無 console 呼叫 ②每個診斷呼叫之第一引數為固定詞彙, 第二引數只能是安全摘要(diag.brief/getDiagShape 之結果或 undefined), 原始值只能放第三引數(惰性細節, 經 getDiag 遮罩, 僅 logDetail/funLog)
+        //③worker(checkTotalHash)不寫 console, 改以 r.diag 記錄回傳並由 server 之 internal 取出、不回前端 ④ opt.logDetail/opt.funLog 經 pickDiagOpt 單一來源讀入並併入 wsemi evEmit 之 opt。行為面由 test/api-consoleNoValues.test.mjs 與 test/e2e-consoleNoValues.test.mjs 鎖
+        let fds = fs.readdirSync('src').filter((v) => v.endsWith('.mjs'))
+        for (let fn of fds) {
+            let code = readCode(`src/${fn}`)
+            assert.strict.deepEqual(countAll(code, /console\.\w+\(/g), 0, `R33 src/${fn} 不得直接呼叫 console(診斷輸出一律經 diag)`)
+        }
+
+        //診斷呼叫之引數形狀: 第一引數為字面標籤(模板字串或字串; 唯一例外為 drainWorkerDiag 取自 worker 記錄之 label),
+        //第二引數為 undefined、diag.brief(變數)、{ ...diag.brief(err), chunkNo, chunkTotal }、{ msgShape: getDiagShape(變數) } 或省略, 其後(第三引數)才可為惰性細節
+        let reLabel = '(`[^`]*`|\'[^\']*\'|get\\(rec, \'label\', \'\'\\))'
+        let reSafe = '(undefined|e === null \\? undefined : diag\\.brief\\(e\\)|(diag|dg)\\.brief\\(\\w+\\)|\\{ \\.\\.\\.diag\\.brief\\(err\\), chunkNo: chunkIndex \\+ 1, chunkTotal \\}|\\{ msgShape: getDiagShape\\(\\w+\\) \\})'
+        let reCall = new RegExp(`^(diag|dg|ctx\\.log)\\(${reLabel}(\\)|, ${reSafe}(\\)|, \\(\\) => ))`)
+        let callsOf = (code) => {
+            let r = []
+            for (let line of code.split('\n')) {
+                let m = line.match(/(^|[^.\w])(diag|dg|ctx\.log)\(/)
+                if (m !== null && !/^\s*(let|ctx\.log =)/.test(line) && !line.includes('diag(label, safe, getDetail)')) {
+                    r.push(line.slice(m.index + m[1].length).trim())
+                }
+            }
+            return r
+        }
+        let expectCalls = { client: 4, server: 12, mmg: 5 } //client: ctx.log ×4(wait、retry、兩個回應形狀); server: diag ×11 + dg ×1(responseU8aStreamWithError); mmg: dg ×5
+        for (let [k, n] of Object.entries(expectCalls)) {
+            let calls = callsOf(src[k])
+            assert.strict.deepEqual(calls.length, n, `R33 ${k} 診斷呼叫站點數 ${calls.length} 與期望 ${n} 不符 ${hint}\n${calls.join('\n')}`)
+            for (let c of calls) {
+                assert.strict.deepEqual(reCall.test(c), true, `R33 ${k} 診斷呼叫之引數形狀不合(第一引數須為固定詞彙, 第二引數只可為安全摘要, 原始值須放第三引數之惰性細節): ${c}`)
+            }
+        }
+
+        //出口之建立: 每個擁有者只呼叫 getDiag 一次(server 另有模組層預設一次, managerMergeSlices 之預設一次)
+        assert.strict.deepEqual(countAll(src.client, /getDiag\(/g), 1, 'R33 client 之 getDiag 只得一處')
+        assert.strict.deepEqual(countAll(src.server, /getDiag\(/g), 2, 'R33 server 之 getDiag: 模組層預設 1 + 實例 1')
+        assert.strict.deepEqual(countAll(src.mmg, /getDiag\(/g), 1, 'R33 managerMergeSlices 之 getDiag 只得一處(預設出口)')
+
+        //設定之單一來源與併入 wsemi evEmit 之 opt
+        assert.strict.deepEqual(countAll(src.client, /pickDiagOpt\(opt\)/g), 1, 'R33 client 須經 pickDiagOpt 讀 logDetail/funLog')
+        assert.strict.deepEqual(countAll(src.server, /pickDiagOpt\(opt\)/g), 1, 'R33 server 須經 pickDiagOpt 讀 logDetail/funLog')
+        assert.strict.deepEqual(countAll(src.client, /\.\.\.optDiag/g), 1, 'R33 client 之 evEmit 須併入 optDiag')
+        assert.strict.deepEqual(countAll(src.server, /\.\.\.optDiag/g), 1, 'R33 server 之 optEv 須併入 optDiag')
+        assert.strict.deepEqual(countAll(src.server, /getDiag\(optDiag, /g), 1, 'R33 server 之實例出口須以 pickDiagOpt 之結果建立')
+        assert.strict.deepEqual(countAll(src.client, /getDiag\(optDiag, /g), 1, 'R33 client 之出口須以 pickDiagOpt 之結果建立')
+
+        //出口之傳遞: server 之 mmg.push/mmg.get 與 responseU8aStreamWithError 皆帶實例之 diag
+        assert.strict.deepEqual(countAll(src.server, /mmg\.push\(fileHash, chunkTotal, pathUploadTemp, \{ diag \}\)/g), 1, 'R33 mmg.push 須帶實例之 diag')
+        assert.strict.deepEqual(countAll(src.server, /mmg\.get\(queueId, pathUploadTemp, \{[\s\S]*?\bdiag,/g), 1, 'R33 mmg.get 須帶實例之 diag')
+        assert.strict.deepEqual(countAll(src.server, /responseU8aStreamWithError\(res, msg, \{ \.\.\.opt, diag \}\)/g), 1, 'R33 responseU8aStreamWithError 須帶實例之 diag')
+
+        //worker: 診斷以記錄回傳(不寫 console), 於 internal 取出並自結果移除(不回前端)
+        assert.strict.deepEqual(countAll(src.cth, /diags\.push\(genDiagRec\(/g), 4, 'R33 checkTotalHash 之診斷記錄站點須為 4(statSync×2、雜湊、略過之檔)')
+        assert.strict.deepEqual(countAll(src.cth, /r\.diag = diags/g), 1, 'R33 checkTotalHash 須以 r.diag 回傳記錄')
+        assert.strict.deepEqual(countAll(src.server, /let drainWorkerDiag = /g), 1, 'R33 server 須有 worker 診斷記錄之取出函數(drainWorkerDiag)')
+        assert.strict.deepEqual(countAll(src.server, /drainWorkerDiag\(/g), 1, 'R33 server 須於 internal 取出 worker 之診斷記錄(使用 1)')
+        assert.strict.deepEqual(countAll(src.server, /delete out\.diag/g), 1, 'R33 取出之診斷記錄須自結果移除(不回前端)')
+        let sInternal = src.server.slice(src.server.indexOf('let internal = async(stage, fn) => {'))
+        assert.strict.deepEqual(sInternal.slice(0, 200).includes('drainWorkerDiag(await fn())'), true, 'R33 internal 須對 fn 之結果取出診斷記錄')
+    })
+
     it('sgud/rule/rulebook.md 須存在且涵蓋本檔之全部規則', function() {
         //帳本自 2026-09-10 起獨立為 CLAUDE_rulebook.md(原位於 CLAUDE.md 之「規則帳本」一節), 2026-10-22 起依全域設定之 sgud 配置移至 sgud/rule/rulebook.md(納入 git 版控);
         //CLAUDE.md 只留工作規則與指向附檔之說明, 執行經驗另於 sgud/exp/experience.md
@@ -640,8 +704,8 @@ describe('unit-ruleSites', function() {
         let doc = fs.readFileSync('sgud/rule/rulebook.md', 'utf8')
         assert.strict.deepEqual(doc.includes('# 規則帳本'), true, 'sgud/rule/rulebook.md 缺少標題')
         //第十二輪: 補 R19–R26(原清單只到 R18, R19–R25 缺頁不會紅 —— 與上述第十輪之教訓同型, B 卷 ③-6)
-        //2026-10-13: 補 R27(前端中止之單一擁有者); 2026-10-29: 補 R30(計時器相關測試之同步點); 2026-11-19: 補 R31(原清單漏列)與 R32(不可讀值之探針)
-        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ', '### R30 ', '### R31 ', '### R32 ']) {
+        //2026-10-13: 補 R27(前端中止之單一擁有者); 2026-10-29: 補 R30(計時器相關測試之同步點); 2026-11-19: 補 R31(原清單漏列)與 R32(不可讀值之探針); 2026-11-24: 補 R33(診斷輸出經單一出口、不印資料值)
+        for (let r of ['### R1 ', '### R2 ', '### R3 ', '### R4 ', '### R4b ', '### R4c ', '### R5 ', '### R6 ', '### R7 ', '### R8 ', '### R9 ', '### R10 ', '### R11 ', '### R12 ', '### R13 ', '### R14 ', '### R15 ', '### R16 ', '### R17 ', '### R18 ', '### R19 ', '### R20 ', '### R21 ', '### R22 ', '### R23 ', '### R24 ', '### R25 ', '### R26 ', '### R27 ', '### R28 ', '### R29 ', '### R30 ', '### R31 ', '### R32 ', '### R33 ']) {
             assert.strict.deepEqual(doc.includes(r), true, `sgud/rule/rulebook.md 缺少 ${r.trim()}`)
         }
         assert.strict.deepEqual(doc.split('**盤點指令**').length - 1 >= 4, true, 'sgud/rule/rulebook.md 之盤點指令數不足')

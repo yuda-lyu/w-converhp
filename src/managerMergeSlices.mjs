@@ -7,6 +7,7 @@ import genID from 'wsemi/src/genID.mjs'
 import sep from 'wsemi/src/sep.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
+import getDiag from 'wsemi/src/getDiag.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
@@ -39,6 +40,16 @@ import mergeSlices from './mergeSlices.wk.umd.js'
 //    S0 皆不在                 → error 'no merge task'(終結; 從未 push, 或產物已被清除)
 //  fpd 與 fpr 為狀態載體, qGet 不刪除; 新一代合併由 qPush 先刪舊 fpd 再開始, fpr 保留供舊隊列之遲到重送
 //  另一入口 check-total-hash(整檔已存在之去重路徑)每次 upload 皆呼叫應用端, 為刻意設計, 不在本佇列狀態內
+
+//diagDefault, 診斷輸出(console)之預設出口(帳本 R33; wsemi 之 getDiag): 呼叫端(伺服器)以 opt.diag 傳入實例之出口(受 opt.logDetail/opt.funLog 控制)者優先, 未給(模組單獨使用)時用本預設——
+//預設只輸出固定詞彙與安全摘要(錯誤類別與代碼), 不輸出錯誤訊息原文、堆疊、路徑與請求值(queueId); 細節隨 logDetail/funLog 交出
+let diagDefault = getDiag({})
+
+//diagOf, 取呼叫端給之診斷出口, 未給或非函數者用預設
+let diagOf = (opt) => {
+    let d = get(opt, 'diag')
+    return isfun(d) ? d : diagDefault
+}
 
 //merging, 合併或驗證進行中之合併檔路徑集合(記憶體內), 供 qPush 避免重入、qGet 回 merging; 以路徑為鍵使同行程內多個伺服器實例(不同 pathUploadTemp)互不影響
 let merging = new Set()
@@ -76,7 +87,7 @@ let removeStateFile = (fp) => {
 //verifyMerged, fp 在時之驗證: fileHash 即整檔 xxhash; 回 done(一致, 補寫 fpd)/ mismatch(不一致, 寫 fpe)/ error(驗證本身出錯)
 //期間標記 merging 使併發查詢回 merging、併發 push 為 no-op; 驗證本身出錯(暫時性 fs 錯誤)不寫 fpe:
 //  經 qPush 者以例外交由前端重送 push; 經 qGet 者回 error 使該次 upload() 終止, 使用者重呼 upload() 時經 push 重新驗證
-let verifyMerged = async(fileHash, ps) => {
+let verifyMerged = async(fileHash, ps, dg) => {
     merging.add(ps.fp)
     try {
         let h = await fsGetFileXxHash(ps.fp)
@@ -89,7 +100,7 @@ let verifyMerged = async(fileHash, ps) => {
             fs.writeFileSync(ps.fpe, msg, 'utf8')
         }
         catch (e) {
-            console.log(`can not write ${ps.fpe}`, e)
+            dg('can not write .error file', dg.brief(e), () => ({ path: ps.fpe, err: e })) //路徑為伺服器路徑, 不入預設輸出
         }
         return { state: 'mismatch', reason: msg }
     }
@@ -181,8 +192,11 @@ let consume = (ps, funConsume, funLog) => {
     return pm
 }
 
-//qPush
-let qPush = async(fileHash, chunkTotal, pathUploadTemp) => {
+//qPush, opt.diag 為診斷輸出出口(見 diagDefault)
+let qPush = async(fileHash, chunkTotal, pathUploadTemp, opt = {}) => {
+
+    //dg
+    let dg = diagOf(opt)
 
     //id, 使用fileHash代表不用佇列儲存, 通過id即可解析反查; 前兩段(日期、亂數)與fileHash皆為英數, 亦作為本隊列結果檔之命名
     let id = `${now2strp()}|${genID(6)}|${fileHash}`
@@ -206,7 +220,7 @@ let qPush = async(fileHash, chunkTotal, pathUploadTemp) => {
     //    即代表 .done 所證明者已非現在之合併檔; 原本於此直接 no-op, 遂**此後每次上傳皆交出同一個錯檔**(第十輪 D1、A15)
     //  驗證不符者已寫 .error, 續走下方重新合併; 驗證本身出錯者不可貿然重新合併(切片可能已不在), 以例外交由前端重送 push
     if (!bErr && bfp) {
-        let vr = await verifyMerged(fileHash, ps)
+        let vr = await verifyMerged(fileHash, ps, dg)
         if (vr.state === 'done') {
             return id
         }
@@ -242,7 +256,7 @@ let qPush = async(fileHash, chunkTotal, pathUploadTemp) => {
                 fs.writeFileSync(ps.fpd, '', 'utf8')
             })
             .catch((err) => {
-                console.log(err)
+                dg('merge slices error', dg.brief(err), () => err) //原樣傾印 err 含伺服器路徑與底層訊息, 改為預設只輸出類別與代碼; 失敗原因另落地為 .error 並於 merge-slices-get 以 error 事件通知應用端
 
                 //暫存檔不再有用(雜湊不符或合併失敗), 刪除為盡力而為: 殘留者於下次合併時以寫入模式覆蓋
                 fsDeleteFile(ps.fpm)
@@ -253,7 +267,7 @@ let qPush = async(fileHash, chunkTotal, pathUploadTemp) => {
                     fs.writeFileSync(ps.fpe, msg, 'utf8')
                 }
                 catch (e) {
-                    console.log(`can not write ${ps.fpe}`, e)
+                    dg('can not write .error file', dg.brief(e), () => ({ path: ps.fpe, err: e }))
                 }
 
             })
@@ -265,15 +279,19 @@ let qPush = async(fileHash, chunkTotal, pathUploadTemp) => {
     return id
 }
 
-//qGet, 依檔頭狀態表判定; opt.funConsume為(fp)=>Promise<ro>, 由伺服器提供以呼叫應用端upload事件, 其拒絕原樣向外拋; opt.funLog為記錄函數(儲存/讀取結果失敗等非致命事件)
+//qGet, 依檔頭狀態表判定; opt.funConsume為(fp)=>Promise<ro>, 由伺服器提供以呼叫應用端upload事件, 其拒絕原樣向外拋; opt.funLog為記錄函數(儲存/讀取結果失敗等非致命事件); opt.diag 為診斷輸出出口(見 diagDefault)
 let qGet = async(id, pathUploadTemp, opt = {}) => {
+
+    //dg
+    let dg = diagOf(opt)
 
     //funConsume, funLog
     let funConsume = get(opt, 'funConsume')
     let funLog = get(opt, 'funLog')
     if (!isfun(funLog)) {
+        //未給記錄函數(模組單獨使用)時: 訊息字串含伺服器路徑與底層錯誤原文, 預設只輸出固定詞彙, 訊息本身隨 logDetail/funLog 之細節交出(帳本 R33)
         funLog = (msg) => {
-            console.log(msg)
+            dg('merge queue: non-fatal error (detail by opt.funLog)', undefined, () => msg)
         }
     }
 
@@ -286,7 +304,7 @@ let qGet = async(id, pathUploadTemp, opt = {}) => {
     let fileHash = get(s, 2, '')
     if (size(s) !== 3 || !isSafeId(seg0) || !isSafeId(seg1) || !isSafeId(fileHash)) {
         let errTemp = `invalid queueId[${getErrorMessage(id)}]`
-        console.log(errTemp)
+        dg('invalid queueId', undefined, () => ({ id })) //queueId 為請求端給之值, 不入預設輸出(規格 D2), 隨細節交出; 回傳之 reason 另由伺服器以 error 事件通知應用端
         return {
             state: 'error',
             msg: 'invalid queueId', //不回傳細節
@@ -341,7 +359,7 @@ let qGet = async(id, pathUploadTemp, opt = {}) => {
 
     //S7/S6, 合併檔在而.done不在(非合併中): 驗證, 一致補.done轉S2, 不一致寫.error轉S5(終結, 不得永遠merging)
     if (bfp && !bfpd) {
-        let vr = await verifyMerged(fileHash, ps)
+        let vr = await verifyMerged(fileHash, ps, dg)
         if (vr.state !== 'done') {
             return {
                 state: 'error',
@@ -391,7 +409,7 @@ let qGet = async(id, pathUploadTemp, opt = {}) => {
 }
 
 //r, 本模組對路由層提供之兩個入口(皆由 WConverhpServer 之 /ulctr 使用)
-//  push(fileHash, chunkTotal, pathUploadTemp)  受理一次合併: 回傳 queueId; 合併於脫勾後進行, 本函數不等它完成
+//  push(fileHash, chunkTotal, pathUploadTemp, opt)  受理一次合併: 回傳 queueId; 合併於脫勾後進行, 本函數不等它完成; opt.diag 為診斷輸出出口(見 diagDefault)
 //  get(id, pathUploadTemp, opt)                查詢該 queueId 之狀態並於就緒時消費: 回 { state, msg, path },
 //                                              state 為 success / merging / error, 判定順序見本檔開頭之狀態表
 //內部之 merging / consuming 兩個記憶體集合與各 fp* 路徑不匯出: 它們是狀態機之實作細節, 對外只有「推一件事」與「問它好了沒」兩個動作(帳本 R23)

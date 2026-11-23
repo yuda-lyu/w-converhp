@@ -31,7 +31,7 @@
 | [R13](#r13-應用端交出之回呼一律於套件之保護內呼叫) | 應用端交出之回呼一律於套件之保護內呼叫 | grep | 7 | 0 |
 | [R14](#r14-盤點與修正須涵蓋實際執行之產物不得只掃-srcmjs) | 盤點與修正須涵蓋實際執行之產物 | grep + 差分測試 | 3 產物 | 0(第十輪建機械化保護) |
 | [R15](#r15-切割結構化字串前須先確認它真的是那個結構) | 切割結構化字串前須先確認它真的是那個結構 | grep | 4(切割 1 擁有者 + 合成 1 + 既有 2) | 0(測試覆蓋另有缺口) |
-| [R16](#r16-手上有事件契約載不下的原始值時才-consolog) | 手上有「事件契約載不下的原始值」時才 console.log | grep | 10 | 0(數處已流失,列觀察) |
+| [R16](#r16-手上有事件契約載不下的原始值時才-consolog) | ~~手上有「事件契約載不下的原始值」時才 console.log~~ **(2026-11-24 由 R33 取代:原始值不再傾印至 console,改隨 diag 之細節交出)** | 見 R33 | 見 R33 | 見 R33 |
 | [R17](#r17-回前端之錯誤訊息不得含伺服器路徑與底層細節細節只進-error-事件) | 回前端之錯誤訊息不得含伺服器路徑與底層細節;細節只進 error 事件 | grep | 3 + 4 | 0 |
 | [R18](#r18-完成標記須證明其所指之內容新一代開始前舊標記須失效) | 完成標記須證明其所指之內容;新一代開始前舊標記須失效 | grep + 行為 | 4(含 `/slc` 之 done) | 0 |
 | [R19](#r19-不可信之外來值交出時須標明其可信度誰要拿它做危險操作誰處理只轉交者不得改寫) | 不可信之外來值交出時須標明其可信度;誰要拿它做危險操作誰處理,只轉交者不得改寫 | grep | 3 | 0 |
@@ -39,8 +39,8 @@
 | [R23](#r23-匯出面須最小化未被模組外使用者不得匯出且每個匯出成員須說明其用途) | **匯出面須最小化**;未被模組外使用者不得匯出,且各成員須說明用途 | grep | 5 模組 19 成員 | 0 |
 | [R21](#r21-各-mjs-一律以單一-export-default-匯出要給多個成員就合併為一個物件) | 各 `.mjs` 一律以單一 `export default` 匯出(前提:先過 R23) | grep | 23 | 0 |
 | [R22](#r22-檔名須反映其全部匯出成員匯出多個成員者取集合概念不得取其中任一成員名) | 檔名須反映其全部匯出成員(前提:先過 R23 與 R21) | grep | 23 | 0 |
-| [R24](#r24-測試用-port-一律自集中配發表取得不得手寫不得隨機不得衍生) | **測試用 port 一律自集中配發表取得**;不得手寫、隨機或衍生;**不再有固定的監聽埠(作業系統配發)** | `unit-ports` | 60 檔 93 port(皆作業系統配發) | 0 |
-| [R25](#r25-test-根目錄只放測試檔非測試之共用-mjs-一律置於-testtools) | `test/` 根目錄只放測試檔;非測試之共用 mjs 置於 `test/tools/` | `ls` + `unit-ports` | 70 + 3 | 0 |
+| [R24](#r24-測試用-port-一律自集中配發表取得不得手寫不得隨機不得衍生) | **測試用 port 一律自集中配發表取得**;不得手寫、隨機或衍生;**不再有固定的監聽埠(作業系統配發)** | `unit-ports` | **63 檔 102 port**(2026-11-24 重測;皆作業系統配發) | 0 |
+| [R25](#r25-test-根目錄只放測試檔非測試之共用-mjs-一律置於-testtools) | `test/` 根目錄只放測試檔;非測試之共用 mjs 置於 `test/tools/` | `ls` + `unit-ports` | **79 + 9**(2026-11-24 重測:`test/*.test.mjs` 79、`test/tools/*.mjs` 9) | 0 |
 | [R26](#r26-曝露與存取控制選項有給而無效時須收緊並告知未給者依預設) | **曝露與存取控制選項有給而無效時須收緊並告知**;未給者依預設 | grep + 行為表 | 4 選項 6 告知點 | 0 |
 | [R27](#r27-一次公開呼叫對外之全部輸出經其-ctx-之出口公開-promise-與中止競速) | **一次公開呼叫對外之全部輸出經其 ctx 之出口;公開 promise 與中止競速**(前端中止) | 位置鎖 + 行為表 | 出口 5 類 / 入口 3 方法 / error 站點 11 | 0 |
 | [R28](#r28-測試建構伺服器一律給-pathuploadtemp落-test_tmp案名測完即刪不得取預設值而於-repo-根建立-uploadtemp) | **測試建構伺服器一律給 pathUploadTemp**(落 test/_tmp/<案名>/,測完即刪) | 位置鎖(unit-ruleSites) | 74 站點 | 0 |
@@ -48,6 +48,7 @@
 | [R30](#r30-計時器相關測試以被測物之事件或可觀察條件為同步點不以等待毫秒伺服器就緒等-ready自有計時器以-optontrace) | **計時器相關測試以被測物之事件或可觀察條件為同步點,不以等待毫秒**;伺服器就緒等 `ready`、自有計時器以 `opt.onTrace`、效能時限改邏輯順序 | grep + 行為表(`api-serverReady`、`api-clientTrace`)+ 負載試驗 | 鉤子 45 檔 + 輔助 3 + 直接 C 20 案 + (d) 6 案 | 0 |
 | [R31](#r31-chromium-系瀏覽器之啟動一律經-w-playwright本套件不直接依賴-playwrightplaywright-core) | **Chromium 系瀏覽器之啟動一律經 w-playwright**;本套件不直接依賴 `playwright`／`playwright-core`(測試專用,devDependencies) | `rg`(R-PW-ONLY)+ `unit-pwWiring` | 啟動點 1 處(e2e 共用層)/ 4 個 e2e 檔皆經它 | 0 |
 | [R32](#r32-不可讀之值須由探針明確判定不得倚賴-wsemi-判斷函數是否拋錯) | **不可讀之值須由探針明確判定**;不得倚賴 wsemi 判斷函數是否拋錯(wsemi 1.9.69 起判斷函數回布林、只收原始值) | `unit-probeReadable` + 行為表(`api-hostileValueProbe`)+ grep | 探針呼叫 4 處(`encodeStrict` 1〔序列化三站點共用〕+ 下載欄位 1 + 串流辨識 2)、受保護站點 5(A1–A5)/ 判斷函數呼叫 98 行逐一歸類 | 0 |
+| [R33](#r33-診斷輸出console經單一出口-diag預設只輸出固定詞彙與安全摘要不輸出資料值) | **診斷輸出(console)經單一出口 `diag`(wsemi 之 `getDiag`);預設只輸出固定詞彙與安全摘要,不輸出資料值**(前端回應物件、後端錯誤原文、請求值、路徑);`opt.logDetail`／`opt.funLog` 還原細節或轉接 | 位置鎖(`unit-ruleSites` R33)+ 行為表(`api-consoleNoValues`、`e2e-consoleNoValues`) | 診斷站點 client 4 / server 12 / managerMergeSlices 5 / worker 4 | 0 |
 
 > **第十二輪之總結(2026-10-13)**:起因為 w-serv-hapi 之 agent 提出之外部建議四項(上傳管線不判接聽者即落檔、verifyConn 非函數即全放行、serverHapi 模式之 stop、corsOrigins 文件)。四項事實全屬實,但三項修法各撞既有設計(建構期失敗不拋出之通道、R12 之單一擁有者、merge-slices-get S3 之冪等、hapi 無移除路由 API)。方案經三份獨立複審(Claude Opus 5.5 ×2、Codex GPT-6.1-Sol ×1,各自於 HEAD 之 worktree 實跑)擴充為七個變更單元:**R12 延伸至上傳管線**(閘門 4 站點 + admit 期間中斷之補判 2 站點,後者為複審發現之既有缺陷:handler 永不終結、/slc 漏 fd)、合併佇列在途消費之跨實例隔離(複審發現)、**新立 R26**(verifyConn、corsOrigins、useInert、pathStaticFiles)、文件。外部建議之 #3 只補文件,改行為列下輪提案。逐條核對見當輪之 `tmp/r12-複審彙整.md`,定案方案見 `tmp/r12-全盤.md` §9。
 > 帳本自身之錯誤 2 件:R25 之執行指令 `--timeout 60000` 過期(package.json 為 180000)、`unit-ruleSites` 之「帳本須涵蓋全部規則」清單只列到 R18(R19–R25 缺頁不會紅);皆已更正。另 `tmp/measure_sites.mjs` 仍讀第十一輪併檔前之 `buildDownloadSource.mjs` 而無法執行,本輪以 `tmp/r12/sites.mjs`(同 `readCode` 剝註解規則、保留行號)產生逐站點清單。
@@ -973,9 +974,11 @@ grep -c "authFrom: 'query'" src/routeSpec.mjs                                   
 
 ### R16 手上有「事件契約載不下的原始值」時才 console.log
 
-**狀態:第九輪登記既有規則(2026-09-11),缺口 0 —— 但三個模組已流失**
+**狀態:2026-11-24 由 [R33](#r33-診斷輸出console經單一出口-diag預設只輸出固定詞彙與安全摘要不輸出資料值) 取代**(跨套件規格〈診斷輸出與遮罩〉D2:預設不輸出資料值)。以下為取代前之原文與歷史,**其盤點指令與站點表已不適用**(原 23 行 console 呼叫〔client `ctx.log` 1、server 12、managerMergeSlices 5、checkTotalHash 之 worker 5〕已全改經 `diag`)。「手上握有事件契約載不下之原始值者須另行交出」之**意圖保留**:原始值改隨 `diag` 之第三引數(惰性細節)交出,使用端以 `opt.logDetail`(遮罩後輸出於 console)或 `opt.funLog`(轉接)取得,**不再預設傾印至 console**。
 
-**規則**:本套件之 `error` 事件契約為**字串訊息**,故凡手上握有**原始拋出值 / 原始 Error 物件**(其 stack、cause、自訂欄位為字串所載不下者)之處,另以 `console.log(訊息, err)` 傾印該原始值;其餘只發事件,不另印。
+**(取代前)狀態:第九輪登記既有規則(2026-09-11),缺口 0 —— 但三個模組已流失**
+
+**(取代前)規則**:本套件之 `error` 事件契約為**字串訊息**,故凡手上握有**原始拋出值 / 原始 Error 物件**(其 stack、cause、自訂欄位為字串所載不下者)之處,另以 `console.log(訊息, err)` 傾印該原始值;其餘只發事件,不另印。
 
 **why 要登記**:第九輪一度把「26 個站點只有 5 個有 console.log」判為對稱破缺,提議「全部統一」。兩份獨立複審各自實測後推翻 —— 那 5(實為 7)個並非隨機分佈,而是**恰好落在「手上有原始 err」之處,零例外**;其中 4 處還把理由寫在行尾(`//使用err.message會過於簡化, 另外要開啟顯示err供debug`)。
 
@@ -1400,7 +1403,7 @@ grep -n "isfun(verifyConn)" src/WConverhpServer.mjs           # 須位於 try �
 | 輸出通道 | 出口 | 中止後 |
 |---|---|---|
 | error 事件 | `ctx.emit` | 不發 |
-| console 訊息(重試訊息、回應形狀異常之診斷) | `ctx.log` | 不印 |
+| console 訊息(重試訊息、回應形狀異常之診斷) | `ctx.log`(2026-11-24 起經 `diag`,不直接呼叫 console;見 R33) | 不印 |
 | 應用端 `cbProgress` | `ctx.wrapProgress`(兼補預設與拋錯只報首次,R9、R13) | 不呼叫 |
 | 應用端 `getToken` | `ctx.callApp(() => fetchToken())` | 已中止不呼叫;懸置中不再等待 |
 | 公開 promise 之結局 | `ctx.run`(入口競速:本體與中止競速) | 尚未 settle 者一律以 `signal.reason` 拒絕 |
@@ -1431,7 +1434,7 @@ grep -n "isfun(verifyConn)" src/WConverhpServer.mjs           # 須位於 try �
 ```bash
 grep -cE "evEmit\('error'" src/WConverhpClient.mjs                 # 剝註解後須為 1: 只在 openCall(invalid opt.signal); 裸跑 2(executeCore 內另有一行註解掉之舊派發), 權威判定在 unit-ruleSites
 grep -cE "ctx\.emit\('error'" src/WConverhpClient.mjs              # 須為 10(見下表; 2026-10-14 +1: sendDataSlice 之雜湊計算失敗)
-grep -cE "console\.log\(" src/WConverhpClient.mjs                  # 剝註解後須為 1: 只在 genCallCtx 之 ctx.log(裸跑另含註解內之字樣, 權威判定在 unit-ruleSites)
+grep -cE "console\.\w+\(" src/WConverhpClient.mjs                  # 剝註解後須為 0(2026-11-24 R33 起): 診斷輸出只經 genCallCtx 之 ctx.log → diag(裸跑另含註解內之字樣, 權威判定在 unit-ruleSites)
 grep -cE "ctx\.callApp\(\(\) => fetchToken\(\)\)" src/WConverhpClient.mjs   # 須為 2: callApiCore、downloadBrowser 管理器路徑
 grep -cE "ctx\.wrapProgress\(" src/WConverhpClient.mjs             # 剝註解後須為 2: send、sendDataSlice; 裸跑 4(另 2 行為說明之註解), 權威判定在 unit-ruleSites
 grep -cE "openCall\(opt\)" src/WConverhpClient.mjs                 # 須為 3: execute、upload、download
@@ -1653,7 +1656,7 @@ rg -n "probeReadable\(" src
 rg -n "obj2u8arr\([^)]*returnWithStateAndMsg" src
 # ③ 三個序列化站點各恰一次經 encodeStrict: 須 server 1、client 1、managerMergeSlices 1
 rg -c "encodeStrict\(" src/WConverhpServer.mjs src/WConverhpClient.mjs src/managerMergeSlices.mjs
-# ④ 判斷函數呼叫之全集(程式碼行,不含註解行): 須為 98, 逐行歸類見下表(新增一行即須歸類)
+# ④ 判斷函數呼叫之全集(程式碼行,不含註解行): 2026-11-19 為 98, 逐行歸類見下表(新增一行即須歸類); 2026-11-24 為 103(R33 新增 5 行皆為 C 類: server 之 `drainWorkerDiag` 3 行〔worker 自產記錄〕、`responseU8aStreamWithError` 之 `opt.diag` 1 行、managerMergeSlices 之 `diagOf` 1 行〔套件內部傳入之函數〕)
 rg -n "^\s*[^/\s*].*\b(isobj|iseobj|isarr|isstr|isestr|isfun|ispm|isbol|isp0int|ispint|isWindow|haskey)\(" src --glob "*.mjs"
 ```
 
@@ -1696,6 +1699,70 @@ A 類之下游判斷函數呼叫(皆位於上列探針之後,或消費其結果,
 **判準**:A 類 5/5 已套;B 類 4 站點無防線倚賴,不補探針(理由如上);C 類不適用;刻意不套 0。**已知差異(不補)**:①accessor 或 `toJSON` 回傳之「讀標籤即拋錯」物件(見已知限制 L4)。②僅 `has` 陷阱拋錯之 Proxy 於 `streamRead`(及其 `pipe`)——1.9.68 經 lodash `isString`/`isFunction` 之 `in` 運算子判定失敗(`invalid streamRead`),現定義為可讀,與一般物件同走 JSON 具體化(通常為 `fileSize mismatch`);理由:該形狀其餘行為全正常、JSON 序列化亦不讀 `has`,探針納入 `in` 則於序列化站點使「舊版照常成功」之 `has` 陷阱 Proxy 轉為失敗(與「上列以外之行為不變」相違)。
 
 **機械化保護**:`test/unit-probeReadable.test.mjs`(探針之定義 S1–S6 與 L4:原始值、一般值、不可讀形狀、原因非空、ownKeys/getOwnPropertyDescriptor 陷阱、深探走訪與淺探不走訪、1000 層與 10 萬層、無副作用〔accessor、`toJSON`、方法、原型上之 getter〕、不展開二進位〔2 千萬位元組即時完成且不對二進位呼叫 `ownKeys`〕、函數值不展開、**序列化器不會走到者不展開〔有 `toJSON` 者、`Date`、`Error`、`DOMException`、陷阱代理〕**、循環與共享、`has` 陷阱為可讀、**可讀之值經 `encodeStrict` 與經 `obj2u8arr` 嚴格模式逐位元組相同〔13 種〕**、`encodeStrict` 之 `toJSON` 只一次、L4 已知限制之鎖定)、`test/api-hostileValueProbe.test.mjs`(行為表:A1–A5 之全部注入點 × 形狀,另 W-20、前端呼叫參數〔`cbProgress`、`opt.headers`、`opt.fdDownload`、`upload` 之 `input`、`getToken` 回傳〕與前後端建構選項〔含 `corsOrigins` 停用 CORS 與 `useInert` 告知之斷言〕)、`test/unit-ruleSites.test.mjs`(R3 之站點收斂、`encodeStrict` 內探針先於序列化、三處各恰一次呼叫、`hasPipe` 先探針再 `isfun`、帳本須含 R32)。**分辨力**(2026-11-19):修前(改動前 src + wsemi 1.9.69)`api-hostileErrorValues` 2 紅、`api-hostileValueProbe` 58 紅(A1 4、A2 2、A3 12、A4 28、A5 12);以 wsemi 1.9.68 跑現碼,探針相關案(A1–A5、`unit-probeReadable`)全綠、W-20 11 案與選項/呼叫參數 67 案轉紅(鎖的是 1.9.69 起之語意);變異 16／16 擊殺(探針之定義 8 項、三站點各自不探針 3 項、三個序列化站點各自繞過 `encodeStrict` 3 項、`hasPipe` 回 `false`、不深探、不先探),詳見 `sgud/state/state.md`。獨立複審(sonnet 子代理,唯讀)指出之假陽性(有 `toJSON` 者、`Date`、`Error` 之子圖被展開)已修並補差分測試。
+
+---
+
+### R33 診斷輸出(console)經單一出口 `diag`(wsemi 之 `getDiag`);預設只輸出固定詞彙與安全摘要,不輸出資料值
+
+**狀態:2026-11-24 新立並套用(tcv1 輪;排程第 605 項 w-converhp 部分),缺口 0**〔依跨套件規格 `dspec/診斷輸出與遮罩.md` D1、D2、D4;狀態細節見 `sgud/state/state.md`〕。取代 R16(原樣傾印原始值)
+
+**規則**:
+
+1. **本套件之 `src/*.mjs`(扣除註解)不直接呼叫 `console`**:診斷輸出一律經單一出口 `diag`(wsemi 之 `getDiag`;D1 不另寫等價實作)。三個擁有者:前端 `WConverhpClient` 之 `ctx.log`(R27 之 console 出口,中止後不輸出之守門仍在此)→ 實例之 `diag`;伺服端 `WConverhpServer` 之實例 `diag`(及模組層之 `diagDefault`,供無實例脈絡之 `responseU8aStreamWithError`);`managerMergeSlices` 之預設出口 `diagDefault`(伺服器以 `opt.diag` 傳入實例之出口者優先)。
+2. **呼叫之引數形狀(D2)**:第一引數 `label` 為固定詞彙(字面或模板字串,模板內只可有本套件自產之固定值,如事件名、`apiType`、監聽位址);第二引數 `safe` 只可為安全摘要——`diag.brief(err)`(錯誤類別與白名單代碼 `{ errType, errCode }`)、`getDiagShape(值)`(型別、鍵名,永不含值,前端 `{ msgShape }`)、第幾片/共幾片(`chunkNo`、`chunkTotal`)或省略;**原始值(錯誤物件、回應物件、請求值 queueId/packageId/檔名、伺服器路徑)只能放第三引數(惰性細節 `() => 值`)**,僅在 `opt.logDetail` 為 `true`(遮罩後輸出於 console)或 `opt.funLog` 為函數(交給它,不寫 console)時才取得並經 wsemi 遮罩。
+3. **使用端能關閉或轉接**(派工〈主控已定〉3):`opt.logDetail`、`opt.funLog` 為前後端建構選項(JSDoc 已載);`funLog` 為函數時本套件之 console 輸出全部改交它(傳 `() => {}` 即關閉),含重試退避提示與啟動訊息,及 wsemi 之 `evEmit` 通報(監聽器拋錯)——兩選項經 `src/diagOpt.mjs` 之 `pickDiagOpt`(單一讀取點,不可讀之選項物件視為未給,D4)併入 `evEmit` 之 `opt`。**預設行為(未給兩選項)即為「不輸出資料值」,不需使用端改碼才安全**。
+4. **worker 不寫 console**:`checkTotalHash`(實際執行於 worker 執行緒,其 console 不經實例之出口,使用端無從關閉,且原樣含伺服器路徑與底層錯誤)改以記錄回傳 `r.diag = [{ label, err?: { message, code }, detail }]`(僅有異常時才帶該鍵;`err` 為純物件,因結構化複製不帶 Error 之自有屬性 `code`),伺服器於 `internal`(worker 與合併佇列呼叫之唯一出口)以 `drainWorkerDiag` 取出、經實例之 `diag` 輸出並自結果移除(**診斷不回前端**)。
+5. **不變**:error 事件(供應用端診斷之細節,R10、R17)、回前端之錯誤訊息、重試行為、呼叫端之 resolve/reject 值;重試提示 `wait X(second) to retry...`、`retry n=N...` 與啟動訊息 `Server running at: <uri>` 之**字樣不變**(第一引數為單一字串)。
+
+**why**:前端 `ctx.log('invalid msg.output', msg)` 與 `ctx.log('msg is not an effective object', msg)` 把整個回應物件(可含使用者資料、權杖)寫入瀏覽器 console(實測 `invalid msg.output { func: 'f', secret: …, token: … }`),使用端另無法關閉(傳 `silent`、`quiet`、`funLog` 等任何選項,重試提示照印)。伺服端 12 + 5 + 5 行(server、managerMergeSlices、worker)同型:`console.log(label, err)` 原樣傾印錯誤物件(訊息原文含應用端拋出之資料、堆疊含伺服器路徑)、請求值(`invalid queueId[…]`、packageId、切片檔名、`pathFile`)。R16 原以「事件契約載不下原始值」為由預設傾印;規格 D2 之裁定為預設只出安全摘要、細節由使用端以 `logDetail`/`funLog` 取得,故 R16 之意圖保留(原始值仍可得)而預設改變。
+
+**輸出字樣改變表**(console 之第一引數與其後引數;`err` 為錯誤物件、`…` 為略):
+
+| 站點 | 修前 | 修後(預設) |
+|---|---|---|
+| client `ctx.log` 回應非有效物件 | `msg is not an effective object <回應值>` | `msg is not an effective object { msgShape: '(number)' }`(或 `(boolean)`、`(keys: none)`、`(array, length=N)`…) |
+| client `ctx.log` 缺 output | `invalid msg.output <整個回應物件>` | `invalid msg.output { msgShape: '(keys: func,note,token)' }` |
+| client 重試提示 ×2 | `wait 1.0(second) to retry...`、`retry n=1...` | **不變**(單一字串引數) |
+| client error 監聽器拋錯(wsemi) | `[wsemi w-converhp-client] listener threw { errType: 'Error' }`(`console.error`) | **不變**(預設);`funLog` 給函數時改交 funLog |
+| server 應用端監聽器拋錯 | `listener of event[execute] error <err(訊息+堆疊)>` | `listener of event[execute] error { errType: 'Error' }` |
+| server verifyConn 拋錯 | `verifyConn error for apiType[main] <err>` | `… { errType: 'Error' }` |
+| server `invalid corsOrigins` | `invalid corsOrigins <TypeError + 堆疊(含 node_modules 路徑)>` | `invalid corsOrigins { errType: 'TypeError' }` |
+| server `/main` 本體接收錯誤 | `apiMain req.payload err <err>` | `apiMain req.payload err { errType, errCode }` |
+| server `/slc` 寫入失敗 | `apiUploadSlice streamWrite chunk[1/1] of packageId[<id>] err <err(含路徑)>` | `apiUploadSlice streamWrite err { errType, errCode, chunkNo: 1, chunkTotal: 1 }`(packageId 入細節) |
+| server `/slc` 接收錯誤 | `apiUploadSlice req.payload chunk[3/5] of packageId[<id>] err <err>` | `apiUploadSlice req.payload err { errType, errCode, chunkNo: 3, chunkTotal: 5 }` |
+| server 啟動/路由註冊/停止失敗 | `start server error <err>`、`register routes error <err>`、`stop server error <err>` | 同標籤 + `{ errType, errCode }`(如 `{ errType: 'Error', errCode: 'EADDRINUSE' }`) |
+| server 啟動訊息 | `Server running at: <uri>` | **不變**(經 `diag`,`funLog` 給函數時不寫 console) |
+| managerMergeSlices 無效 queueId | `invalid queueId[<請求值>]` | `invalid queueId`(值入細節;回傳之 `reason` 與 error 事件不變) |
+| managerMergeSlices 合併失敗 | `<err>`(整個錯誤物件) | `merge slices error { errType, errCode }` |
+| managerMergeSlices 寫 `.error` 檔失敗 | `can not write <路徑> <err>` | `can not write .error file { errType, errCode }` |
+| managerMergeSlices 儲存結果等非致命事件(未給 funLog) | `<含路徑與錯誤原文之訊息字串>` | `merge queue: non-fatal error (detail by opt.funLog)`(訊息入細節;伺服器路徑本即注入 funLog 轉 error 事件,不經此) |
+| worker `checkTotalHash` | `check total file size: fs.statSync(pathFile) <路徑> <err>` 等 5 行 | 無 console;記錄經 `diag` 輸出 `check total file size: statSync error { errType, errCode }`、`check total file hash error …`、`check each file size: statSync error …`、`skip file: can not parse chunk index`(檔名入細節) |
+| server 不可達之退路 | `msg <值>`、`msg is not an effective string, set msg=''` | `msg is not an effective string, set msg='' { msgShape: … }` |
+
+**盤點指令**
+```bash
+# ① src 內(扣註解)不得直接呼叫 console: 權威判定在 unit-ruleSites 之 R33(逐檔 stripCode); 裸跑會含 JSDoc 範例與註解內字樣
+git grep -nE "console\.\w+\(" -- "src/*.mjs" | grep -vE "^\S+:[0-9]+:\s*(//|\*)"
+# ② 診斷呼叫站點全集: client ctx.log 4、server diag 11 + dg 1、managerMergeSlices dg 5、worker diags.push(genDiagRec( 4
+git grep -nE "(^|[^.\w])(diag|dg|ctx\.log)\(" -- src/WConverhpClient.mjs src/WConverhpServer.mjs src/managerMergeSlices.mjs
+git grep -nE "diags\.push\(genDiagRec\(" -- src/checkTotalHash.mjs
+# ③ 出口之建立: client 1、server 2(模組層 1 + 實例 1)、managerMergeSlices 1
+git grep -cE "getDiag\(" -- src/WConverhpClient.mjs src/WConverhpServer.mjs src/managerMergeSlices.mjs
+```
+
+**站點全集**(2026-11-24)
+
+| 擁有者 | 站點 | 判定 |
+|---|---|---|
+| `WConverhpClient.mjs` | `ctx.log` 4 呼叫:`wait…`、`retry n=…`(固定詞彙,**留**,字樣不變)、`msg is not an effective object`、`invalid msg.output`(原印回應值,**改**為形狀) | 已套 4/4 |
+| `WConverhpServer.mjs` | `diag` 11:`invalid corsOrigins`、`listener of event[…] error`、`verifyConn error for apiType[…]`、`drainWorkerDiag`(worker 記錄)、`apiMain req.payload err`、`/slc streamWrite`、`/slc req.payload`、`Server running at`、`register routes error`、`start server error`、`stop server error`;`dg` 1(`responseU8aStreamWithError` 不可達退路) | 已套 12/12 |
+| `managerMergeSlices.mjs` | `dg` 5:`can not write .error file` ×2、`merge slices error`、`merge queue: non-fatal error`、`invalid queueId` | 已套 5/5 |
+| `checkTotalHash.mjs`(worker) | `diags.push(genDiagRec(` 4:statSync 整檔、雜湊、statSync 逐檔、略過之檔 | 已套 4/4 |
+| 刻意不改 | `src/checkSlicesHash.mjs`、`mergeSlices.mjs`、其餘 `src/*.mjs`:無 console | — |
+
+**機械化保護**:`test/unit-ruleSites.test.mjs` 之 R33(逐檔 stripCode 後 0 個 console 呼叫;各擁有者之診斷呼叫站點數鎖;**每個呼叫之引數形狀正規式**:第一引數為字面標籤、第二引數只可為 `undefined`/`diag.brief(變數)`/`{ ...diag.brief(err), chunkNo, chunkTotal }`/`{ msgShape: getDiagShape(變數) }`、原始值只可在第三引數之惰性細節;`getDiag` 呼叫次數;`pickDiagOpt` 與 `...optDiag` 併入;`mmg.push`/`mmg.get`/`responseU8aStreamWithError` 皆帶實例 `diag`;worker 之 4 站與 `r.diag`、`drainWorkerDiag` 於 `internal`、`delete out.diag`)、`test/api-consoleNoValues.test.mjs`(24 案:前端 9〔回應形狀不合、非有效物件三形狀、重試字樣、funLog、logDetail、funLog 拋錯與 rejected、error 監聽器拋錯之 wsemi 通報、中止後診斷不輸出〔`onTrace` 於 `retry` 事件內中止〕、選項為拋錯之 getter〕+ 伺服端 15〔監聽器、verifyConn、corsOrigins 與啟動訊息、queueId、`/main` 中斷、`/slc` 中斷與寫入失敗、worker 與合併佇列、worker 內真實 `ENOENT`〔指向不存在目標之 junction〕、啟動失敗/路由註冊/停止失敗、funLog 伺服器、funLog 之啟動訊息、logDetail 伺服器、無 error 監聽器時 wsemi 之通報、選項為拋錯之 getter〕,觀察面含 `process.stdout/stderr.write`)、`test/unit-consoleDiag.test.mjs`(10 案:`pickDiagOpt`、`checkTotalHash` 之記錄、`managerMergeSlices` 之預設出口與寫 `.error` 檔失敗兩處)、`test/e2e-consoleNoValues.test.mjs`(7 案,真 Chromium:打包後之瀏覽器 console 實際收到之訊息; 2026-11-24 tcv1b 輪依 e2e 技能重寫——伺服器經共用層 `startServer`、後端為跨來源之假後端〔`test/tools/fakeApi.mjs`〕、console 以各引數之 `jsonValue()` 判定〔`collectConsole`〕、含非有效物件／`logDetail`／error 監聽器拋錯〔預設與 `funLog`〕之變體案)。**分辨力**(2026-11-24):修前(HEAD 之 src + 新測試,鏡像根)api 24 案中 20 紅〔4 案為修前即綠之對照:重試字樣不變、funLog 拋錯或 rejected、前後端選項為拋錯 getter 各 1〕、真 Chromium 7 案中 5 紅〔2 案為對照:重試字樣不變、error 監聽器拋錯之預設通報不變;tcv1b 重寫後之案數,原 3 案為 2 紅〕(`invalid msg.output {func: f, note: CANARY-RESP-NOTE, token: CANARY-RESP-TOKEN}` 實見於瀏覽器 console)、`unit-consoleDiag` 因缺 `src/diagOpt.mjs` 無法載入、`unit-ruleSites` 2 紅(R27、R33);變異 37 項(前端 8、伺服端 19、合併佇列 6、worker 4)**37／37 擊殺**(36 項為行為測試、1 項〔`responseU8aStreamWithError` 之不可達退路,S19〕僅站點鎖;首輪存活 3 項〔C3、C8、S18〕與 2 項僅站點鎖〔G5、S19〕經補測試後 C3、C8、S18、G5 轉由行為測試擊殺),每項以 sha256 回驗已還原;詳見 `sgud/state/state.md`。
+
+**已知限制與刻意**:①`funLog` 之細節為 wsemi 遮罩後之副本(憑證鍵名之值、`token=` 等樣式遮罩),**其餘內容原樣**——使用端自選之輸出,不宜長期開啟(同 wsemi 之 JSDoc)。②`error` 事件與回呼端之 reject/resolve 值不在本規則(其為應用端診斷與 API 值,見 R10、R17)。③鍵名視為結構:`msgShape`/`getDiagShape` 列出物件之鍵名(預設至多 20 鍵、每鍵至多 32 字),鍵名取自資料本身者(如依使用者 id 為鍵之物件)其鍵名即為識別——本套件之回應物件為伺服器封包(鍵名固定為 `func`、`output`、`msg` 等),未見此形;如需完全不列鍵名,於呼叫端以 `{ keys: false }`(本套件現無此站點)。④`Server running at: <uri>` 之 uri 含主機名與埠(部署資訊,非資料值),依規格 D2 不屬資料值;`funLog` 給函數即可關閉。
 
 ---
 
@@ -1748,7 +1815,7 @@ A 類之下游判斷函數呼叫(皆位於上列探針之後,或消費其結果,
 | 契約 | 本專案實名 / 模式 | 偏離與依據 |
 |---|---|---|
 | C1 launch wrapper | `launchBrowser()`(`wpw.launchChromium({ headless: true })`,`import wpw from 'w-playwright'`;2026-11-13 pm-cvh 輪起,見 R31) | 不帶確定性渲染旗標:旗標之適用前提為像素比對,本套件無;不指定 `channel`/`executablePath`(Playwright 受管之 headless shell,不觸發 Chromium 之 LogonUser);`autoInstall` 不開(維持現行:缺受管瀏覽器即報錯,取得用 `await wpw.ensureChromium()`) |
-| C2 server lifecycle | `startServer(opt)`(呼叫端一律給 `pathUploadTemp: test/_tmp/<案名>/`,各檔 `after` 中 `await wsv.stop()` 後刪除,帳本 R28);cleanup 只刪本行程之 `test/_tmp/e2e-<pid>/`,以 `globalThis.after` 註冊 | 每檔各起停自己的伺服器,不需 reuse 偵測 |
+| C2 server lifecycle | `startServer(opt)`(以 `await wsv.ready` 為就緒同步點,啟動失敗即拋錯——2026-11-24 起,原為固定 `delay(1200)`,R30;呼叫端一律給 `pathUploadTemp: test/_tmp/<案名>/`,各檔 `after` 中 `await wsv.stop()` 後刪除,帳本 R28);cleanup 只刪本行程之 `test/_tmp/e2e-<pid>/`,以 `globalThis.after` 註冊 | 每檔各起停自己的伺服器,不需 reuse 偵測 |
 | C3–C5、C10、C12、C15 | 不適用 | 無換設定重啟、無持久資料、無登入與語系、無文字輸入、無動畫容器、畫面無時間戳 |
 | C6–C9、C13 | 不適用 | 無 UI 故無標準圖、紅框、遮罩、pixel 比對與 regen;斷言一律為語意斷言(回傳值、事件數、下載事件、伺服端觀察) |
 | C11 偵測等待 | 頁內以 `await` 公開 API 之結局為主;需等外部條件者以頁內輪詢(如 e2e-abort 之「等第一則事件」) | — |
@@ -1758,6 +1825,7 @@ A 類之下游判斷函數呼叫(皆位於上列探針之後,或消費其結果,
 ### 專案特有機制
 
 - 「修正前」之瀏覽器端分辨力:Node 之 resolve hook 管不到 rollup 打包,於 `tmp/` 建副本並以 junction 指回 node_modules(經驗 E40;run02 之 `tmp/run02/e2ecopy_run.mjs`)。
+- 瀏覽器 console 之收集(`e2e-consoleNoValues`,2026-11-24 tcv1b 輪):`collectConsole(page)`(`test/tools/e2e-setup.mjs`;須於 `goto` 之前掛)記每則之 `type`、`text` 與**各引數之 `jsonValue()`**,斷言一律依引數(物件引數有哪些鍵與值),不依 `msg.text()` 對物件之展開寫法(隨 Playwright／Chromium 版本而異);`settle()` 先以一次頁內往返為同步點(CDP 事件依序到達,不以固定毫秒等待)。瀏覽器自身對失敗請求另輸出 `type: 'error'` 之 `Failed to load resource`,不屬本套件,僅取 `type: 'log'` 與 wsemi 通報之 `[wsemi …]`。後端回應形狀不合須假後端(`test/tools/fakeApi.mjs`:`startFakeApi({ port, obj, cors })`,與真伺服器同一封包格式;瀏覽器端跨來源須 `cors: true` 回預檢),`api-consoleNoValues` 與 e2e 共用同一份。失敗路徑之造法:後端網址指向無人監聽之埠(`reserved.closed`),只影響目標請求,不用 `page.route` 攔截頁面其他請求。
 - 決定性時點(e2e-abort):頁內掛鉤 `Blob.prototype.arrayBuffer`(client 轉換回應本體 = 回應已到、續行未執行)與 `encodeURIComponent`(下載管理器組網址 = 已取得 token、交出前);觸發一次即解除(經驗 E44)。
 
 ### 已知缺口 / 待辦

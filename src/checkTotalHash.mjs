@@ -1,9 +1,11 @@
 import path from 'path'
 import fs from 'fs'
 import each from 'lodash-es/each.js'
+import get from 'lodash-es/get.js'
 import size from 'lodash-es/size.js'
 import last from 'lodash-es/last.js'
 import sep from 'wsemi/src/sep.mjs'
+import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
@@ -11,7 +13,21 @@ import fsGetFilesInFolder from 'wsemi/src/fsGetFilesInFolder.mjs'
 import fsGetFileXxHash from 'wsemi/src/fsGetFileXxHash.mjs'
 
 
+//diag, 診斷記錄(帳本 R33): 本函數實際執行於 worker 執行緒(*.wk.umd.js), 其 console 輸出不經伺服器實例之診斷出口(使用端無從以 opt.funLog 關閉或轉接), 且原樣含伺服器路徑、檔名與底層錯誤;
+//故不寫 console, 改以記錄隨結果回傳(r.diag: [{ label, err?: { message, code }, detail }]), 由伺服器於 internal 內經實例之 diag 輸出並自結果移除(不回前端)。
+//err 為純物件而非 Error: 結構化複製不帶 Error 之自有屬性(code); label 為固定詞彙, 路徑與檔名只放 detail
+let genDiagRec = (label, detail, err) => {
+    let rec = { label, detail }
+    if (err !== undefined) {
+        rec.err = { message: getErrorMessage(err), code: get(err, 'code') }
+    }
+    return rec
+}
+
 let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
+
+    //diags
+    let diags = []
 
     //pathFile
     let pathFile = path.resolve(pathUploadTemp, fileHash)
@@ -53,7 +69,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         }
         catch (err) {
             //若是有檔案被佔用或鎖定、移動、被刪除等, 可能觸發EPERM: operation not permitted
-            console.log(`check total file size: fs.statSync(pathFile)`, pathFile, err)
+            diags.push(genDiagRec('check total file size: statSync error', { path: pathFile }, err))
         }
 
         //bAllSize
@@ -73,8 +89,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
                 bAllHash = fileHash === _fileHash
             })
             .catch((err) => {
-                console.log(`fsIsFile(pathFile)`, pathFile, fsIsFile(pathFile))
-                console.log(err)
+                diags.push(genDiagRec('check total file hash error', { path: pathFile, isFile: fsIsFile(pathFile) }, err))
                 bAllHash = false
             })
 
@@ -106,7 +121,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
             }
             catch (err) {
                 //若是有檔案被佔用或鎖定、移動、被刪除等, 可能觸發EPERM: operation not permitted
-                console.log(`check each file size: fs.statSync(pathFile)`, v.path, err)
+                diags.push(genDiagRec('check each file size: statSync error', { path: v.path }, err))
             }
 
             //b
@@ -122,7 +137,7 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
                 //且該例外會逸出至路由層, 使整個 check-total-hash 失敗。暫存夾內出現非本套件所產之同前綴檔案不應使去重整個中止,
                 //略過即可(與 checkSlicesHash.mjs:43 對非法切片索引之 continue 一致)
                 if (!isp0int(i)) {
-                    console.log(`skip file[${v.name}]: can not parse chunk index`)
+                    diags.push(genDiagRec('skip file: can not parse chunk index', { name: v.name }))
                     return
                 }
                 i = cint(i)
@@ -146,6 +161,11 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
         bAllHash,
         bSls,
         slks,
+    }
+
+    //diag, 有記錄才帶(無記錄者結果形狀與以往逐位相同)
+    if (size(diags) > 0) {
+        r.diag = diags
     }
 
     return r

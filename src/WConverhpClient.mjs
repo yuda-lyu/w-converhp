@@ -7,6 +7,8 @@ import evEmitBase from 'wsemi/src/evEmit.mjs'
 import genPm from 'wsemi/src/genPm.mjs'
 import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import getTrace from 'wsemi/src/getTrace.mjs'
+import getDiag from 'wsemi/src/getDiag.mjs'
+import getDiagShape from 'wsemi/src/getDiagShape.mjs'
 import haskey from 'wsemi/src/haskey.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
@@ -26,6 +28,7 @@ import sanitizeFilename from './sanitizeFilename.mjs'
 import isPathInside from './isPathInside.mjs'
 import retryDelay from './retryDelay.mjs'
 import encodeStrict from './encodeStrict.mjs'
+import pickDiagOpt from './diagOpt.mjs'
 import wAbortScope from './abortScope.mjs'
 
 
@@ -234,6 +237,8 @@ function classifyFailure(res) {
  * @param {Integer} [opt.retryUpload=10] 輸入切片上傳檔案傳輸失敗重試次數整數，預設為10。重試範圍同retryMain，為每一次請求(含合併輪詢中之每一條查詢)之重試次數，非整個upload之總上限；合併完成後應用端upload事件拒絕時，依重試原則持續輪詢直到應用端接受為止。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Integer} [opt.retryDownload=2] 輸入下載檔案傳輸失敗重試次數整數，預設為2。重試範圍同retryMain；瀏覽器以下載管理器下載(downloadByManager=true)時僅涵蓋取檔名之請求，實際下載交由瀏覽器不在此重試範圍。須為安全整數，Infinity與超出安全範圍者視為無效取預設；上限為20，超過者截為20
  * @param {Function} [opt.onTrace=null] 輸入觀察回調函數，格式為(e)=>{}，於重試退避與合併輪詢之內部事件發生當下同步呼叫，供測試與診斷以事件(而非等待毫秒)同步，非函數時忽略。e為凍結之事件物件{ type, ... }，欄位皆為原始值快照；type為'retry-wait'時為即將退避等待(含n為第幾次重試、delayMs為等待毫秒)，'retry'時為退避結束即將重試(含n)，'poll-tick'時為合併輪詢之每個2秒週期(含busy為前一條查詢是否仍在途而本週期不發)，'poll-result'時為一條合併查詢已有結果(含state為'success'、'error'、'pending'(伺服器回應尚未完成合併)或'fail'(查詢本身失敗，如網路斷訊，持續輪詢))，'poll-stop'時為合併輪詢已停止(含reason為'success'、'error'或'abort')。回調不帶接收者呼叫，其拋錯與回傳值(含rejection)皆忽略，不影響請求與結果；中止後不再通知重試事件，合併輪詢則僅通知一次reason為'abort'之'poll-stop'，在途查詢之結果不再通知。預設null
+ * @param {Boolean} [opt.logDetail=false] 輸入診斷輸出是否於console改輸出遮罩後之細節，須為true才生效，預設false。本套件於console之診斷輸出(重試退避提示、伺服器回應形狀不合之診斷、error監聽器拋錯之通報)預設一律只輸出固定詞彙與安全摘要(型別、鍵名、錯誤類別與代碼)，不輸出回應物件、錯誤訊息原文、請求內容等資料值；true時改輸出經wsemi遮罩(憑證鍵名之值與token=值等憑證樣式)後之細節，其餘內容原樣，故不宜長期開啟
+ * @param {Function} [opt.funLog=null] 輸入診斷輸出函數，格式為(label, safe, detail)=>{}，預設null。給函數時本套件之診斷輸出(同logDetail所列)只交給它而不寫console(傳入()=>{}即關閉console輸出；logDetail不作用)；label為固定詞彙之字串，safe為安全摘要純物件(可能為undefined)，detail為遮罩後之細節(該則診斷無細節時不傳)。其拋錯與回傳值(含rejection)皆忽略，不影響請求與結果
  * @returns {Object} 回傳事件物件，可使用函數execute、upload、download，可監聽事件error。**監聽器須為同步函數，不可為async函數、亦不可回傳promise**：事件派發依EventEmitter規範丟棄監聽器之回傳值，其rejection無人觀察，於nodejs即unhandledRejection而使行程崩潰。upload之input可為Blob、File、ArrayBuffer、ArrayBufferView(以位元組計)或字串(以UTF-8位元組計)，其餘以錯誤拒絕並發error事件。**error事件之契約：每一次請求嘗試失敗恰發一則**(execute、upload、download皆同；不分傳輸層失敗如連不上、逾時、HTTP 413或5xx，與伺服器回之業務錯誤如permission denied、應用端拒絕、合併失敗)，故一次呼叫最多發1+重試次數則；入口即拒絕者(輸入不支援、無法序列化、未給fdDownload、upload之輸入讀取失敗即雜湊計算失敗)一則，不重試。**結局之判定**：伺服器回傳值(含應用端之拒絕值)與getToken之拒絕值一律原樣交出，不以形狀判定(形似取消之{reason:'cancelled'}、形似413之{response:{status:413}}皆照常重試並逐次發事件)；惡意值(如已撤銷之Proxy)亦原樣交給error監聽器與呼叫端，其讀取由監聽器與呼叫端自行負責。下載須取得本套件之下載回應(帶Content-Disposition)才算成功，否則(如網址誤指他站而回2xx之網頁)以'invalid download response from server'拒絕並照常重試。請求之成敗依本套件明給之validateStatus(2xx)判定，不受宿主之axios.defaults影響；惟Node.js下使用axios之預設實例，宿主掛於其上之攔截器亦作用於本套件之請求(已知限制，瀏覽器之dist自帶axios而不受影響)。upload之合併輪詢依設計持續至應用端接受為止，長時間斷線時每一輪查詢皆各自重試並各發事件，事件數因此無上界(與「重試導致等待久」同為刻意)，不需要者可不註冊error監聽器。**中止(opt.signal)**：execute(func,input,cbProgress,opt)、upload(filename,input,cbProgress,opt)、download(fileId,cbProgress,opt)之opt.signal可給AbortSignal以中止**該次呼叫**(及其全部內部請求，如upload之各切片與合併輪詢)，同一物件之其他呼叫不受影響；未給(或為undefined、null)時行為與未支援中止前完全相同。有給而非AbortSignal者入口即以'invalid opt.signal: must be an AbortSignal'拒絕並發一則error事件；呼叫時已中止者以signal.reason拒絕、0則事件、不呼叫getToken、不送出(先於其他入口檢核)。自abort()被呼叫(含其同步期間)起，該呼叫不再發出任何error事件、不再呼叫getToken與cbProgress、不再印重試訊息、不再重試，尚未settle之promise一律以**signal.reason原樣**拒絕(不經訊息轉換；AbortController之abort()未給reason者為name為AbortError之DOMException，AbortSignal.timeout()為TimeoutError，執行環境不提供reason者補name為AbortError之錯誤)；中止前已發出之事件不收回，已settle之呼叫不受影響。**判別中止請以signal.aborted**(或err===signal.reason)，不要以拒絕值之型別判斷(自訂之字串reason與伺服器回傳之業務錯誤字串同型)。中止只保證本端不再等待、不再輸出：伺服端已開始之處理照常完成並丟棄回應(例如execute之應用端事件已執行、upload之合併照常完成且應用端可能已受理)，呼叫端應把以中止結束之呼叫視為**結果未知**(同逾時)；upload中止後再傳同一內容，自伺服器已存之切片續傳。瀏覽器以下載管理器下載(downloadByManager=true)時，交給瀏覽器之後即由瀏覽器執行與管理而**不可中止**(之前之取檔名與取token可中止)。可用AbortSignal.timeout(ms)為整個呼叫(含全部重試、退避與合併輪詢)設上限，與opt.timeout(每次嘗試之逾時)正交
  * @example
  *
@@ -380,6 +385,12 @@ function WConverhpClient(opt) {
     //trace, 觀察回調(opt.onTrace), 未給或非函數時為null, 呼叫端以 if (trace) 略過組事件物件(未傳時零額外成本); 事件見建構函數之JSDoc
     let trace = getTrace(opt)
 
+    //diag, 本套件於前端(瀏覽器與 nodejs)之診斷輸出(console)之唯一出口(帳本 R33; 規格〈診斷輸出與遮罩〉D1: wsemi 之共用實作, 不另寫等價實作)
+    //預設只輸出固定詞彙(label)與安全摘要(safe: msgShape 為 getDiagShape 之型別/鍵名摘要, 永不含值); 資料值(回應物件)只在 opt.logDetail 為 true 時以遮罩後之細節輸出,
+    //或在 opt.funLog 為函數時交給它(此時不寫 console, 使用端可由此關閉或轉接)。永不拋錯, 不影響請求與結果(D4)
+    let optDiag = pickDiagOpt(opt)
+    let diag = getDiag(optDiag, { safeKeys: ['msgShape'] })
+
     //env
     let env = isWindow() ? 'browser' : 'nodejs'
     // console.log('env', env)
@@ -391,10 +402,11 @@ function WConverhpClient(opt) {
     //why 不以setTimeout脫勾: setTimeout會開一個沒有呼叫者之堆疊, 監聽器之同步拋錯於該處即為uncaughtException,
     //於nodejs殺整個行程(瀏覽器則為console錯誤), 且呼叫端無論如何try都攔不到
     //why 不處理async監聽器: emit依EventEmitter規範丟棄監聽器之回傳值, 其rejection無人觀察; 見建構函數之JSDoc
-    //client之事件僅error且不帶pm, 故無funSettle; 其error監聽器出錯者由wsemi之通報路徑走console.error留痕, 不再重發避免遞迴
+    //client之事件僅error且不帶pm, 故無funSettle; 其error監聽器出錯者由wsemi之通報路徑走console.error留痕(只輸出安全摘要; 帶 optDiag 使其與本套件之診斷輸出同受 opt.logDetail 與 opt.funLog 控制), 不再重發避免遞迴
     let evEmit = (name, ...args) => {
         return evEmitBase(ev, name, args, {
             tag: 'w-converhp-client',
+            ...optDiag,
         })
     }
 
@@ -418,12 +430,13 @@ function WConverhpClient(opt) {
             evEmit(...args)
         }
 
-        //log, 本呼叫之 console 訊息出口(重試訊息與回應形狀異常之診斷)
-        ctx.log = (...args) => {
+        //log, 本呼叫之診斷輸出出口(重試訊息與回應形狀異常之診斷), 經 diag(wsemi 之 getDiag, 帳本 R33): 引數為 (label, safe, getDetail), label 須為固定詞彙, safe 只放 getDiagShape 之形狀摘要,
+        //資料值只經 getDetail(惰性, 僅 logDetail 或 funLog 需要時才取, 取得後經遮罩); 本套件之 client 不直接呼叫 console(unit-ruleSites R33 鎖)
+        ctx.log = (label, safe, getDetail) => {
             if (scope.isAborted()) {
                 return
             }
-            console.log(...args)
+            diag(label, safe, getDetail)
         }
 
         //wrapProgress, 應用端 cbProgress 之出口(帳本 R9、R13 之單一擁有者): 未給或非函數者補預設、同步拋錯只報首次一則 error 而不影響本呼叫之結果、中止後不呼叫
@@ -1395,7 +1408,7 @@ function WConverhpClient(opt) {
 
                 //check, 若為非物件為非預期錯誤
                 if (!iseobj(msg)) {
-                    ctx.log('msg is not an effective object', msg)
+                    ctx.log('msg is not an effective object', { msgShape: getDiagShape(msg) }, () => msg) //回應值只以形狀(型別/鍵名)輸出, 值僅隨 logDetail/funLog 之細節交出(帳本 R33)
                     state = 'error'
                     res = 'msg is not an effective object'
                     return
@@ -1403,7 +1416,7 @@ function WConverhpClient(opt) {
 
                 //check, 若不存在output為非預期錯誤, msg格式為{func,input,output}但input會刪除
                 if (!haskey(msg, 'output')) {
-                    ctx.log('invalid msg.output', msg)
+                    ctx.log('invalid msg.output', { msgShape: getDiagShape(msg) }, () => msg) //同上
                     state = 'error'
                     res = 'invalid msg.output'
                     return

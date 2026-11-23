@@ -2,7 +2,7 @@
 
 本檔記**當前已開發功能之最新狀態**(各功能做到哪裡、對應之規則帳本條目與測試檔、已知缺口與待辦、最近一次驗證或發布之版本);**只記現況、不寫過程**(過程寫入 `sgud/exp/experience.md`)。接續工作先讀本檔。
 
-最近更新:2026-11-19(cvh492i 輪:wsemi 1.9.69 之判斷函數回布林、只收原始值〔W-20〕,補「不可讀值之探針」,帳本 R32)。套件版本 2.1.38(`package.json`,本輪未改;未發布)。相依 **wsemi `^1.9.69`**(原 `^1.9.68`;`package-lock.json` 隨之更新)、w-package-tools `^1.1.28`;devDependencies `w-playwright ^1.0.1`(不變)。**產品碼有改動**(`src/` 新增 `probeReadable.mjs`、`encodeStrict.mjs`,改 `WConverhpServer`/`WConverhpClient`/`managerMergeSlices` 三檔);`dist/` 未重建(發布時自動產製)。
+最近更新:2026-11-24(tcv1 輪:排程第 605 項 w-converhp 部分,診斷輸出〔console〕改依跨套件規格〈診斷輸出與遮罩〉不印資料值,帳本 R33;取代 R16)。套件版本 2.1.42(`package.json`,本輪未改;未發布、未提交)。相依 **wsemi `^1.9.72`**(不變)、w-package-tools `^1.1.29`、devDependencies `w-playwright ^1.0.3`(不變)。**產品碼有改動**(`src/` 新增 `diagOpt.mjs`,改 `WConverhpClient`/`WConverhpServer`/`managerMergeSlices`/`checkTotalHash` 四檔;`checkTotalHash.wk.umd.js` 依 `script.txt` 之 `toolg/gDistRollupWorkerFuncs.mjs` 重建,另兩個 worker 產物逐位元組不變);`dist/`、`docs/` 未重建(發布時自動產製);前端 UMD 打包後 +177 位元組(170663 → 170840;`getDiag` 本已隨 wsemi 之 `evEmit` 入包)。
 
 ## 功能現況
 
@@ -17,9 +17,29 @@
 | **測試埠配發**(`test/tools/ports.mjs`、`test/tools/portsAlloc.mjs`) | 完成(2026-11-05 ch309,規格 `dspec/e2e埠與多套件同跑.md` E8):**不再有任何固定的監聽埠**,`alloc` 只登記每檔個數,`portOf` 首次取用時以同步子行程向作業系統要埠(`listen(0)`)並到跨行程認領登錄認領;`reserved.closed` 改為「向作業系統要一個後釋放、從不綁定」;「port 非法取預設 8080」一案改以攔截 `listen` 引數判斷、實際綁埠 0。產品碼未動 | R24 | `unit-ports`(12 案)、`api-optionsRange`、`api-executeError` |
 | **測試啟動瀏覽器一律經 w-playwright**(`test/tools/e2e-setup.mjs` 之 `launchBrowser` → `wpw.launchChromium({ headless: true })`) | 完成(2026-11-13 pm-cvh,排程第 442 項遷移輪):啟動點全集 1 處,4 個 e2e 檔(共 43 案,每案一個 fresh browser)皆經它;無頭、不指定通道,即 Playwright 受管之 headless shell(不觸發 Chromium 之 LogonUser);`playwright` 自 `package.json` 移除。受管瀏覽器取得 `await wpw.ensureChromium()`(README〈Testing〉);`autoInstall` 刻意不開。產品碼未動 | R31 | `unit-pwWiring`(6 案,不啟動瀏覽器)、`e2e-abort`、`e2e-download`、`e2e-execute`、`e2e-upload` |
 | **不可讀值之探針**(`src/probeReadable.mjs` 探針、`src/encodeStrict.mjs` 序列化唯一入口) | 完成(2026-11-19 cvh492i 輪,帳本 R32;**對外 API 無改動**,可讀之值行為不變,不可讀之值走原失敗通道):序列化三站點(伺服端 `encodeOut`、`managerMergeSlices` 之 `consume`、前端 `sendPkg`)經 `encodeStrict`〔深探〕;下載欄位(`validDownloadField`)、串流辨識(`hasPipe`、具體化階段)經淺探 | R32、R3(站點收斂) | `unit-probeReadable`(22 案)、`api-hostileValueProbe`(行為表,201 案)、`api-hostileErrorValues`(原 2 紅案) |
+| **診斷輸出(console)不印資料值**(前後端皆經單一出口 `diag`〔wsemi `getDiag`〕;`src/diagOpt.mjs` 之 `pickDiagOpt` 為 `logDetail`/`funLog` 單一讀取點;worker 不寫 console,診斷以 `r.diag` 回傳) | 完成(2026-11-24 tcv1 輪,帳本 R33):預設只輸出固定詞彙與安全摘要(`{ errType, errCode }`、`{ msgShape }`、`chunkNo/chunkTotal`),不輸出回應物件、錯誤原文、堆疊、請求值、路徑;**新增公開選項 `opt.logDetail`、`opt.funLog`**(前後端建構子;未給則行為即為上述預設,不需使用端改碼;`funLog` 給函數時全部診斷改交它,`() => {}` 即關閉 console);重試提示與啟動訊息字樣不變;error 事件與回前端訊息不變 | R33(取代 R16)、R27(console 出口) | `api-consoleNoValues`(24 案)、`unit-consoleDiag`(10 案)、`e2e-consoleNoValues`(7 案,真 Chromium;2026-11-24 tcv1b 輪依 e2e 技能重寫,見下)、`unit-ruleSites` R33 |
 | **差分探測工具**(`test/tools/probeDiff.mjs`) | 完成(2026-11-19):同一組「不可讀形狀 × 注入點」585 格,對「舊版 wsemi + 改動前 src」「新版 + 改動前 src」「新版 + 改動後 src」取結果比對;用法見檔頭與 `sgud/exp/experience.md` E54 | R32(如何找到站點) | 無(工具,非測試) |
 
-## 最近一次驗證(2026-11-19,cvh492i 輪:wsemi 1.9.69 之判斷函數回布林,不可讀值之探針)
+## 最近一次驗證(2026-11-24,tcv1b 輪:`e2e-consoleNoValues` 依 e2e 技能補比對)
+
+tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e` 技能(責在我:全域設定 §11 之觸發條件「凡接觸 e2e 測試檔」明載,我把派工所列兩技能當作完整清單,新增 e2e 檔當下未重掃觸發條件);本輪補做並逐項比對,結果見 `agent-out/tcv1b-修正報告.md`。改動:
+- **`test/e2e-consoleNoValues.test.mjs` 重寫**(3 → 7 案):①伺服器改經共用層 `startServer`(原自寫 http 伺服器兼供靜態檔,屬第二份近似實作),後端 API 為跨來源之假後端;②console 收集改以各引數之 `jsonValue()` 判定(`collectConsole`,共用層),不依 `msg.text()` 對物件之展開寫法;③補變體案:非有效物件、`logDetail`、error 監聽器拋錯(預設與 `funLog`)——共 7 案(CNV-001 缺 output、002 非有效物件、003 重試字樣、004 logDetail、005 funLog、006 監聽器拋錯之 wsemi 通報、007 監聽器拋錯且給 funLog);④每案註解載 6 步 user path 與對應之帳本條文。
+- **共用層**:`test/tools/e2e-setup.mjs` 之 `startServer` 原以固定 `delay(1200)` 等就緒,改 `await wsv.ready`(帳本 R30;4 個既有 e2e 檔皆經它,全套綠),新增 `collectConsole`;新增 `test/tools/fakeApi.mjs`(假後端,`api-consoleNoValues` 與 e2e 共用,原 api 測試內之區域實作移除);`test/tools/ports.mjs` 登記 `e2e-consoleNoValues` 2 埠。
+- **修前紅／修後綠**(修前為 HEAD 之 src + 現行測試與輔助之鏡像根):7 案 5 紅 2 綠(CNV-003 重試字樣、CNV-006 預設通報為對照);修後 7 綠(連跑 5 次)。e2e 專項變異 8／8 擊殺(`tmp/tcv1b/mutate-e2e.mjs`)。
+- **順帶修正之測試脆弱處**:`api-consoleNoValues` 之 `P2 logDetail 伺服器` 原以 `util.inspect` 之文字判定,同一行程先跑 e2e(載入 Playwright 後 `Error.prepareStackTrace` 被改)時 inspect 只印 `[[Stack unavailable]]` 而不含訊息、案時紅時綠(`mocha --parallel` 之 worker 可能先後跑兩類檔),改為斷言引數之 `message` 欄位。
+- `test/_tmp/ports-claims`(埠認領登錄,測試執行之殘留)已清除。README 版號字樣改為「since 2.1.43」。
+- **全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name tcv1b-full -- npm test`,凍結碼,連跑 2 次):**816 passing／0 failing／0 pending**(tcv1 之 812 + e2e 3 → 7 案之 4)。eslint:變更之 13 檔 0 問題。
+
+## 前次驗證(2026-11-24,tcv1 輪:診斷輸出〔console〕不印資料值)
+
+- **現況實測**(修前;`tmp/tcv1/probe-current.mjs`,假 http 後端回固定封包):前端 `invalid msg.output { func: 'f', secret: …, token: … }` 與 `msg is not an effective object 424242` 把整個回應值寫入 console;`wait 1.0(second) to retry...`、`retry n=1...` 為固定詞彙;傳 `silent`/`quiet`/`verbose`/`debug`/`log`/`logDetail`/`funLog` 任何選項皆無法關閉。伺服端 `console.log(label, err)` 原樣傾印錯誤(訊息原文、堆疊、`node_modules` 與專案路徑)、`invalid queueId[CANARY-QUEUEID]`、`pathFile`、packageId、切片檔名。
+- **站點盤點**:前端 `ctx.log` 4 呼叫(2 固定詞彙留、2 印回應值改形狀);伺服端 `WConverhpServer` 12、`managerMergeSlices` 5、worker `checkTotalHash` 4(原 console 5 行)全改經 `diag`;其餘 `src/*.mjs` 0 個 console 呼叫(`unit-ruleSites` R33 逐檔鎖)。
+- **修前紅**(HEAD 之 src + 新測試,鏡像根 `tmp/tcv1/pre/`;日誌 `tmp/quiet-run/*tcv1-pre-*`):`api-consoleNoValues` 24 案 4 綠(對照)20 紅;`e2e-consoleNoValues`(真 Chromium)3 案 1 綠 2 紅,瀏覽器 console 實見 `invalid msg.output {func: f, note: CANARY-RESP-NOTE, token: CANARY-RESP-TOKEN}`;`unit-ruleSites` 2 紅(R27、R33);`unit-consoleDiag` 缺 `src/diagOpt.mjs` 載入失敗。
+- **修後綠**:新測試 `api-consoleNoValues` 24、`unit-consoleDiag` 10、`e2e-consoleNoValues` 3、`unit-ruleSites` 全綠;連跑 api＋unit 10 次、e2e 5 次全綠。**全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name tcv1-full2 -- npm test`,凍結碼):**812 passing / 0 failing / 0 pending**(前次 774 + 新增 38:api 24、unit-consoleDiag 10、e2e 3、unit-ruleSites R33 1)。eslint:變更之 11 檔新增 error／warning 0。
+- **變異**:37／37 擊殺(前端 8、伺服端 19、合併佇列 6、worker 4;各以「行為測試」與「站點鎖」各跑一次);首輪存活 3 項〔C3 `ctx.log` 之中止守門被迴圈檢查遮住、C8 選項為拋錯 getter、S18 worker 記錄之 `code` 傳遞〕皆為測試缺口(非等價),補 3 案後擊殺;僅站點鎖擊殺者 1 項(`responseU8aStreamWithError` 之不可達退路);每項以 sha256 回驗已還原。腳本與結果見報告證據(`tcv1-evidence/`)。
+- **未做**:§9.3 之「全套連跑 5 次」與「發布包解開目錄之另一配置全套」(派工規定全套於凍結碼跑一次);`dist/`、`docs/` 未重建(發布時自動產製)。
+
+## 前次驗證(2026-11-19,cvh492i 輪:wsemi 1.9.69 之判斷函數回布林,不可讀值之探針)
 
 - **升版後基準(改動前,wsemi 1.9.69)**:全套 549 passing / **2 failing**(`api-hostileErrorValues` 之 execute 拒絕案與 upload 合併消費案,皆為拋錯之 `Symbol.toStringTag`:`output can not be serialized` 變為 `{}`)。
 - **差分探測 585 格**:舊版(1.9.68)對新版(1.9.69),改動前 src 有 **169 格差異**;依「防線是否因此失效」歸類——須修 5 處(序列化三站點、下載欄位、串流辨識;共 49 格)、設計通道 107 格(選項與呼叫參數為不可讀值,舊版建構子/入口意外拋出,現取預設或入口拒絕〔R11、R26、dspec K3〕)、W-20 9 格、只壞 `has` 陷阱 4 格。修後剩餘差異 **120 格 = 107(設計通道)+ 9(W-20)+ 4(has 陷阱)**,其餘 49 格逐格與舊版相同(事件文字之取因前綴不計)。
@@ -67,6 +87,7 @@
 ## 已知缺口與待辦
 
 - 無功能缺口。
+- 待主控裁示(tcv1 輪):①公開選項 `opt.logDetail`、`opt.funLog`(前後端建構子)為 API 增項,建議保留(同 wsemi 家族之 `getDiag` 慣例,預設行為即不印資料值);②伺服端預設不再於 console 印錯誤堆疊與原文(細節仍由 error 事件取得),營運端若要還原須設 `logDetail: true` 或 `funLog`;③使用端若包裝本套件之建構選項,須自行把 `funLog` 透傳才能關閉本套件之 console 輸出(本套件不替使用端決定)。
 - 全新機器(含 `.github/workflows/ci-test.yml` 之 `npm install` → `npm test`)沒有受管瀏覽器時,4 個 e2e 檔於 `launchBrowser` 以 `E_BROWSER_MISSING` 失敗;工作流程內無安裝步驟(遷移前後相同,遷移前為 Playwright 之 `Executable doesn't exist`)。要自動取得時,於 `launchBrowser` 給 `autoInstall: true`(會在測試中下載瀏覽器,屬行為變更,待使用者裁示;帳本 R31 規則 4)。
 - 待主控(本套件外,不在本輪範圍):測試閘 `tools/test-resource.json` 之 `portGroups["8301"] = ["w-converhp", "w-highcharts-vue"]` 已無依據(本套件測試不再監聽 8300 段,任何固定埠皆無),可移除;本套件亦不需加入 `portGroups["8080"]`(`api-optionsRange` 不再綁 8080)。
 - 測試埠配發之限制:`portOf` 取號到伺服器綁定之間有空窗,以跨行程認領登錄(`test/_tmp/ports-claims`)擋掉**本套件測試彼此**取得同號;與他套件之同號由作業系統保證不發出仍被綁定之埠,但釋放後之空窗內被他套件的 `listen(0)` 取走在理論上存在(獨立審查曾實測 8 行程併發配發有跨行程重複,本輪重跑 0/1920 未重現);被撞上時為明確 `EADDRINUSE`,不會靜默連到別人的服務。

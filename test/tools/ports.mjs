@@ -141,6 +141,8 @@ let alloc = [
     ['api-clientOutcomeShapes', 2, '主伺服器 + 非本套件之 2xx 回應之 http 伺服器(網址誤指 SPA 主機)'],
     ['api-serverReady', 3, '就緒伺服器 + 埠被占用之兩台(同一 port 起兩台) + stop 搶先之伺服器'],
     ['api-clientTrace', 1, 'stub 伺服器(依本套件協定回應 merge-slices-get; 退避事件之連線失敗用 reserved.closed)'],
+    ['api-consoleNoValues', 5, '主伺服器 + funLog 伺服器 + logDetail 伺服器 + corsOrigins 無效之伺服器 + 回應形狀不合之假伺服器'],
+    ['e2e-consoleNoValues', 2, '供應頁面之伺服器 + 回應形狀不合之假後端(跨來源)'],
 ]
 
 //slots, 各檔之配額與(首次取用時才取得之)埠: name -> { count, ports }

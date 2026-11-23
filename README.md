@@ -351,6 +351,23 @@ function uploadLargeFile(){
 
 ```
 
+## Diagnostic output (console)
+Behavior change since 2.1.43. The console output of both parts (client in browser or nodejs, and server) goes through one exit built on wsemi's `getDiag`. By default it prints only fixed phrases and safe summaries: the error class and a whitelisted error code (`{ errType, errCode }`), `chunkNo`/`chunkTotal` (which slice of how many), and the shape (types and key names, never values) of an unexpected response. Response objects, error messages, stacks, request values (`queueId`, `packageId`, file names) and server paths are no longer printed. The retry hints (`wait 1.0(second) to retry...`, `retry n=1...`) and `Server running at: <uri>` are unchanged. Details still reach the application through the `error` event and the rejected values, as before.
+
+Two options (client and server constructors) give control back to the application:
+
+* `logDetail: true` prints the masked details to the console (credential-like key names and `token=...` patterns are masked, everything else is kept, so do not leave it on).
+* `funLog: (label, safe, detail) => {}` receives every diagnostic instead of the console (`detail` is the masked detail and is omitted when there is none). `funLog: () => {}` silences the console output of this package; a throwing or rejecting `funLog` never affects a request.
+
+```alias
+let wo = new WConverhpClient({
+    url: 'http://localhost:8080',
+    funLog: (label, safe, detail) => {
+        myLogger.debug(label, safe) //e.g. 'invalid msg.output', { msgShape: '(keys: func,note)' }
+    },
+})
+```
+
 ## Testing
 `npm test` runs the unit, api and e2e tests. The e2e tests drive a headless Chromium through [w-playwright](https://www.npmjs.com/package/w-playwright) (a dev dependency; this package depends on neither `playwright` nor `playwright-core` directly), and the browser is always started by `wpw.launchChromium`:
 
