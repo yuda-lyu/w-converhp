@@ -103,8 +103,8 @@ let checkTotalHash = async (fileSize, sizeSlice, fileHash, pathUploadTemp) => {
     let slks = []
     if (!bAllHash) {
 
-        //vfps
-        let vfps = fsGetFilesInFolder(pathUploadTemp)
+        //vfps, 切片檔皆平放於pathUploadTemp下, 僅列舉第1層(wsemi 1.9.80起第2參數為opt, 未給levelLimit則窮舉全部層級)
+        let vfps = fsGetFilesInFolder(pathUploadTemp, { levelLimit: 1 })
         // console.log('vfps', vfps)
 
         each(vfps, (v) => {

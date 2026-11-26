@@ -2,7 +2,7 @@
 
 本檔記**當前已開發功能之最新狀態**(各功能做到哪裡、對應之規則帳本條目與測試檔、已知缺口與待辦、最近一次驗證或發布之版本);**只記現況、不寫過程**(過程寫入 `sgud/exp/experience.md`)。接續工作先讀本檔。
 
-最近更新:2026-11-24(tcv1 輪:排程第 605 項 w-converhp 部分,診斷輸出〔console〕改依跨套件規格〈診斷輸出與遮罩〉不印資料值,帳本 R33;取代 R16)。套件版本 2.1.42(`package.json`,本輪未改;未發布、未提交)。相依 **wsemi `^1.9.72`**(不變)、w-package-tools `^1.1.29`、devDependencies `w-playwright ^1.0.3`(不變)。**產品碼有改動**(`src/` 新增 `diagOpt.mjs`,改 `WConverhpClient`/`WConverhpServer`/`managerMergeSlices`/`checkTotalHash` 四檔;`checkTotalHash.wk.umd.js` 依 `script.txt` 之 `toolg/gDistRollupWorkerFuncs.mjs` 重建,另兩個 worker 產物逐位元組不變);`dist/`、`docs/` 未重建(發布時自動產製);前端 UMD 打包後 +177 位元組(170663 → 170840;`getDiag` 本已隨 wsemi 之 `evEmit` 入包)。
+最近更新:2026-11-26(m667b2 輪:排程第 667 項下游遷移,wsemi 1.9.80 起列舉函數第 2 參數為設定物件、未給層數即窮舉,`checkTotalHash` 之 `fsGetFilesInFolder` 明寫 `{ levelLimit: 1 }`,帳本 R34;`checkTotalHash.wk.umd.js` 依 `toolg/gDistRollupWorkerFuncs.mjs` 重建,另兩個 worker 產物逐位元組不變;相依 `wsemi ^1.9.80`;套件版本 2.1.50〔`package.json`,本輪未改〕;`dist/`、`docs/` 未重建)。前次更新:2026-11-24(tcv1 輪:排程第 605 項 w-converhp 部分,診斷輸出〔console〕改依跨套件規格〈診斷輸出與遮罩〉不印資料值,帳本 R33;取代 R16)。套件版本 2.1.42(`package.json`,本輪未改;未發布、未提交)。相依 **wsemi `^1.9.72`**(不變)、w-package-tools `^1.1.29`、devDependencies `w-playwright ^1.0.3`(不變)。**產品碼有改動**(`src/` 新增 `diagOpt.mjs`,改 `WConverhpClient`/`WConverhpServer`/`managerMergeSlices`/`checkTotalHash` 四檔;`checkTotalHash.wk.umd.js` 依 `script.txt` 之 `toolg/gDistRollupWorkerFuncs.mjs` 重建,另兩個 worker 產物逐位元組不變);`dist/`、`docs/` 未重建(發布時自動產製);前端 UMD 打包後 +177 位元組(170663 → 170840;`getDiag` 本已隨 wsemi 之 `evEmit` 入包)。
 
 ## 功能現況
 
@@ -18,9 +18,16 @@
 | **測試啟動瀏覽器一律經 w-playwright**(`test/tools/e2e-setup.mjs` 之 `launchBrowser` → `wpw.launchChromium({ headless: true })`) | 完成(2026-11-13 pm-cvh,排程第 442 項遷移輪):啟動點全集 1 處,4 個 e2e 檔(共 43 案,每案一個 fresh browser)皆經它;無頭、不指定通道,即 Playwright 受管之 headless shell(不觸發 Chromium 之 LogonUser);`playwright` 自 `package.json` 移除。受管瀏覽器取得 `await wpw.ensureChromium()`(README〈Testing〉);`autoInstall` 刻意不開。產品碼未動 | R31 | `unit-pwWiring`(6 案,不啟動瀏覽器)、`e2e-abort`、`e2e-download`、`e2e-execute`、`e2e-upload` |
 | **不可讀值之探針**(`src/probeReadable.mjs` 探針、`src/encodeStrict.mjs` 序列化唯一入口) | 完成(2026-11-19 cvh492i 輪,帳本 R32;**對外 API 無改動**,可讀之值行為不變,不可讀之值走原失敗通道):序列化三站點(伺服端 `encodeOut`、`managerMergeSlices` 之 `consume`、前端 `sendPkg`)經 `encodeStrict`〔深探〕;下載欄位(`validDownloadField`)、串流辨識(`hasPipe`、具體化階段)經淺探 | R32、R3(站點收斂) | `unit-probeReadable`(22 案)、`api-hostileValueProbe`(行為表,201 案)、`api-hostileErrorValues`(原 2 紅案) |
 | **診斷輸出(console)不印資料值**(前後端皆經單一出口 `diag`〔wsemi `getDiag`〕;`src/diagOpt.mjs` 之 `pickDiagOpt` 為 `logDetail`/`funLog` 單一讀取點;worker 不寫 console,診斷以 `r.diag` 回傳) | 完成(2026-11-24 tcv1 輪,帳本 R33):預設只輸出固定詞彙與安全摘要(`{ errType, errCode }`、`{ msgShape }`、`chunkNo/chunkTotal`),不輸出回應物件、錯誤原文、堆疊、請求值、路徑;**新增公開選項 `opt.logDetail`、`opt.funLog`**(前後端建構子;未給則行為即為上述預設,不需使用端改碼;`funLog` 給函數時全部診斷改交它,`() => {}` 即關閉 console);重試提示與啟動訊息字樣不變;error 事件與回前端訊息不變 | R33(取代 R16)、R27(console 出口) | `api-consoleNoValues`(24 案)、`unit-consoleDiag`(10 案)、`e2e-consoleNoValues`(7 案,真 Chromium;2026-11-24 tcv1b 輪依 e2e 技能重寫,見下)、`unit-ruleSites` R33 |
+| **上傳暫存夾切片列舉僅第 1 層**(`src/checkTotalHash.mjs` 之 `fsGetFilesInFolder(pathUploadTemp, { levelLimit: 1 })`;伺服器實際執行 `checkTotalHash.wk.umd.js`) | 完成(2026-11-26 m667b2 輪,帳本 R34;**對外 API 與回傳形狀無改動**,行為保持第 1 層):子資料夾內之同前綴檔不計入 `slks`;產物已重建,內嵌 wsemi 1.9.80 之列舉程式 | R34、R14 | `unit-checkTotalHashLevel`(2 案:`.mjs` 與 `.wk.umd.js` 各一)、`unit-workerBundles` |
 | **差分探測工具**(`test/tools/probeDiff.mjs`) | 完成(2026-11-19):同一組「不可讀形狀 × 注入點」585 格,對「舊版 wsemi + 改動前 src」「新版 + 改動前 src」「新版 + 改動後 src」取結果比對;用法見檔頭與 `sgud/exp/experience.md` E54 | R32(如何找到站點) | 無(工具,非測試) |
 
-## 最近一次驗證(2026-11-24,tcv1b 輪:`e2e-consoleNoValues` 依 e2e 技能補比對)
+## 最近一次驗證(2026-11-26,m667b2 輪:wsemi 1.9.80 列舉函數遷移)
+
+- **全套**(`quiet-run --lock -- npm test`,含 4 個 e2e 檔):**818 passing／0 failing**(前次 816 + `unit-checkTotalHashLevel` 2 案);`unit-workerBundles` 6 案綠(`.mjs` 與重建後之產物行為一致)。eslint:變更之 2 檔(`src/checkTotalHash.mjs`、新測試)0 問題。
+- **建置可重現之對照**:升 wsemi 前於未改碼處先跑 `node toolg/gDistRollupWorkerFuncs.mjs`,`git status` 無任何變動(三個產物逐位元組相同);升 wsemi 並改碼後再跑,只有 `checkTotalHash.wk.umd.js` 變動(內嵌 wsemi 1.9.80 之列舉程式與 `{levelLimit:1}`)。
+- **修前紅／變異**:見 `sgud/exp/experience.md`(升 wsemi 後未改 src:`.mjs` 紅、未重建之產物綠;6 項變異於鏡像根改碼並重建後,兩案皆紅)。
+
+## 前次驗證(2026-11-24,tcv1b 輪:`e2e-consoleNoValues` 依 e2e 技能補比對)
 
 tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e` 技能(責在我:全域設定 §11 之觸發條件「凡接觸 e2e 測試檔」明載,我把派工所列兩技能當作完整清單,新增 e2e 檔當下未重掃觸發條件);本輪補做並逐項比對,結果見 `agent-out/tcv1b-修正報告.md`。改動:
 - **`test/e2e-consoleNoValues.test.mjs` 重寫**(3 → 7 案):①伺服器改經共用層 `startServer`(原自寫 http 伺服器兼供靜態檔,屬第二份近似實作),後端 API 為跨來源之假後端;②console 收集改以各引數之 `jsonValue()` 判定(`collectConsole`,共用層),不依 `msg.text()` 對物件之展開寫法;③補變體案:非有效物件、`logDetail`、error 監聽器拋錯(預設與 `funLog`)——共 7 案(CNV-001 缺 output、002 非有效物件、003 重試字樣、004 logDetail、005 funLog、006 監聽器拋錯之 wsemi 通報、007 監聽器拋錯且給 funLog);④每案註解載 6 步 user path 與對應之帳本條文。
@@ -28,14 +35,14 @@ tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e` 技能(
 - **修前紅／修後綠**(修前為 HEAD 之 src + 現行測試與輔助之鏡像根):7 案 5 紅 2 綠(CNV-003 重試字樣、CNV-006 預設通報為對照);修後 7 綠(連跑 5 次)。e2e 專項變異 8／8 擊殺(`tmp/tcv1b/mutate-e2e.mjs`)。
 - **順帶修正之測試脆弱處**:`api-consoleNoValues` 之 `P2 logDetail 伺服器` 原以 `util.inspect` 之文字判定,同一行程先跑 e2e(載入 Playwright 後 `Error.prepareStackTrace` 被改)時 inspect 只印 `[[Stack unavailable]]` 而不含訊息、案時紅時綠(`mocha --parallel` 之 worker 可能先後跑兩類檔),改為斷言引數之 `message` 欄位。
 - `test/_tmp/ports-claims`(埠認領登錄,測試執行之殘留)已清除。README 版號字樣改為「since 2.1.43」。
-- **全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name tcv1b-full -- npm test`,凍結碼,連跑 2 次):**816 passing／0 failing／0 pending**(tcv1 之 812 + e2e 3 → 7 案之 4)。eslint:變更之 13 檔 0 問題。
+- **全套**(`quiet-run --lock --name tcv1b-full -- npm test`(主控之安靜執行器),凍結碼,連跑 2 次):**816 passing／0 failing／0 pending**(tcv1 之 812 + e2e 3 → 7 案之 4)。eslint:變更之 13 檔 0 問題。
 
 ## 前次驗證(2026-11-24,tcv1 輪:診斷輸出〔console〕不印資料值)
 
 - **現況實測**(修前;`tmp/tcv1/probe-current.mjs`,假 http 後端回固定封包):前端 `invalid msg.output { func: 'f', secret: …, token: … }` 與 `msg is not an effective object 424242` 把整個回應值寫入 console;`wait 1.0(second) to retry...`、`retry n=1...` 為固定詞彙;傳 `silent`/`quiet`/`verbose`/`debug`/`log`/`logDetail`/`funLog` 任何選項皆無法關閉。伺服端 `console.log(label, err)` 原樣傾印錯誤(訊息原文、堆疊、`node_modules` 與專案路徑)、`invalid queueId[CANARY-QUEUEID]`、`pathFile`、packageId、切片檔名。
 - **站點盤點**:前端 `ctx.log` 4 呼叫(2 固定詞彙留、2 印回應值改形狀);伺服端 `WConverhpServer` 12、`managerMergeSlices` 5、worker `checkTotalHash` 4(原 console 5 行)全改經 `diag`;其餘 `src/*.mjs` 0 個 console 呼叫(`unit-ruleSites` R33 逐檔鎖)。
 - **修前紅**(HEAD 之 src + 新測試,鏡像根 `tmp/tcv1/pre/`;日誌 `tmp/quiet-run/*tcv1-pre-*`):`api-consoleNoValues` 24 案 4 綠(對照)20 紅;`e2e-consoleNoValues`(真 Chromium)3 案 1 綠 2 紅,瀏覽器 console 實見 `invalid msg.output {func: f, note: CANARY-RESP-NOTE, token: CANARY-RESP-TOKEN}`;`unit-ruleSites` 2 紅(R27、R33);`unit-consoleDiag` 缺 `src/diagOpt.mjs` 載入失敗。
-- **修後綠**:新測試 `api-consoleNoValues` 24、`unit-consoleDiag` 10、`e2e-consoleNoValues` 3、`unit-ruleSites` 全綠;連跑 api＋unit 10 次、e2e 5 次全綠。**全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name tcv1-full2 -- npm test`,凍結碼):**812 passing / 0 failing / 0 pending**(前次 774 + 新增 38:api 24、unit-consoleDiag 10、e2e 3、unit-ruleSites R33 1)。eslint:變更之 11 檔新增 error／warning 0。
+- **修後綠**:新測試 `api-consoleNoValues` 24、`unit-consoleDiag` 10、`e2e-consoleNoValues` 3、`unit-ruleSites` 全綠;連跑 api＋unit 10 次、e2e 5 次全綠。**全套**(`quiet-run --lock --name tcv1-full2 -- npm test`(主控之安靜執行器),凍結碼):**812 passing / 0 failing / 0 pending**(前次 774 + 新增 38:api 24、unit-consoleDiag 10、e2e 3、unit-ruleSites R33 1)。eslint:變更之 11 檔新增 error／warning 0。
 - **變異**:37／37 擊殺(前端 8、伺服端 19、合併佇列 6、worker 4;各以「行為測試」與「站點鎖」各跑一次);首輪存活 3 項〔C3 `ctx.log` 之中止守門被迴圈檢查遮住、C8 選項為拋錯 getter、S18 worker 記錄之 `code` 傳遞〕皆為測試缺口(非等價),補 3 案後擊殺;僅站點鎖擊殺者 1 項(`responseU8aStreamWithError` 之不可達退路);每項以 sha256 回驗已還原。腳本與結果見報告證據(`tcv1-evidence/`)。
 - **未做**:§9.3 之「全套連跑 5 次」與「發布包解開目錄之另一配置全套」(派工規定全套於凍結碼跑一次);`dist/`、`docs/` 未重建(發布時自動產製)。
 
@@ -43,7 +50,7 @@ tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e` 技能(
 
 - **升版後基準(改動前,wsemi 1.9.69)**:全套 549 passing / **2 failing**(`api-hostileErrorValues` 之 execute 拒絕案與 upload 合併消費案,皆為拋錯之 `Symbol.toStringTag`:`output can not be serialized` 變為 `{}`)。
 - **差分探測 585 格**:舊版(1.9.68)對新版(1.9.69),改動前 src 有 **169 格差異**;依「防線是否因此失效」歸類——須修 5 處(序列化三站點、下載欄位、串流辨識;共 49 格)、設計通道 107 格(選項與呼叫參數為不可讀值,舊版建構子/入口意外拋出,現取預設或入口拒絕〔R11、R26、dspec K3〕)、W-20 9 格、只壞 `has` 陷阱 4 格。修後剩餘差異 **120 格 = 107(設計通道)+ 9(W-20)+ 4(has 陷阱)**,其餘 49 格逐格與舊版相同(事件文字之取因前綴不計)。
-- **修前紅**(改動前 src + wsemi 1.9.69 跑新測試):`api-hostileValueProbe` 58 紅(A1 4、A2 2、A3 12、A4 28、A5 12)、`api-hostileErrorValues` 2 紅。**修後綠**:全套(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name cvh492i-full-final2 -- npm test`,凍結碼)**774 passing / 0 failing / 0 pending**(基準 551 + 新增 223:`unit-probeReadable` 22、`api-hostileValueProbe` 201)。
+- **修前紅**(改動前 src + wsemi 1.9.69 跑新測試):`api-hostileValueProbe` 58 紅(A1 4、A2 2、A3 12、A4 28、A5 12)、`api-hostileErrorValues` 2 紅。**修後綠**:全套(`quiet-run --lock --name cvh492i-full-final2 -- npm test`(主控之安靜執行器),凍結碼)**774 passing / 0 failing / 0 pending**(基準 551 + 新增 223:`unit-probeReadable` 22、`api-hostileValueProbe` 201)。
 - **以 wsemi 1.9.68 跑現碼**(新測試):探針相關之 A1–A5 與 `unit-probeReadable` 全綠(探針於舊版下行為不變);W-20 11 案與「建構選項/呼叫參數為不可讀值」67 案紅——即這兩類測試鎖的是 1.9.69 起之語意。
 - **變異**:16／16 擊殺(探針不先探、探針不深探、三個站點各自不探針、三個序列化站點各自繞過 `encodeStrict`、`hasPipe` 回 `false`、探針展開二進位、探針呼叫 accessor、探針加讀 `has`、探針不排除有 `toJSON` 者／Error／類別原型上之 `toJSON`、原因可為空字串),每項以 sha256 回驗已還原。
 - **獨立複審**(sonnet 子代理,唯讀,只給契約與新舊碼):找到 3 項假陽性(有 `toJSON` 者、`Date`、`Error` 之子圖被探針展開而序列化器不會走到)——已修(探針不展開此三類)並補差分測試;1 項已知限制(accessor/`toJSON` 回傳之拋錯 `Symbol.toStringTag` 物件,L4);陣列索引 accessor 被多讀一次(已知偏差,見 R32 規則 5);站點盤點未找到遺漏。
@@ -52,16 +59,16 @@ tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e` 技能(
 
 ## 前次驗證(2026-11-13,pm-cvh 輪:測試改經 w-playwright 啟動瀏覽器)
 
-- **全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name pm-cvh-full2 -- npm test`,凍結碼,log 在 `tmp/quiet-run/`):**551 passing / 0 failing / 0 pending**(前次 545,差額為新增 `unit-pwWiring` 6 案);4 個 e2e 檔 43 案全過(`e2e-execute` 6、`e2e-download` 19、`e2e-upload` 4、`e2e-abort` 14)。
+- **全套**(`quiet-run --lock --name pm-cvh-full2 -- npm test`(主控之安靜執行器),凍結碼,log 在 `tmp/quiet-run/`):**551 passing / 0 failing / 0 pending**(前次 545,差額為新增 `unit-pwWiring` 6 案);4 個 e2e 檔 43 案全過(`e2e-execute` 6、`e2e-download` 19、`e2e-upload` 4、`e2e-abort` 14)。
 - **修前紅**:`unit-pwWiring` 於修前碼(舊寫法直接用 `playwright`)跑 4／6 紅,以空的 `PLAYWRIGHT_BROWSERS_PATH` 使舊寫法無法啟動任何瀏覽器;修後 6／6 綠。**變異**:8／8 擊殺,皆以雜湊回驗還原(見 R31)。
 - **錯誤次數**(Windows 帳號之 `BadPasswordAttempts`):跑全套與接線測試前後皆 0(本套件 e2e 只起 headless shell,設計上不增)。
 - `R-PW-ONLY` 盤點:`src`／`test`／`toolg`／根層 0 命中,`package.json` 0 宣告;啟動點全集 1 處。標準圖:本套件無 pixel baseline,0 張。`toolg/` 未改(`src` 不匯入 playwright／w-playwright,`gDistRollup.mjs` 之 external／globals 無須同步)。
 
 ## 前次驗證(2026-11-05,ch309 輪:測試埠改作業系統配發)
 
-證據在 `C:\opensrcOper\dnow\20261105000800\agent-out\ch309-evidence\`。
+證據在主控任務資料夾 `20261105000800` 之 `agent-out/ch309-evidence/`。
 
-- **全套**(`node C:/opensrcOper/tools/quiet-run.mjs --lock --name ch309-final-full2 -- npm test`,凍結碼):**545 passing / 0 failing**(前次 540,差額為 `unit-ports` 由 7 案改為 12 案)。
+- **全套**(`quiet-run --lock --name ch309-final-full2 -- npm test`(主控之安靜執行器),凍結碼):**545 passing / 0 failing**(前次 540,差額為 `unit-ports` 由 7 案改為 12 案)。
 - **修前紅**(改碼前,自建真實占用者占滿原固定段 8300~8392 跑全套):占 `127.0.0.1` → 218 passing／307 failing,被測碼打到占用者 713 次;占 `0.0.0.0` → 234／306,打到 720 次,另 89 次新連線被測試自己綁 `127.0.0.1` 之伺服器搶走。
 - **修後綠**(最末碼,占用者分別綁 `127.0.0.1`、`0.0.0.0`、`::`、`::1` 占滿 8300~8392):四組皆 **545 passing / 0 failing**;占用者 PID 不變、仍回應、被測碼打到 **0 次**;執行期間對各被占埠發新連線 19344／26040／27156／25389 次,全由占用者接、被搶 0。
 - **兩套件同跑**(與 w-highcharts-vue 之 8301～8305,以 `OPSRC_TEST_RESOURCE` 指向移除 `portGroups` 8301 之副本模擬主控交件後移除互斥):重疊約 98 秒,兩者皆全綠(本套件 545、對方 156)。
@@ -99,5 +106,5 @@ tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e` 技能(
 
 - 建置(套件根執行,依 `script.txt` 列序):`node toolg/cleanFolder.mjs` → `./node_modules/.bin/jsdoc -c .jsdoc` → `node toolg/gDistRollupWorkerFuncs.mjs` → `node toolg/gDistRollup.mjs`。改了 `src/{checkTotalHash,checkSlicesHash,mergeSlices}.mjs` 必須重建(R14)。建置腳本之測試:`test/unit-toolgBuild.test.mjs`(副本+指定 cwd)。
 
-- 全套:`node C:/opensrcOper/tools/quiet-run.mjs --lock --name <名> -- npm test`(`mocha --parallel "test/*.test.mjs" --timeout 180000`)。
+- 全套:`quiet-run --lock --name <名> -- npm test`(主控之安靜執行器)(`mocha --parallel "test/*.test.mjs" --timeout 180000`)。
 - 負載試驗執行器:`test/tools/loadTrial.mjs`、`test/tools/loadPreload.mjs`(複製自 wsemi,不跨套件引用);用法見檔頭;獨占鎖 `quiet-run --lock-exclusive`。

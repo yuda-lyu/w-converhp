@@ -414,4 +414,11 @@ E18 講的是「觀察工具會失真」,本條是它在**批次改動**上的�
 ⑧*新增 e2e 檔之當下須重掃全域設定之觸發條件,不只看派工所列之技能*(tcv1b 輪補):tcv1 新增 `e2e-consoleNoValues` 時未調用 `role-coder-for-test-e2e`——全域 §11 明載「凡接觸 e2e 測試檔」即加調用,我把派工所列兩技能當完整清單;即使派工漏列,失誤仍在我。補比對後改了三處:自寫之 http 伺服器(兼供靜態檔)與 `api-consoleNoValues` 內之假後端屬第二份近似實作 → 改經共用層 `startServer` 與 `test/tools/fakeApi.mjs`;console 斷言改依各引數之 `jsonValue()`(`collectConsole`),不依 `msg.text()` 之物件展開;補變體案(非有效物件、`logDetail`、監聽器拋錯)。順帶發現共用層 `startServer` 以固定 `delay(1200)` 等就緒(R30 之反例),改 `await wsv.ready`。
 ⑨*測試以 `util.inspect` 之文字判定「物件副本內有某訊息」不可靠*:同一行程先載入 Playwright(`Error.prepareStackTrace` 被改)後,wsemi 遮罩之 Error 副本被 inspect 成 `[[Stack unavailable]]`,訊息不見;`mocha --parallel` 之 worker 可能先後跑 e2e 與 api 檔,案因而時紅時綠。斷言一律取欄位(`message`),不取文字化。單獨跑該檔全綠、與 e2e 同行程才紅,即此型。
 
+**E56 升 wsemi 而上游函式之預設改變(未給即窮舉):worker 產物內嵌舊版 wsemi,測試要同時測 `.mjs` 與產物**(m667b2 輪,2026-11-26,帳本 R34)
+①*升 wsemi 後之修前紅只有一半*:升至 1.9.80、尚未改 src 時,`unit-checkTotalHashLevel` 之 `.mjs` 案紅(窮舉多計 `slks` 之 5、9),**產物案綠**——`checkTotalHash.wk.umd.js` 之 base64 內嵌段含打包當時之 wsemi 列舉程式(舊預設 1 層)。這不是產物沒問題:下次重建(發布流程必跑 `gDistRollupWorkerFuncs`)才會吃到新預設,屆時才現形。故凡「上游預設改變」類之遷移,測試對 `.mjs` 與 `.wk.umd.js` 各一案,且變異須在鏡像根**改碼後重建產物**再跑。
+②*先用「未改碼之重建」驗建置可重現*:升 wsemi 前先跑一次 `node toolg/gDistRollupWorkerFuncs.mjs`,`git status` 無任何變動(三個產物位元組相同),之後之產物差異才能全歸因於本次改動。升 wsemi 並改碼後再跑,只有 `checkTotalHash.wk.umd.js` 變動,另兩個產物(`checkSlicesHash`、`mergeSlices`,未使用列舉函數)位元組不變。
+③*只跑 `gDistRollupWorkerFuncs.mjs`,不跑 `gDistRollup.mjs`*:前者只寫 `src/*.wk.umd.js`;後者產 `dist/*`,依任務不得改 `dist/`、`docs/`(發布時自動產製)。驗收看 `git status` 只多 `src/checkTotalHash.wk.umd.js`、`dist/` 無變動。
+④*產物之驗證指令*:解開 base64 內嵌段後找字樣,`levelLimit:1`(呼叫端之寫法,壓縮後無空白)與 `invalid opt: must be an object`(內嵌者為 1.9.80 之列舉程式)皆須在(指令見 R34)。
+⑤*變異驗證(鏡像根)*:`tmp/<案名>/mirror` 複製 `src/`、`toolg/`、`package.json`、`babel.config.js`、新測試;每項變異先改鏡像之 `src/checkTotalHash.mjs`,於鏡像根(`quiet-run --cwd`)重建產物,再跑測試;裸名匯入向上解析至 repo 根 `node_modules`,不建目錄連結。對照(原碼)綠 2/2;改回舊式數字、省略、`{ levelLimit: 2 }`、`{ levelLimit: null }`、`{}`、`{ levelLimit: 0 }` 共 6 項皆 2/2 轉紅(數字者因 `invalid opt` 拋錯,其餘因 `slks` 多出子層之切片)。
+
 

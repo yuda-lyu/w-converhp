@@ -49,6 +49,7 @@
 | [R31](#r31-chromium-系瀏覽器之啟動一律經-w-playwright本套件不直接依賴-playwrightplaywright-core) | **Chromium 系瀏覽器之啟動一律經 w-playwright**;本套件不直接依賴 `playwright`／`playwright-core`(測試專用,devDependencies) | `rg`(R-PW-ONLY)+ `unit-pwWiring` | 啟動點 1 處(e2e 共用層)/ 4 個 e2e 檔皆經它 | 0 |
 | [R32](#r32-不可讀之值須由探針明確判定不得倚賴-wsemi-判斷函數是否拋錯) | **不可讀之值須由探針明確判定**;不得倚賴 wsemi 判斷函數是否拋錯(wsemi 1.9.69 起判斷函數回布林、只收原始值) | `unit-probeReadable` + 行為表(`api-hostileValueProbe`)+ grep | 探針呼叫 4 處(`encodeStrict` 1〔序列化三站點共用〕+ 下載欄位 1 + 串流辨識 2)、受保護站點 5(A1–A5)/ 判斷函數呼叫 98 行逐一歸類 | 0 |
 | [R33](#r33-診斷輸出console經單一出口-diag預設只輸出固定詞彙與安全摘要不輸出資料值) | **診斷輸出(console)經單一出口 `diag`(wsemi 之 `getDiag`);預設只輸出固定詞彙與安全摘要,不輸出資料值**(前端回應物件、後端錯誤原文、請求值、路徑);`opt.logDetail`／`opt.funLog` 還原細節或轉接 | 位置鎖(`unit-ruleSites` R33)+ 行為表(`api-consoleNoValues`、`e2e-consoleNoValues`) | 診斷站點 client 4 / server 12 / managerMergeSlices 5 / worker 4 | 0 |
+| [R34](#r34-wsemi-列舉函數須以設定物件明寫層數意圖) | **wsemi 列舉函數須以設定物件明寫層數意圖**(`fsGetFilesInFolder` 等第 2 參數自 wsemi 1.9.80 起為 `opt`,未給層數即窮舉);worker 產物須重建 | grep + 差分行為(`unit-checkTotalHashLevel`) | 1(`.mjs`)+ 1 產物(`.wk.umd.js`) | 0 |
 
 > **第十二輪之總結(2026-10-13)**:起因為 w-serv-hapi 之 agent 提出之外部建議四項(上傳管線不判接聽者即落檔、verifyConn 非函數即全放行、serverHapi 模式之 stop、corsOrigins 文件)。四項事實全屬實,但三項修法各撞既有設計(建構期失敗不拋出之通道、R12 之單一擁有者、merge-slices-get S3 之冪等、hapi 無移除路由 API)。方案經三份獨立複審(Claude Opus 5.5 ×2、Codex GPT-6.1-Sol ×1,各自於 HEAD 之 worktree 實跑)擴充為七個變更單元:**R12 延伸至上傳管線**(閘門 4 站點 + admit 期間中斷之補判 2 站點,後者為複審發現之既有缺陷:handler 永不終結、/slc 漏 fd)、合併佇列在途消費之跨實例隔離(複審發現)、**新立 R26**(verifyConn、corsOrigins、useInert、pathStaticFiles)、文件。外部建議之 #3 只補文件,改行為列下輪提案。逐條核對見當輪之 `tmp/r12-複審彙整.md`,定案方案見 `tmp/r12-全盤.md` §9。
 > 帳本自身之錯誤 2 件:R25 之執行指令 `--timeout 60000` 過期(package.json 為 180000)、`unit-ruleSites` 之「帳本須涵蓋全部規則」清單只列到 R18(R19–R25 缺頁不會紅);皆已更正。另 `tmp/measure_sites.mjs` 仍讀第十一輪併檔前之 `buildDownloadSource.mjs` 而無法執行,本輪以 `tmp/r12/sites.mjs`(同 `readCode` 剝註解規則、保留行號)產生逐站點清單。
@@ -1557,7 +1558,7 @@ npx mocha --no-parallel test/unit-ruleSites.test.mjs --grep R29 --timeout 60000
 
 ### R30 計時器相關測試以被測物之事件或可觀察條件為同步點,不以等待毫秒;伺服器就緒等 `ready`、自有計時器以 `opt.onTrace`
 
-**狀態:2026-10-29 新立並套用(tm-converhp 輪,主控裁定 2026-10-29;制式規格 `C:\opensrcOper\dspec\計時器相關函數之觀察回調與測試.md` P1–P7),缺口 0**〔狀態細節見 `sgud/state/state.md`〕
+**狀態:2026-10-29 新立並套用(tm-converhp 輪,主控裁定 2026-10-29;制式規格為主控 dspec 之〈計時器相關函數之觀察回調與測試〉P1–P7),缺口 0**〔狀態細節見 `sgud/state/state.md`〕
 
 **規則**:
 
@@ -1763,6 +1764,26 @@ git grep -cE "getDiag\(" -- src/WConverhpClient.mjs src/WConverhpServer.mjs src/
 **機械化保護**:`test/unit-ruleSites.test.mjs` 之 R33(逐檔 stripCode 後 0 個 console 呼叫;各擁有者之診斷呼叫站點數鎖;**每個呼叫之引數形狀正規式**:第一引數為字面標籤、第二引數只可為 `undefined`/`diag.brief(變數)`/`{ ...diag.brief(err), chunkNo, chunkTotal }`/`{ msgShape: getDiagShape(變數) }`、原始值只可在第三引數之惰性細節;`getDiag` 呼叫次數;`pickDiagOpt` 與 `...optDiag` 併入;`mmg.push`/`mmg.get`/`responseU8aStreamWithError` 皆帶實例 `diag`;worker 之 4 站與 `r.diag`、`drainWorkerDiag` 於 `internal`、`delete out.diag`)、`test/api-consoleNoValues.test.mjs`(24 案:前端 9〔回應形狀不合、非有效物件三形狀、重試字樣、funLog、logDetail、funLog 拋錯與 rejected、error 監聽器拋錯之 wsemi 通報、中止後診斷不輸出〔`onTrace` 於 `retry` 事件內中止〕、選項為拋錯之 getter〕+ 伺服端 15〔監聽器、verifyConn、corsOrigins 與啟動訊息、queueId、`/main` 中斷、`/slc` 中斷與寫入失敗、worker 與合併佇列、worker 內真實 `ENOENT`〔指向不存在目標之 junction〕、啟動失敗/路由註冊/停止失敗、funLog 伺服器、funLog 之啟動訊息、logDetail 伺服器、無 error 監聽器時 wsemi 之通報、選項為拋錯之 getter〕,觀察面含 `process.stdout/stderr.write`)、`test/unit-consoleDiag.test.mjs`(10 案:`pickDiagOpt`、`checkTotalHash` 之記錄、`managerMergeSlices` 之預設出口與寫 `.error` 檔失敗兩處)、`test/e2e-consoleNoValues.test.mjs`(7 案,真 Chromium:打包後之瀏覽器 console 實際收到之訊息; 2026-11-24 tcv1b 輪依 e2e 技能重寫——伺服器經共用層 `startServer`、後端為跨來源之假後端〔`test/tools/fakeApi.mjs`〕、console 以各引數之 `jsonValue()` 判定〔`collectConsole`〕、含非有效物件／`logDetail`／error 監聽器拋錯〔預設與 `funLog`〕之變體案)。**分辨力**(2026-11-24):修前(HEAD 之 src + 新測試,鏡像根)api 24 案中 20 紅〔4 案為修前即綠之對照:重試字樣不變、funLog 拋錯或 rejected、前後端選項為拋錯 getter 各 1〕、真 Chromium 7 案中 5 紅〔2 案為對照:重試字樣不變、error 監聽器拋錯之預設通報不變;tcv1b 重寫後之案數,原 3 案為 2 紅〕(`invalid msg.output {func: f, note: CANARY-RESP-NOTE, token: CANARY-RESP-TOKEN}` 實見於瀏覽器 console)、`unit-consoleDiag` 因缺 `src/diagOpt.mjs` 無法載入、`unit-ruleSites` 2 紅(R27、R33);變異 37 項(前端 8、伺服端 19、合併佇列 6、worker 4)**37／37 擊殺**(36 項為行為測試、1 項〔`responseU8aStreamWithError` 之不可達退路,S19〕僅站點鎖;首輪存活 3 項〔C3、C8、S18〕與 2 項僅站點鎖〔G5、S19〕經補測試後 C3、C8、S18、G5 轉由行為測試擊殺),每項以 sha256 回驗已還原;詳見 `sgud/state/state.md`。
 
 **已知限制與刻意**:①`funLog` 之細節為 wsemi 遮罩後之副本(憑證鍵名之值、`token=` 等樣式遮罩),**其餘內容原樣**——使用端自選之輸出,不宜長期開啟(同 wsemi 之 JSDoc)。②`error` 事件與回呼端之 reject/resolve 值不在本規則(其為應用端診斷與 API 值,見 R10、R17)。③鍵名視為結構:`msgShape`/`getDiagShape` 列出物件之鍵名(預設至多 20 鍵、每鍵至多 32 字),鍵名取自資料本身者(如依使用者 id 為鍵之物件)其鍵名即為識別——本套件之回應物件為伺服器封包(鍵名固定為 `func`、`output`、`msg` 等),未見此形;如需完全不列鍵名,於呼叫端以 `{ keys: false }`(本套件現無此站點)。④`Server running at: <uri>` 之 uri 含主機名與埠(部署資訊,非資料值),依規格 D2 不屬資料值;`funLog` 給函數即可關閉。
+
+### R34 wsemi 列舉函數須以設定物件明寫層數意圖(2026-11-26,m667b2)
+
+**規則**
+1. wsemi 1.9.80 起,`fsTreeFolder`、`fsTreeFolderWithHash`、`fsGetFilesInFolder`、`fsGetFilesWithHashInFolder`、`fsGetFoldersInFolder`(及各 `*Core`)之第 2 參數為設定物件 `opt = {}`:`opt.levelLimit` 為有效正整數才限層,**未給即窮舉全部層級**(舊版第 2 參數為層數、預設 1 層);第 2 參數給了而非物件(舊寫法之數字)拋 `invalid opt: must be an object`,第 3 個引數有給拋 `invalid arguments: must be fd and opt only`。
+2. 本套件呼叫這類函數時,第 2 參數一律為物件且**明寫層數意圖**:要第 1 層者寫 `{ levelLimit: 1 }`;本意窮舉者可省略第 2 參數,但須在呼叫處註明為刻意窮舉。不寫舊式數字,不依賴省略即第 1 層。
+3. `checkTotalHash` 之切片檔皆平放於 `pathUploadTemp` 下(`${fileHash}_${n}`),只需第 1 層,故為 `fsGetFilesInFolder(pathUploadTemp, { levelLimit: 1 })`;不得改為窮舉(子資料夾內同前綴之檔不是本檔之切片,窮舉會把它計入 `slks`,進而使前端就不存在之切片索引逐片確認)。對外簽章與回傳形狀不變。
+4. **受 R14 約束**:伺服器實際執行者為 `src/checkTotalHash.wk.umd.js`,其 base64 內嵌段**內含打包當時之 wsemi 列舉函數程式**。故升 wsemi 後,只改 `.mjs` 而不重建產物,產物仍為舊版 wsemi 之層數語意(舊預設 1 層),測試照綠;改了 `.mjs` 之層數寫法而不重建,則實際行為不變。**每次改 `checkTotalHash.mjs` 或升 wsemi,皆須依 `script.txt` 列序跑 `node toolg/gDistRollupWorkerFuncs.mjs`**(只產 `src/*.wk.umd.js`;`dist/*` 由 `toolg/gDistRollup.mjs` 於發布流程產製)。
+
+**why**:省略第 2 參數之舊寫法於新版**靜默**由第 1 層變窮舉(無從以錯誤攔截);`pathUploadTemp` 下若有子資料夾(備份夾、他程序暫存),其內之同前綴檔會被當成切片。
+
+**站點全集**(盤點指令:`git grep -nE "\b(fsTreeFolder|fsTreeFolderWithHash|fsGetFilesInFolder|fsGetFilesWithHashInFolder|fsGetFoldersInFolder)(Core)?\s*\(" -- . ':!dist' ':!docs' ':!*.wk.umd.js'`)
+- `src/checkTotalHash.mjs:107` `fsGetFilesInFolder(pathUploadTemp, { levelLimit: 1 })`:已套(第 1 層),`.mjs` 為建置輸入
+- 產物 `src/checkTotalHash.wk.umd.js`:內嵌 wsemi 1.9.80 之列舉程式與呼叫端 `{levelLimit:1}`(驗證:`node -e "let c=require('fs').readFileSync('src/checkTotalHash.wk.umd.js','utf8');let m=c.match(/[A-Za-z0-9+\/=]{500,}/g);let d=Buffer.from(m.join(''),'base64').toString('utf8');console.log(d.includes('levelLimit:1'),d.includes('invalid opt: must be an object'))"`,須印 `true true`;前者證明呼叫端為第 1 層,後者證明內嵌者為 1.9.80 之列舉程式)
+- `src/checkSlicesHash.mjs`、`mergeSlices.mjs`、`WConverhpServer.mjs`、`WConverhpClient.mjs`、`managerMergeSlices.mjs`:無此類呼叫;另兩個產物於升 wsemi 後重建,位元組不變
+- 共 1 站(+ 1 產物);根目錄範例 `scla.mjs`、`sclb.mjs`、`sclc.mjs`、`scld.mjs`、`srv.mjs`、README、JSDoc 無此類呼叫
+
+**判準**:盤點指令之每一處第 2 參數皆為物件;`test/unit-checkTotalHashLevel.test.mjs` 全綠(`.mjs` 與 `.wk.umd.js` 兩個實作各一案);植入「改回舊式數字／省略／`levelLimit: 2`／`null`／`0`／空物件」並**重建產物**後皆須使兩案轉紅(變異證據見 `sgud/exp/experience.md`)。
+
+**測試對照**:`test/unit-checkTotalHashLevel.test.mjs`——`pathUploadTemp` 下放第 1 層之 `bb22_0`(1024 位元組)、`bb22_2`(500),另放 `sub/bb22_5`(800)、`sub/deeper/bb22_9`(700)(大小皆合法,被列入即計入 `slks`),斷言 `slks` 排序後恰為 `[0, 2]`、`bSls` 為 true;對 `.mjs` 與 `.wk.umd.js` 各一案(產物未重建時前者先紅:實測修前 `.mjs` 窮舉多計 5、9,而未重建之產物因內嵌舊 wsemi 仍綠,故兩者皆須測)。既有 `unit-workerBundles` 之 fixture 皆平放,分不出第 1 層與窮舉。
 
 ---
 
